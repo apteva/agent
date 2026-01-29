@@ -1,0 +1,52 @@
+package main
+
+import (
+	"fmt"
+	"agent-server/config"
+	"agent-server/stream"
+)
+
+func main() {
+	// Test 1: With scheduler enabled
+	fmt.Println("=== TEST 1: Scheduler ENABLED ===\n")
+	llmConfig1 := config.LLMConfig{
+		Provider:     "anthropic",
+		Model:        "claude-sonnet-4",
+		SystemPrompt: "You are a helpful AI assistant with task management capabilities.",
+	}
+	tasksConfig1 := &config.TasksConfig{
+		Enabled:          true,
+		AllowScheduling:  true,
+		AllowRecurring:   true,
+		MaxTasks:         100,
+		AutoExecute:      false,
+	}
+	schedulerConfig1 := &config.SchedulerConfig{
+		Enabled:  true,
+		Interval: "1h",
+		MaxTasks: 100,
+	}
+
+	prompt1 := stream.BuildSystemPromptWithConfig(llmConfig1, "Task Manager Agent", "An agent that helps manage and execute tasks", nil, tasksConfig1, schedulerConfig1)
+	fmt.Println(prompt1)
+
+	// Test 2: With scheduler disabled
+	fmt.Println("\n\n=== TEST 2: Scheduler DISABLED ===\n")
+	schedulerConfig2 := &config.SchedulerConfig{
+		Enabled:  false,
+		Interval: "1h",
+		MaxTasks: 100,
+	}
+
+	prompt2 := stream.BuildSystemPromptWithConfig(llmConfig1, "Task Manager Agent", "An agent that helps manage and execute tasks", nil, tasksConfig1, schedulerConfig2)
+	fmt.Println(prompt2)
+
+	// Test 3: No task management
+	fmt.Println("\n\n=== TEST 3: Task Management DISABLED ===\n")
+	tasksConfig3 := &config.TasksConfig{
+		Enabled: false,
+	}
+
+	prompt3 := stream.BuildSystemPromptWithConfig(llmConfig1, "Simple Agent", "A simple conversational agent", nil, tasksConfig3, nil)
+	fmt.Println(prompt3)
+}

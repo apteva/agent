@@ -1,0 +1,45 @@
+{
+  "agent": {
+    "id": "agent-coordinator-001",
+    "name": "Coordinator Agent",
+    "description": "Coordinates tasks and delegates to other agents",
+    "llm": {
+      "provider": "groq",
+      "model": "openai/gpt-oss-20b",
+      "max_tokens": 4000,
+      "temperature": 0.7,
+      "system_prompt": "You are a coordinator agent. You can delegate tasks to other agents in your group. Use list_available_agents to see who's available, then call_agent to delegate work.",
+      "tools": []
+    },
+    "agents": {
+      "enabled": true,
+      "group": "production",
+      "settings": {
+        "default_timeout": "30s",
+        "retry_count": 2,
+        "retry_delay": "2s",
+        "track_call_chain": true
+      }
+    },
+    "tasks": {
+      "enabled": false
+    },
+    "mcp": {
+      "enabled": false
+    },
+    "memory": {
+      "enabled": false
+    },
+    "operator": {
+      "enabled": false
+    },
+    "scheduler": {
+      "enabled": false
+    },
+    "context": {
+      "max_messages": 30,
+      "keep_images": 5
+    },
+    "version": "1.2.0"
+  }
+}

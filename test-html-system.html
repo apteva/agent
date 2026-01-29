@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test System Context in HTML</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1f3a; color: #e4e7eb; }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: #2d3348;
+            border: 1px solid #374151;
+            color: #e4e7eb;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background: #2563eb; }
+        #response {
+            margin-top: 20px;
+            padding: 15px;
+            background: #2d3348;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .label { color: #9ca3af; margin-top: 10px; display: block; }
+    </style>
+</head>
+<body>
+    <h2>Test System Context Feature</h2>
+
+    <label class="label">System Context (optional):</label>
+    <input type="text" id="systemInput" placeholder="e.g., 'User name is Bob. User is in PST timezone.'" />
+
+    <label class="label">Message:</label>
+    <textarea id="messageInput" rows="3" placeholder="e.g., 'What is my name and timezone?'"></textarea>
+
+    <button onclick="sendMessage()">Send Message</button>
+
+    <div id="response"></div>
+
+    <script>
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const systemInput = document.getElementById('systemInput');
+            const responseDiv = document.getElementById('response');
+
+            const message = messageInput.value.trim();
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+
+            const body = {
+                message: message,
+                stream: false
+            };
+
+            // Add system context if provided
+            const systemContext = systemInput.value.trim();
+            if (systemContext) {
+                body.system = systemContext;
+            }
+
+            responseDiv.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('http://localhost:4015/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    responseDiv.textContent = `✅ SUCCESS\n\nModel: ${result.model}\n\nResponse:\n${result.response}`;
+                } else {
+                    responseDiv.textContent = `❌ ERROR\n\n${result.error}`;
+                }
+            } catch (error) {
+                responseDiv.textContent = `❌ ERROR\n\n${error.message}`;
+            }
+        }
+
+        // Allow Enter to send
+        document.getElementById('messageInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

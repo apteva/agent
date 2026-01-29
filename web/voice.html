@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        button {
+            padding: 18px 40px;
+            font-size: 18px;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #startBtn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        #startBtn.active {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            animation: pulse 2s infinite;
+        }
+
+        #startBtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .status {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border-left: 5px solid #6c757d;
+            transition: all 0.3s ease;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+
+        .transcript {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .transcript h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .message {
+            margin: 12px 0;
+            padding: 12px 16px;
+            border-radius: 12px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-left: 40px;
+        }
+
+        .assistant {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            margin-right: 40px;
+        }
+
+        .tools-panel {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .tools-panel h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .tool-execution {
+            margin: 12px 0;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .tool-execution.executing {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+
+        .tool-execution.completed {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+
+        .tool-execution.failed {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+
+        .tool-name {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .tool-status {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .tool-result {
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #6c757d;
+            padding: 40px 20px;
+            font-style: italic;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Voice Agent</h1>
+
+        <div class="controls">
+            <button id="startBtn">Start Conversation</button>
+        </div>
+
+        <div class="status disconnected" id="status">
+            Status: Disconnected
+        </div>
+
+        <div class="transcript" id="transcriptPanel">
+            <h3>📝 Transcript</h3>
+            <div id="transcript">
+                <p class="empty-state">Conversation will appear here...</p>
+            </div>
+        </div>
+
+        <div class="tools-panel">
+            <h3>🔧 Tool Executions</h3>
+            <div id="toolsList">
+                <p class="empty-state">Tool calls will appear here...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let audioContext = null;
+        let mediaStream = null;
+        let processor = null;
+        let isRecording = false;
+        let audioQueue = [];
+        let isPlaying = false;
+
+        const startBtn = document.getElementById('startBtn');
+        const statusDiv = document.getElementById('status');
+        const transcriptDiv = document.getElementById('transcript');
+        const toolsListDiv = document.getElementById('toolsList');
+
+        // Convert Float32 PCM to Int16 PCM
+        function float32ToInt16(float32Array) {
+            const int16Array = new Int16Array(float32Array.length);
+            for (let i = 0; i < float32Array.length; i++) {
+                const s = Math.max(-1, Math.min(1, float32Array[i]));
+                int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            return int16Array;
+        }
+
+        // Convert Int16 to base64
+        function int16ToBase64(int16Array) {
+            const uint8Array = new Uint8Array(int16Array.buffer);
+            return btoa(String.fromCharCode.apply(null, uint8Array));
+        }
+
+        // Convert base64 to Float32 for playback
+        function base64ToFloat32(base64) {
+            const binaryString = atob(base64);
+            const int16Array = new Int16Array(binaryString.length / 2);
+            for (let i = 0; i < int16Array.length; i++) {
+                int16Array[i] = (binaryString.charCodeAt(i * 2 + 1) << 8) | binaryString.charCodeAt(i * 2);
+            }
+            const float32Array = new Float32Array(int16Array.length);
+            for (let i = 0; i < int16Array.length; i++) {
+                float32Array[i] = int16Array[i] / (int16Array[i] < 0 ? 0x8000 : 0x7FFF);
+            }
+            return float32Array;
+        }
+
+        startBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                await startConversation();
+            } else {
+                stopConversation();
+            }
+        });
+
+        async function startConversation() {
+            try {
+                startBtn.disabled = true;
+                updateStatus('Connecting...', false);
+
+                // Connect WebSocket
+                ws = new WebSocket('ws://localhost:4015/voice');
+
+                ws.onopen = async () => {
+                    updateStatus('Connected - Waiting for session...', false);
+                };
+
+                ws.onmessage = (event) => {
+                    const msg = JSON.parse(event.data);
+                    handleMessage(msg);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    updateStatus('Error: Connection failed', false);
+                    startBtn.disabled = false;
+                };
+
+                ws.onclose = () => {
+                    updateStatus('Disconnected', false);
+                    stopConversation();
+                };
+
+            } catch (error) {
+                console.error('Failed to start:', error);
+                alert('Failed to start: ' + error.message);
+                startBtn.disabled = false;
+            }
+        }
+
+        async function startAudioCapture() {
+            audioContext = new AudioContext({ sampleRate: 24000 });
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            const source = audioContext.createMediaStreamSource(mediaStream);
+
+            // Create processor for audio chunks
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+            processor.onaudioprocess = (e) => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+                const inputData = e.inputBuffer.getChannelData(0);
+                const int16Data = float32ToInt16(inputData);
+                const base64Data = int16ToBase64(int16Data);
+
+                // Send to server
+                ws.send(JSON.stringify({
+                    type: 'audio',
+                    data: {
+                        chunk: base64Data
+                    }
+                }));
+            };
+
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+
+            console.log('✅ Audio capture started');
+        }
+
+        function stopConversation() {
+            isRecording = false;
+            startBtn.textContent = 'Start Conversation';
+            startBtn.classList.remove('active');
+            startBtn.disabled = false;
+
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+
+            updateStatus('Disconnected', false);
+        }
+
+        async function handleMessage(msg) {
+            console.log('Received:', msg.type, msg);
+
+            switch (msg.type) {
+                case 'session_created':
+                    updateStatus('Ready - Start speaking!', true);
+                    isRecording = true;
+                    startBtn.textContent = 'Stop Conversation';
+                    startBtn.classList.add('active');
+                    startBtn.disabled = false;
+
+                    // Start audio capture
+                    await startAudioCapture();
+                    break;
+
+                case 'audio_delta':
+                    if (msg.data && msg.data.chunk) {
+                        playAudioChunk(msg.data.chunk);
+                    }
+                    break;
+
+                case 'transcript':
+                    if (msg.data) {
+                        addTranscript(msg.data.role, msg.data.content);
+                    }
+                    break;
+
+                case 'tool_call':
+                    if (msg.data) {
+                        showToolExecution(msg.data.id, msg.data.name, msg.data.input, 'executing');
+                    }
+                    break;
+
+                case 'tool_result':
+                    if (msg.data) {
+                        updateToolExecution(msg.data.call_id, msg.data.result, msg.data.error);
+                    }
+                    break;
+
+                case 'error':
+                    console.error('Error from server:', msg.data);
+                    updateStatus('Error: ' + (msg.data.message || 'Unknown error'), false);
+                    break;
+            }
+        }
+
+        function playAudioChunk(base64Audio) {
+            audioQueue.push(base64Audio);
+            if (!isPlaying) {
+                playNextChunk();
+            }
+        }
+
+        function playNextChunk() {
+            if (audioQueue.length === 0) {
+                isPlaying = false;
+                return;
+            }
+
+            isPlaying = true;
+            const base64Audio = audioQueue.shift();
+            const float32Data = base64ToFloat32(base64Audio);
+
+            if (!audioContext) {
+                audioContext = new AudioContext({ sampleRate: 24000 });
+            }
+
+            const audioBuffer = audioContext.createBuffer(1, float32Data.length, 24000);
+            audioBuffer.getChannelData(0).set(float32Data);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.onended = () => playNextChunk();
+            source.start();
+        }
+
+        function addTranscript(role, text) {
+            // Remove empty state if present
+            const emptyState = transcriptDiv.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const msg = document.createElement('div');
+            msg.className = `message ${role}`;
+            msg.textContent = text;
+            transcriptDiv.appendChild(msg);
+            transcriptDiv.parentElement.scrollTop = transcriptDiv.parentElement.scrollHeight;
+        }
+
+        function showToolExecution(callID, name, input, status) {
+            // Remove empty state if present
+            const emptyState = toolsListDiv.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const toolDiv = document.createElement('div');
+            toolDiv.className = `tool-execution ${status}`;
+            toolDiv.id = `tool-${callID}`;
+            toolDiv.innerHTML = `
+                <div class="tool-name">🔧 ${name}</div>
+                <div class="tool-status">${status === 'executing' ? '⏳ Executing...' : '✓ Complete'}</div>
+            `;
+
+            toolsListDiv.appendChild(toolDiv);
+            toolsListDiv.parentElement.scrollTop = toolsListDiv.parentElement.scrollHeight;
+        }
+
+        function updateToolExecution(callID, result, error) {
+            const toolDiv = document.getElementById(`tool-${callID}`);
+            if (!toolDiv) return;
+
+            if (error) {
+                toolDiv.className = 'tool-execution failed';
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'tool-result';
+                errorDiv.textContent = `❌ Error: ${error}`;
+                errorDiv.style.color = '#dc3545';
+                toolDiv.appendChild(errorDiv);
+            } else {
+                toolDiv.className = 'tool-execution completed';
+                const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+                const preview = resultStr.length > 200 ? resultStr.substring(0, 200) + '...' : resultStr;
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'tool-result';
+                resultDiv.textContent = `✓ ${preview}`;
+                resultDiv.style.color = '#28a745';
+                toolDiv.appendChild(resultDiv);
+            }
+        }
+
+        function updateStatus(message, connected) {
+            statusDiv.textContent = 'Status: ' + message;
+            statusDiv.className = 'status ' + (connected ? 'connected' : 'disconnected');
+        }
+    </script>
+</body>
+</html>

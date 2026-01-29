@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Event Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0e27;
+            color: #e4e7eb;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #61dafb;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .status.connected {
+            background: #10b98129;
+            color: #10b981;
+        }
+        
+        .status.disconnected {
+            background: #ef444429;
+            color: #ef4444;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .controls {
+            background: #1a1f3a;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .filter-group label {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #9ca3af;
+            letter-spacing: 0.5px;
+        }
+        
+        select, input {
+            background: #0a0e27;
+            color: #e4e7eb;
+            border: 1px solid #374151;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #2563eb;
+        }
+        
+        button:disabled {
+            background: #374151;
+            cursor: not-allowed;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: #1a1f3a;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .stat-card h3 {
+            font-size: 12px;
+            color: #9ca3af;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #61dafb;
+        }
+        
+        .events-container {
+            background: #1a1f3a;
+            border-radius: 12px;
+            padding: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .event {
+            background: #0a0e27;
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 3px solid #374151;
+            transition: all 0.3s;
+            animation: slideIn 0.3s;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .event.SYSTEM { border-left-color: #8b5cf6; }
+        .event.CHAT { border-left-color: #3b82f6; }
+        .event.TOOL { border-left-color: #10b981; }
+        .event.DATABASE { border-left-color: #f59e0b; }
+        .event.MCP { border-left-color: #ec4899; }
+        .event.SCHEDULER { border-left-color: #14b8a6; }
+        .event.LLM { border-left-color: #6366f1; }
+        .event.ERROR { border-left-color: #ef4444; background: #ef444410; }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .event-meta {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .event-category {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .event-type {
+            color: #9ca3af;
+            font-size: 12px;
+        }
+        
+        .event-time {
+            color: #6b7280;
+            font-size: 12px;
+        }
+        
+        .event-data {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #d1d5db;
+            background: #0a0e27;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .event-data pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .clear-btn {
+            background: #ef4444;
+            margin-left: auto;
+        }
+        
+        .clear-btn:hover {
+            background: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            Agent Event Monitor
+            <span id="status" class="status disconnected">
+                <span class="status-dot"></span>
+                <span>Disconnected</span>
+            </span>
+        </h1>
+        
+        <div class="controls">
+            <div class="filter-group">
+                <label>Category Filter</label>
+                <select id="categoryFilter" multiple size="3">
+                    <option value="SYSTEM">System</option>
+                    <option value="CHAT" selected>Chat</option>
+                    <option value="TOOL" selected>Tool</option>
+                    <option value="DATABASE">Database</option>
+                    <option value="MCP" selected>MCP</option>
+                    <option value="SCHEDULER">Scheduler</option>
+                    <option value="LLM">LLM</option>
+                    <option value="ERROR" selected>Error</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label>Level Filter</label>
+                <select id="levelFilter">
+                    <option value="">All Levels</option>
+                    <option value="debug">Debug</option>
+                    <option value="info" selected>Info</option>
+                    <option value="warn">Warning</option>
+                    <option value="error">Error</option>
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <label>Thread ID</label>
+                <input type="text" id="threadFilter" placeholder="Optional thread ID">
+            </div>
+            
+            <button id="connectBtn" onclick="toggleConnection()">Connect</button>
+            <button class="clear-btn" onclick="clearEvents()">Clear Events</button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Total Events</h3>
+                <div class="value" id="totalEvents">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Events/Minute</h3>
+                <div class="value" id="eventsPerMinute">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Active Threads</h3>
+                <div class="value" id="activeThreads">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Tool Calls</h3>
+                <div class="value" id="toolCalls">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Errors</h3>
+                <div class="value" id="errorCount">0</div>
+            </div>
+        </div>
+        
+        <div class="events-container" id="eventsContainer">
+            <div style="text-align: center; color: #6b7280; padding: 40px;">
+                Click "Connect" to start monitoring events
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let eventSource = null;
+        let eventCount = 0;
+        let eventsTimestamps = [];
+        let threadSet = new Set();
+        let toolCallCount = 0;
+        let errorCount = 0;
+        
+        function toggleConnection() {
+            if (eventSource) {
+                disconnect();
+            } else {
+                connect();
+            }
+        }
+        
+        function connect() {
+            const categories = Array.from(document.getElementById('categoryFilter').selectedOptions)
+                .map(opt => opt.value).join(',');
+            const level = document.getElementById('levelFilter').value;
+            const threadId = document.getElementById('threadFilter').value;
+            
+            let url = 'http://localhost:4015/events?tail=50&follow=true';
+            if (categories) url += `&category=${categories}`;
+            if (level) url += `&level=${level}`;
+            if (threadId) url += `&thread_id=${threadId}`;
+            
+            eventSource = new EventSource(url);
+            
+            eventSource.onopen = () => {
+                updateStatus('connected');
+                document.getElementById('connectBtn').textContent = 'Disconnect';
+                document.getElementById('eventsContainer').innerHTML = '';
+            };
+            
+            eventSource.onmessage = (e) => {
+                try {
+                    const event = JSON.parse(e.data);
+                    handleEvent(event);
+                } catch (err) {
+                    console.error('Failed to parse event:', err);
+                }
+            };
+            
+            eventSource.onerror = () => {
+                updateStatus('disconnected');
+                document.getElementById('connectBtn').textContent = 'Connect';
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    eventSource = null;
+                }
+            };
+        }
+        
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+                updateStatus('disconnected');
+                document.getElementById('connectBtn').textContent = 'Connect';
+            }
+        }
+        
+        function updateStatus(status) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${status}`;
+            statusEl.querySelector('span:last-child').textContent = 
+                status === 'connected' ? 'Connected' : 'Disconnected';
+        }
+        
+        function handleEvent(event) {
+            // Skip heartbeat events
+            if (event.type === 'heartbeat') return;
+            
+            // Update statistics
+            eventCount++;
+            document.getElementById('totalEvents').textContent = eventCount;
+            
+            // Track events per minute
+            const now = Date.now();
+            eventsTimestamps.push(now);
+            eventsTimestamps = eventsTimestamps.filter(t => t > now - 60000);
+            document.getElementById('eventsPerMinute').textContent = eventsTimestamps.length;
+            
+            // Track threads
+            if (event.thread_id) {
+                threadSet.add(event.thread_id);
+                document.getElementById('activeThreads').textContent = threadSet.size;
+            }
+            
+            // Track tool calls
+            if (event.category === 'TOOL' || event.category === 'MCP') {
+                if (event.type.includes('invocation') || event.type.includes('execution')) {
+                    toolCallCount++;
+                    document.getElementById('toolCalls').textContent = toolCallCount;
+                }
+            }
+            
+            // Track errors
+            if (event.level === 'error' || event.error) {
+                errorCount++;
+                document.getElementById('errorCount').textContent = errorCount;
+            }
+            
+            // Add event to display
+            addEventToDisplay(event);
+        }
+        
+        function addEventToDisplay(event) {
+            const container = document.getElementById('eventsContainer');
+            const eventEl = document.createElement('div');
+            eventEl.className = `event ${event.category}`;
+            
+            const time = new Date(event.timestamp).toLocaleTimeString();
+            
+            let dataHtml = '';
+            if (event.data || event.metadata || event.error) {
+                const displayData = {
+                    ...(event.data || {}),
+                    ...(event.metadata ? {metadata: event.metadata} : {}),
+                    ...(event.error ? {error: event.error} : {}),
+                    ...(event.duration_ms ? {duration_ms: event.duration_ms} : {})
+                };
+                dataHtml = `
+                    <div class="event-data">
+                        <pre>${JSON.stringify(displayData, null, 2)}</pre>
+                    </div>
+                `;
+            }
+            
+            eventEl.innerHTML = `
+                <div class="event-header">
+                    <div class="event-meta">
+                        <span class="event-category" style="background: ${getCategoryColor(event.category)}20; color: ${getCategoryColor(event.category)}">
+                            ${event.category}
+                        </span>
+                        <span class="event-type">${event.type}</span>
+                        ${event.thread_id ? `<span class="event-type">Thread: ${event.thread_id.substring(0, 8)}...</span>` : ''}
+                    </div>
+                    <span class="event-time">${time}</span>
+                </div>
+                ${dataHtml}
+            `;
+            
+            container.insertBefore(eventEl, container.firstChild);
+            
+            // Keep only last 100 events
+            while (container.children.length > 100) {
+                container.removeChild(container.lastChild);
+            }
+        }
+        
+        function getCategoryColor(category) {
+            const colors = {
+                SYSTEM: '#8b5cf6',
+                CHAT: '#3b82f6',
+                TOOL: '#10b981',
+                DATABASE: '#f59e0b',
+                MCP: '#ec4899',
+                SCHEDULER: '#14b8a6',
+                LLM: '#6366f1',
+                ERROR: '#ef4444'
+            };
+            return colors[category] || '#6b7280';
+        }
+        
+        function clearEvents() {
+            document.getElementById('eventsContainer').innerHTML = '';
+            eventCount = 0;
+            eventsTimestamps = [];
+            threadSet.clear();
+            toolCallCount = 0;
+            errorCount = 0;
+            document.getElementById('totalEvents').textContent = '0';
+            document.getElementById('eventsPerMinute').textContent = '0';
+            document.getElementById('activeThreads').textContent = '0';
+            document.getElementById('toolCalls').textContent = '0';
+            document.getElementById('errorCount').textContent = '0';
+        }
+    </script>
+</body>
+</html>

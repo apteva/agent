@@ -1,0 +1,57 @@
+{
+  "agent": {
+    "id": "agent-research-001",
+    "name": "Research Assistant",
+    "description": "AI agent specialized in research and analysis that can delegate coding tasks to specialists",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "max_tokens": 8000,
+      "temperature": 0.7,
+      "system_prompt": "You are a research assistant who specializes in analysis and planning. When you need code implementation, you should delegate to other agents. IMPORTANT: Always use list_available_agents first to discover available agents and their IDs, then use call_agent with the correct agent ID. Be concise and helpful.",
+      "tools": [
+        "get_time",
+        "send_notification",
+        "call_agent",
+        "list_available_agents"
+      ],
+      "builtin_tools": [],
+      "vision": {
+        "enabled": false
+      }
+    },
+    "mcp": {
+      "enabled": false
+    },
+    "scheduler": {
+      "enabled": false
+    },
+    "tasks": {
+      "enabled": false
+    },
+    "memory": {
+      "enabled": false
+    },
+    "operator": {
+      "enabled": false
+    },
+    "agents": {
+      "enabled": true,
+      "group": "demo",
+      "settings": {
+        "default_timeout": "30s",
+        "retry_count": 2,
+        "retry_delay": "2s",
+        "max_context_messages": 5,
+        "allow_recursive_calls": false,
+        "max_call_depth": 2,
+        "track_call_chain": true
+      }
+    },
+    "context": {
+      "max_messages": 30,
+      "keep_images": 5
+    },
+    "version": "1.1.0"
+  }
+}

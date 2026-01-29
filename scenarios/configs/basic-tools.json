@@ -1,0 +1,42 @@
+{
+  "agent": {
+    "id": "agent-test-basic",
+    "name": "AI Assistant - Basic Tools Test",
+    "description": "Test agent for basic tool scenarios",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "max_tokens": 8000,
+      "temperature": 0.7,
+      "system_prompt": "You are a helpful AI assistant. Be concise and accurate in your responses.",
+      "tools": [
+        "get_time",
+        "send_notification"
+      ],
+      "builtin_tools": [],
+      "vision": {
+        "enabled": false
+      }
+    },
+    "mcp": {
+      "enabled": false
+    },
+    "scheduler": {
+      "enabled": false
+    },
+    "tasks": {
+      "enabled": false
+    },
+    "memory": {
+      "enabled": false
+    },
+    "operator": {
+      "enabled": false
+    },
+    "context": {
+      "max_messages": 30,
+      "keep_images": 5
+    },
+    "version": "1.1.0"
+  }
+}

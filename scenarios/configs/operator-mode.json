@@ -1,0 +1,86 @@
+{
+  "agent": {
+    "id": "agent-test-operator",
+    "name": "AI Assistant - Operator Mode Test",
+    "description": "Test agent for operator mode scenarios",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "max_tokens": 8000,
+      "temperature": 0.7,
+      "system_prompt": "You are a helpful AI assistant with computer use capabilities. Be concise and accurate in your responses.",
+      "tools": [
+        "create_operator_session",
+        "list_operator_sessions",
+        "close_operator_session"
+      ],
+      "builtin_tools": [
+        {
+          "type": "computer_20250124",
+          "name": "computer",
+          "display_width_px": 1024,
+          "display_height_px": 768,
+          "display_number": 1
+        }
+      ],
+      "vision": {
+        "enabled": true,
+        "max_images": 20,
+        "max_image_size": 5242880,
+        "allowed_types": ["jpeg", "png", "gif", "webp"],
+        "resize_images": true,
+        "max_dimension": 1568,
+        "pdf": {
+          "enabled": true,
+          "max_file_size": 33554432,
+          "max_pages": 100,
+          "allow_urls": true
+        }
+      }
+    },
+    "mcp": {
+      "enabled": false,
+      "base_url": "http://localhost:3000/mcp",
+      "api_key": "mcp_test1234567890abcdef",
+      "timeout": "30s",
+      "retry_count": 3,
+      "cache_ttl": "15m",
+      "tools": [
+        "get-current-weather"
+      ]
+    },
+    "scheduler": {
+      "enabled": false,
+      "interval": "1h",
+      "max_tasks": 100
+    },
+    "tasks": {
+      "enabled": false,
+      "allow_scheduling": true,
+      "allow_recurring": true,
+      "max_tasks": 100,
+      "auto_execute": false
+    },
+    "memory": {
+      "enabled": false,
+      "embedding_model": "text-embedding-3-small",
+      "decision_model": "gpt-4o-mini",
+      "max_memories_per_query": 5,
+      "min_importance": 0.3,
+      "auto_prune": true,
+      "max_memories": 10000
+    },
+    "operator": {
+      "enabled": true,
+      "virtual_browser": "http://localhost:8098",
+      "display_width": 1024,
+      "display_height": 768,
+      "max_actions_per_turn": 5
+    },
+    "context": {
+      "max_messages": 30,
+      "keep_images": 5
+    },
+    "version": "1.1.0"
+  }
+}

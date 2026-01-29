@@ -1,0 +1,59 @@
+{
+  "agent": {
+    "id": "agent-test-mcp",
+    "name": "AI Assistant - MCP Tools Test",
+    "description": "Test agent for MCP tool scenarios",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "max_tokens": 8000,
+      "temperature": 0.7,
+      "system_prompt": "You are a helpful AI assistant. Be concise and accurate in your responses.",
+      "tools": [],
+      "builtin_tools": [],
+      "vision": {
+        "enabled": false
+      }
+    },
+    "mcp": {
+      "enabled": true,
+      "base_url": "http://localhost:3000/mcp",
+      "api_key": "mcp_test1234567890abcdef",
+      "timeout": "30s",
+      "retry_count": 3,
+      "cache_ttl": "15m",
+      "test_mode": true,
+      "tools": [
+        "get-current-weather",
+        "send-notification"
+      ],
+      "credentials": {
+        "6": {
+          "credential_id": "6",
+          "name": "Pushover Key",
+          "description": "Pushover notification credentials",
+          "scope": ["notifications"],
+          "use_for": ["send-notification"],
+          "active": true
+        }
+      }
+    },
+    "scheduler": {
+      "enabled": false
+    },
+    "tasks": {
+      "enabled": false
+    },
+    "memory": {
+      "enabled": false
+    },
+    "operator": {
+      "enabled": false
+    },
+    "context": {
+      "max_messages": 30,
+      "keep_images": 5
+    },
+    "version": "1.1.0"
+  }
+}

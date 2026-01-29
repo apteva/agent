@@ -1,0 +1,2173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Debug Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/web/css/custom.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Monaco', 'Consolas', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <script>
+        // Apply dark mode immediately to prevent flash
+        (function() {
+            const saved = localStorage.getItem('darkMode');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (saved === 'true' || (saved === null && prefersDark)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 font-sans text-slate-900 dark:text-slate-100 min-h-screen no-animate">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-slate-950 text-white flex flex-col">
+            <!-- Logo -->
+            <div class="px-5 py-4 border-b border-slate-800">
+                <h1 class="text-lg font-semibold flex items-center gap-2">
+                    <span>🤖</span> Agent Debug
+                </h1>
+                <p class="text-sm text-slate-400">v<span id="agentVersion">1.0.0</span></p>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+                <button onclick="switchTab(event, 'chat')" class="tab-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors bg-slate-800 text-white">
+                    <span>💬</span> Chat
+                </button>
+                <button onclick="switchTab(event, 'voice')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>🎙️</span> Voice Chat
+                </button>
+                <button onclick="switchTab(event, 'threads')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>🧵</span> Threads
+                </button>
+                <button onclick="switchTab(event, 'tasks')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>📋</span> Tasks
+                </button>
+                <button onclick="switchTab(event, 'subscriptions')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>📨</span> Subscriptions
+                </button>
+                <button onclick="switchTab(event, 'memories')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>🧠</span> Memories
+                </button>
+                <button onclick="switchTab(event, 'scheduler')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>⏰</span> Scheduler
+                </button>
+                <button onclick="switchTab(event, 'files')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>📁</span> Files
+                </button>
+                <button onclick="switchTab(event, 'mcp')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>🔌</span> MCP
+                </button>
+
+                <div class="border-t border-slate-700 my-3"></div>
+
+                <button onclick="switchTab(event, 'config')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>⚙️</span> Config
+                </button>
+                <button onclick="switchTab(event, 'system')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>📊</span> System
+                </button>
+                <button onclick="switchTab(event, 'events')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>📡</span> Events
+                </button>
+                <button onclick="switchTab(event, 'tracing')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>🔍</span> Tracing
+                </button>
+                <button onclick="switchTab(event, 'usage')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>💰</span> Usage
+                </button>
+            </nav>
+
+            <!-- Status -->
+            <div class="p-4 border-t border-slate-700">
+                <div class="flex items-center gap-2 text-sm">
+                    <span class="status-dot online" id="statusDot"></span>
+                    <span class="text-slate-300" id="statusText">Connected</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-hidden flex flex-col">
+            <!-- Top Bar -->
+            <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-semibold" id="pageTitle">Voice Chat</h2>
+                    <p class="text-sm text-slate-500" id="pageDescription">Real-time voice interaction</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="refreshCurrentTab()" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                        🔄 Refresh
+                    </button>
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                        🌙
+                    </button>
+                </div>
+            </header>
+
+            <!-- Tab Content -->
+            <div class="flex-1 overflow-y-auto p-6">
+                <!-- Chat Tab -->
+                <div id="chat" class="tab-pane">
+                    <div class="h-full flex gap-4">
+                        <!-- Chat Panel (Left) -->
+                        <div class="flex-1 flex flex-col max-w-3xl">
+                            <!-- Chat Messages -->
+                            <div id="chatMessages" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden flex flex-col" style="min-height: 500px;">
+                                <div class="flex-1 overflow-y-auto p-4 space-y-4" id="chatMessagesContainer">
+                                    <div class="text-center text-slate-400 py-12">
+                                        <div class="text-4xl mb-3">💬</div>
+                                        <p>Start a conversation with the agent</p>
+                                    </div>
+                                </div>
+                                <!-- Input Area -->
+                                <div class="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-700">
+                                    <!-- File Preview Area -->
+                                    <div id="chatFilePreview" class="hidden flex flex-wrap gap-2 mb-3"></div>
+                                    <form onsubmit="sendChatMessage(event)" class="flex gap-3">
+                                        <!-- Hidden file input -->
+                                        <input
+                                            type="file"
+                                            id="chatFileInput"
+                                            class="hidden"
+                                            multiple
+                                            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                                            onchange="handleChatFileSelect(event)"
+                                        >
+                                        <!-- Attach file button -->
+                                        <button
+                                            type="button"
+                                            onclick="document.getElementById('chatFileInput').click()"
+                                            class="px-3 py-3 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                                            title="Attach image or PDF"
+                                        >
+                                            📎
+                                        </button>
+                                        <input
+                                            type="text"
+                                            id="chatInput"
+                                            placeholder="Type a message..."
+                                            class="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                            autocomplete="off"
+                                        >
+                                        <button
+                                            type="submit"
+                                            id="chatSendBtn"
+                                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Send
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                            <!-- Chat Controls -->
+                            <div class="mt-4 flex justify-between items-center">
+                                <div class="text-sm text-slate-500">
+                                    Thread: <span id="chatThreadId" class="font-mono">New conversation</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <!-- Setup Mode Toggle -->
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <span class="text-sm text-slate-600 dark:text-slate-400">Setup Mode</span>
+                                        <div class="relative">
+                                            <input type="checkbox" id="setupModeToggle" class="sr-only peer" onchange="toggleSetupMode(this.checked)">
+                                            <div class="w-9 h-5 bg-slate-300 dark:bg-slate-600 rounded-full peer peer-checked:bg-purple-500 transition-colors"></div>
+                                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+                                        </div>
+                                    </label>
+                                    <button onclick="clearChatThread()" class="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
+                                        🗑️ Clear Chat
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Raw Chunks Panel (Right) -->
+                        <div class="flex-1 flex flex-col" style="height: 580px;">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300">Raw SSE Chunks</h3>
+                                <div class="flex items-center gap-2">
+                                    <span id="rawChunksCount" class="text-xs text-slate-500">0 chunks</span>
+                                    <button onclick="copyAllChunks()" class="px-2 py-1 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors" title="Copy all chunks">
+                                        📋 Copy All
+                                    </button>
+                                    <button onclick="exportChunksJSON()" class="px-2 py-1 text-xs text-green-500 hover:text-green-700 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors" title="Export as JSON">
+                                        💾 Export
+                                    </button>
+                                    <button onclick="clearRawChunks()" class="px-2 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors">
+                                        Clear
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Filter bar -->
+                            <div class="flex items-center gap-2 mb-2">
+                                <input type="text" id="chunkFilter" placeholder="Filter chunks..." onkeyup="filterChunks()" class="flex-1 px-2 py-1 text-xs bg-slate-800 border border-slate-700 rounded text-slate-300 placeholder-slate-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                                <select id="chunkTypeFilter" onchange="filterChunks()" class="px-2 py-1 text-xs bg-slate-800 border border-slate-700 rounded text-slate-300 focus:ring-1 focus:ring-blue-500 outline-none">
+                                    <option value="">All types</option>
+                                    <option value="content">content</option>
+                                    <option value="tool_call">tool_call</option>
+                                    <option value="tool_use">tool_use</option>
+                                    <option value="tool_result">tool_result</option>
+                                    <option value="tool_input_delta">tool_input_delta</option>
+                                    <option value="start">start</option>
+                                    <option value="stop">stop</option>
+                                    <option value="thinking">thinking</option>
+                                    <option value="error">error</option>
+                                </select>
+                            </div>
+                            <div id="rawChunksContainer" class="flex-1 bg-slate-900 rounded-xl border border-slate-700 overflow-hidden">
+                                <div id="rawChunksList" class="h-full overflow-y-auto p-3 font-mono text-xs space-y-2 flex flex-col-reverse">
+                                    <div class="text-slate-500 text-center py-4">Chunks will appear here...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chunk Detail Modal -->
+                        <div id="chunkDetailModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center" onclick="if(event.target === this) closeChunkModal()">
+                            <div class="bg-slate-800 rounded-xl shadow-2xl w-[800px] max-w-[90vw] max-h-[80vh] flex flex-col">
+                                <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+                                    <h3 class="text-sm font-medium text-slate-200">Chunk Details <span class="text-slate-500">(select text below to copy)</span></h3>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="selectAllChunkDetail()" class="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition-colors">Select All</button>
+                                        <button onclick="closeChunkModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+                                    </div>
+                                </div>
+                                <div class="flex-1 overflow-auto p-4">
+                                    <textarea id="chunkDetailContent" class="w-full h-full min-h-[300px] text-xs text-green-400 bg-slate-900 border border-slate-700 rounded p-3 font-mono resize-none focus:outline-none focus:ring-1 focus:ring-blue-500" readonly></textarea>
+                                </div>
+                                <div class="px-4 py-2 border-t border-slate-700 text-xs text-slate-400" id="chunkDetailMeta"></div>
+                            </div>
+                        </div>
+
+                        <!-- Copy All Modal -->
+                        <div id="copyAllModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center" onclick="if(event.target === this) closeCopyAllModal()">
+                            <div class="bg-slate-800 rounded-xl shadow-2xl w-[900px] max-w-[95vw] max-h-[90vh] flex flex-col">
+                                <div class="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+                                    <h3 class="text-sm font-medium text-slate-200">All Chunks <span class="text-slate-500">(Ctrl+A to select, Ctrl+C to copy)</span></h3>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="selectAllInCopyModal()" class="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition-colors">Select All</button>
+                                        <button onclick="closeCopyAllModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+                                    </div>
+                                </div>
+                                <div class="flex-1 overflow-auto p-4">
+                                    <textarea id="copyAllContent" class="w-full h-full min-h-[500px] text-xs text-green-400 bg-slate-900 border border-slate-700 rounded p-3 font-mono resize-none focus:outline-none focus:ring-1 focus:ring-blue-500" readonly></textarea>
+                                </div>
+                                <div class="px-4 py-2 border-t border-slate-700 text-xs text-slate-400" id="copyAllMeta"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Tab -->
+                <div id="voice" class="tab-pane hidden">
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Status</div>
+                            <div class="text-2xl font-bold" id="voiceStatus">Ready</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Session Duration</div>
+                            <div class="text-2xl font-bold" id="voiceDuration">0:00</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Messages</div>
+                            <div class="text-2xl font-bold" id="voiceMessages">0</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Provider</div>
+                            <div class="text-2xl font-bold" id="voiceProvider">OpenAI</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Voice Controls</h3>
+                            </div>
+                            <div class="p-5 space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Provider</label>
+                                    <select id="voiceProviderSelect" onchange="updateVoiceOptions()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="openai">OpenAI Realtime</option>
+                                        <option value="gemini">Google Gemini</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Voice</label>
+                                    <select id="voiceSelect" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <!-- OpenAI voices (default) -->
+                                        <option value="alloy">Alloy</option>
+                                        <option value="ash">Ash</option>
+                                        <option value="ballad">Ballad</option>
+                                        <option value="cedar">Cedar</option>
+                                        <option value="coral">Coral</option>
+                                        <option value="echo">Echo</option>
+                                        <option value="marin">Marin</option>
+                                        <option value="sage">Sage</option>
+                                        <option value="shimmer">Shimmer</option>
+                                        <option value="verse">Verse</option>
+                                    </select>
+                                </div>
+                                <div class="flex gap-3 pt-2">
+                                    <button onclick="startVoiceSession()" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium">
+                                        🎙️ Start Session
+                                    </button>
+                                    <button onclick="stopVoiceSession()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium">
+                                        ⏹️ Stop
+                                    </button>
+                                </div>
+                                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Text Input (no mic needed)</label>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="voiceTextInput" placeholder="Type a message..." class="flex-1 px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" onkeydown="if(event.key==='Enter')sendVoiceText()">
+                                        <button onclick="sendVoiceText()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm">
+                                            Send
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-1">Send text when microphone is unavailable (requires active session)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Conversation Log</h3>
+                            </div>
+                            <div class="p-5">
+                                <div id="voiceLog" class="h-64 overflow-y-auto bg-slate-50 dark:bg-slate-700 rounded-lg p-3 text-sm font-mono">
+                                    <div class="text-slate-400 text-center py-8">Start a voice session to see the conversation log</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Threads Tab -->
+                <div id="threads" class="tab-pane hidden">
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Threads</div>
+                            <div class="text-2xl font-bold" id="threadsTotal">0</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Active Today</div>
+                            <div class="text-2xl font-bold" id="threadsToday">0</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Messages</div>
+                            <div class="text-2xl font-bold" id="threadsMessages">0</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Avg per Thread</div>
+                            <div class="text-2xl font-bold" id="threadsAvg">0</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4">
+                        <!-- Threads List -->
+                        <div class="col-span-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Threads</h3>
+                                <button onclick="loadThreads()" class="px-2 py-1 text-sm bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg transition-colors">
+                                    🔄
+                                </button>
+                            </div>
+                            <div id="threadsList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[600px] overflow-y-auto">
+                                <div class="text-center py-12 text-slate-400">
+                                    <div class="text-4xl mb-3">🧵</div>
+                                    <p>Loading threads...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Message Viewer -->
+                        <div class="col-span-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100" id="threadViewerTitle">Select a thread</h3>
+                                <div id="threadViewerActions" class="hidden flex gap-2">
+                                    <button onclick="closeThreadViewer()" class="px-2 py-1 text-sm bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg transition-colors">
+                                        ✕ Close
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="threadMessages" class="p-4 max-h-[600px] overflow-y-auto">
+                                <div class="text-center py-12 text-slate-400 dark:text-slate-500">
+                                    <div class="text-4xl mb-3">💬</div>
+                                    <p>Click a thread to view messages</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tasks Tab -->
+                <div id="tasks" class="tab-pane hidden">
+                    <div class="grid grid-cols-5 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Tasks</div>
+                            <div class="text-2xl font-bold" id="tasksTotal">0</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Completed</div>
+                            <div class="text-2xl font-bold" id="tasksCompleted">0</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Pending</div>
+                            <div class="text-2xl font-bold" id="tasksPending">0</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Running</div>
+                            <div class="text-2xl font-bold" id="tasksRunning">0</div>
+                        </div>
+                        <div class="gradient-red rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Failed</div>
+                            <div class="text-2xl font-bold" id="tasksFailed">0</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                        <select id="taskStatusFilter" onchange="loadTasks()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="running">Running</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                        <button onclick="loadTasks()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                            🔄 Refresh
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Task Queue</h3>
+                        </div>
+                        <div id="tasksList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
+                            <div class="text-center py-12 text-slate-400">
+                                <div class="text-4xl mb-3">📋</div>
+                                <p>Loading tasks...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Memories Tab -->
+                <div id="memories" class="tab-pane hidden">
+                    <div class="grid grid-cols-6 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total</div>
+                            <div class="text-2xl font-bold" id="memTotal">0</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Facts</div>
+                            <div class="text-2xl font-bold" id="memFacts">0</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Preferences</div>
+                            <div class="text-2xl font-bold" id="memPrefs">0</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Instructions</div>
+                            <div class="text-2xl font-bold" id="memInstrs">0</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Context</div>
+                            <div class="text-2xl font-bold" id="memContext">0</div>
+                        </div>
+                        <div class="gradient-teal rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Documents</div>
+                            <div class="text-2xl font-bold" id="memDocs">0</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                        <select id="memoryThreadFilter" onchange="loadMemories()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Threads</option>
+                        </select>
+                        <select id="memoryCategoryFilter" onchange="loadMemories()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Categories</option>
+                            <option value="fact">Facts</option>
+                            <option value="preference">Preferences</option>
+                            <option value="instruction">Instructions</option>
+                            <option value="context">Context</option>
+                            <option value="document">Documents</option>
+                        </select>
+                        <select id="memorySourceFilter" onchange="loadMemories()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Sources</option>
+                            <option value="chat">💬 Chat</option>
+                            <option value="file">📄 File</option>
+                            <option value="manual">✏️ Manual</option>
+                        </select>
+                        <button onclick="loadMemories()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                            🔄 Refresh
+                        </button>
+                        <button onclick="clearAllMemories()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors ml-auto">
+                            🗑️ Clear All
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Stored Memories</h3>
+                            <span class="text-sm text-slate-500" id="memoryStatusText"></span>
+                        </div>
+                        <div id="memoriesList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
+                            <div class="text-center py-12 text-slate-400">
+                                <div class="text-4xl mb-3">🧠</div>
+                                <p>Loading memories...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scheduler Tab -->
+                <div id="scheduler" class="tab-pane hidden">
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Status</div>
+                            <div class="text-2xl font-bold" id="schedulerStatus">Stopped</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Scheduled Jobs</div>
+                            <div class="text-2xl font-bold" id="schedulerJobs">0</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Executions Today</div>
+                            <div class="text-2xl font-bold" id="schedulerExecs">0</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Next Run</div>
+                            <div class="text-2xl font-bold" id="schedulerNext">-</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Scheduler Controls</h3>
+                            </div>
+                            <div class="p-5 space-y-4">
+                                <div class="flex gap-3">
+                                    <button onclick="startScheduler()" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium">
+                                        ▶️ Start
+                                    </button>
+                                    <button onclick="stopScheduler()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium">
+                                        ⏹️ Stop
+                                    </button>
+                                </div>
+                                <button onclick="triggerScheduler()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+                                    ⚡ Trigger Now
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Scheduled Jobs</h3>
+                            </div>
+                            <div id="schedulerJobsList" class="p-5 max-h-64 overflow-y-auto">
+                                <div class="text-center py-8 text-slate-400">
+                                    <p>No scheduled jobs</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Files Tab -->
+                <div id="files" class="tab-pane hidden">
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Files</div>
+                            <div class="text-2xl font-bold" id="filesTotal">0</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Size</div>
+                            <div class="text-2xl font-bold" id="filesTotalSize">0 B</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Images</div>
+                            <div class="text-2xl font-bold" id="filesImages">0</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Documents</div>
+                            <div class="text-2xl font-bold" id="filesDocs">0</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                        <select id="fileTypeFilter" onchange="loadFiles()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Types</option>
+                            <option value="image">Images</option>
+                            <option value="document">Documents</option>
+                            <option value="audio">Audio</option>
+                        </select>
+                        <button onclick="loadFiles()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                            🔄 Refresh
+                        </button>
+                        <button onclick="cleanupFiles()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors">
+                            🧹 Cleanup
+                        </button>
+                        <div class="flex-1"></div>
+                        <input type="file" id="fileUploadInput" onchange="uploadFile()" class="hidden" multiple>
+                        <button onclick="document.getElementById('fileUploadInput').click()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors">
+                            📤 Upload File
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Stored Files</h3>
+                        </div>
+                        <div id="filesList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
+                            <div class="text-center py-12 text-slate-400">
+                                <div class="text-4xl mb-3">📁</div>
+                                <p>Loading files...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCP Tab -->
+                <div id="mcp" class="tab-pane hidden">
+                    <!-- MCP Status -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">MCP Status</h3>
+                                <p class="text-sm text-slate-500">Model Context Protocol integration</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span id="mcpStatusBadge" class="px-2 py-1 rounded text-xs bg-slate-100 text-slate-600">Loading...</span>
+                                <button onclick="refreshMCPData()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-5">
+                            <div id="mcpStatusInfo" class="grid grid-cols-4 gap-4 text-sm">
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="mcpServerCount">-</div>
+                                    <div class="text-slate-500">Servers</div>
+                                </div>
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="mcpToolCount">-</div>
+                                    <div class="text-slate-500">Tools</div>
+                                </div>
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="mcpResourceCount">-</div>
+                                    <div class="text-slate-500">Resources</div>
+                                </div>
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="mcpEnabledToolCount">-</div>
+                                    <div class="text-slate-500">Enabled Tools</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MCP Servers -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Available Servers</h3>
+                        </div>
+                        <div class="p-5">
+                            <div id="mcpServersList" class="space-y-2 max-h-[300px] overflow-y-auto">
+                                <span class="text-slate-400">Loading servers...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MCP Tools -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Tools</h3>
+                                <p class="text-sm text-slate-500">Enable specific tools for the agent</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="text" id="mcpToolSearch" placeholder="Search tools..."
+                                    class="px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-700 dark:text-slate-100"
+                                    oninput="filterMCPTools()">
+                            </div>
+                        </div>
+                        <div class="p-5">
+                            <div class="mb-3">
+                                <span class="text-sm text-slate-500">Enabled:</span>
+                                <div id="mcpEnabledToolsList" class="mt-2 flex flex-wrap gap-2">
+                                    <span class="text-slate-400 text-sm">None</span>
+                                </div>
+                            </div>
+                            <div class="border-t border-slate-200 dark:border-slate-600 pt-3">
+                                <span class="text-sm text-slate-500">Available:</span>
+                                <div id="mcpAvailableToolsList" class="mt-2 max-h-[250px] overflow-y-auto space-y-1">
+                                    <span class="text-slate-400 text-sm">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MCP Resources -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Resources</h3>
+                                <p class="text-sm text-slate-500">Select servers to sync resources from for RAG</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <select id="mcpResourceServerSelect" class="px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-700 dark:text-slate-100">
+                                    <option value="">All Servers</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="p-5">
+                            <div class="mb-3">
+                                <span class="text-sm text-slate-500">Enabled Resources: <span id="mcpEnabledResourceCount" class="font-medium">0</span></span>
+                                <div id="mcpEnabledResourcesList" class="mt-2 flex flex-wrap gap-2">
+                                    <span class="text-slate-400 text-sm">None</span>
+                                </div>
+                            </div>
+                            <div class="border-t border-slate-200 dark:border-slate-600 pt-3">
+                                <span class="text-sm text-slate-500">Available Resources by Server:</span>
+                                <div id="mcpAvailableResourcesList" class="mt-2 max-h-[300px] overflow-y-auto space-y-3">
+                                    <span class="text-slate-400 text-sm">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subscriptions Tab -->
+                <div id="subscriptions" class="tab-pane hidden">
+                    <!-- Subscriptions Status -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Webhook Subscriptions</h3>
+                                <p class="text-sm text-slate-500">Subscribe to events from MCP servers</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span id="subscriptionsStatusBadge" class="px-2 py-1 rounded text-xs bg-slate-100 text-slate-600">Loading...</span>
+                                <button onclick="refreshSubscriptions()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-5">
+                            <div id="subscriptionsStatusInfo" class="grid grid-cols-3 gap-4 text-sm">
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="subscriptionsActiveCount">-</div>
+                                    <div class="text-slate-500">Active</div>
+                                </div>
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="subscriptionsThreadCount">-</div>
+                                    <div class="text-slate-500">Threads Created</div>
+                                </div>
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="subscriptionsAvailableCount">-</div>
+                                    <div class="text-slate-500">Available Webhooks</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Subscriptions -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Active Subscriptions</h3>
+                        </div>
+                        <div class="p-5">
+                            <div id="subscriptionsList" class="space-y-2">
+                                <span class="text-slate-400 text-sm">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Available Webhooks -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Available Webhooks</h3>
+                            <p class="text-sm text-slate-500">Webhook events declared by MCP servers</p>
+                        </div>
+                        <div class="p-5">
+                            <div id="availableWebhooksList" class="space-y-3 max-h-[300px] overflow-y-auto">
+                                <span class="text-slate-400 text-sm">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Test Webhook -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">🧪 Test Webhook Event</h3>
+                            <p class="text-sm text-slate-500">Send a simulated webhook event to test subscriptions</p>
+                        </div>
+                        <div class="p-5">
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Server</label>
+                                    <select id="webhookTestServer" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-700 dark:text-slate-100" onchange="updateWebhookTestEvents()">
+                                        <option value="">Select server...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Event</label>
+                                    <select id="webhookTestEvent" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:bg-slate-700 dark:text-slate-100">
+                                        <option value="">Select event...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Event Data (JSON)</label>
+                                <textarea id="webhookTestData" rows="5" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-mono dark:bg-slate-700 dark:text-slate-100">{
+  "id": "test_123",
+  "amount": 2000,
+  "currency": "usd"
+}</textarea>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <button onclick="sendTestWebhook()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium">
+                                    📤 Send Test Webhook
+                                </button>
+                                <div id="webhookTestResult" class="text-sm"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Config Tab -->
+                <div id="config" class="tab-pane hidden">
+                    <!-- Agent Basic Config -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Agent Configuration</h3>
+                        </div>
+                        <div class="p-5">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Agent ID</label>
+                                    <input type="text" id="configAgentId" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Agent Name</label>
+                                    <input type="text" id="configAgentName" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">LLM Provider</label>
+                                    <select id="configProvider" onchange="updateModelOptions()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                        <option value="">Loading...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Model</label>
+                                    <select id="configModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                        <option value="">Select provider first</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Description</label>
+                                    <input type="text" id="configAgentDesc" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                </div>
+                                <div class="col-span-2">
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Public URL <span class="text-slate-400 font-normal">(for webhooks callback)</span></label>
+                                    <input type="text" id="configPublicUrl" placeholder="e.g., http://91.99.200.48:4015" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                </div>
+                            </div>
+                            <!-- System Prompt -->
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">System Prompt</label>
+                                <textarea id="configSystemPrompt" rows="6" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 font-mono text-sm" placeholder="Enter the system prompt for this agent..."></textarea>
+                                <p class="text-xs text-slate-500 mt-1">The core instructions that define the agent's behavior and personality.</p>
+                            </div>
+                            <button onclick="saveConfig()" class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+                                💾 Save Basic Config
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tools Configuration -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('tools')">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl">🔧</span>
+                                <div>
+                                    <h3 class="font-semibold text-slate-800 dark:text-slate-100">Tools Configuration</h3>
+                                    <p class="text-sm text-slate-500">Enable/disable agent tools</p>
+                                </div>
+                            </div>
+                            <span class="text-slate-400 transition-transform" id="toolsChevron">▼</span>
+                        </div>
+                        <div class="p-5 hidden" id="toolsSettings">
+                            <!-- Built-in Tools (Anthropic) -->
+                            <div class="mb-6">
+                                <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Built-in Tools (Anthropic)</h4>
+                                <div class="grid grid-cols-3 gap-3">
+                                    <label class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolWebSearch" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <div>
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">🔍 Web Search</span>
+                                            <p class="text-xs text-slate-500">Search the web</p>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolWebFetch" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <div>
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">🌐 Web Fetch</span>
+                                            <p class="text-xs text-slate-500">Fetch web pages</p>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolComputer" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <div>
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">🖥️ Computer Use</span>
+                                            <p class="text-xs text-slate-500">Browser automation</p>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Agent Tools -->
+                            <div class="mb-6">
+                                <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Agent Tools</h4>
+                                <div class="grid grid-cols-4 gap-3">
+                                    <label class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolSendNotification" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <span class="text-sm text-slate-700 dark:text-slate-200">send_notification</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolGetTime" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <span class="text-sm text-slate-700 dark:text-slate-200">get_time</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolWait" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <span class="text-sm text-slate-700 dark:text-slate-200">wait</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolGenerateTestImage" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <span class="text-sm text-slate-700 dark:text-slate-200">generate_test_image</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolAnalyzeImageUrl" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <span class="text-sm text-slate-700 dark:text-slate-200">analyze_image_url</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
+                                        <input type="checkbox" id="toolDocumentSearch" class="rounded border-slate-300" onchange="updateToolsConfig()">
+                                        <span class="text-sm text-slate-700 dark:text-slate-200">document_search</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- MCP Tools Info -->
+                            <div class="mb-4">
+                                <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">MCP Tools</h4>
+                                <div id="mcpToolsList" class="text-sm text-slate-500 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                                    <span class="text-slate-400">Configure MCP tools in the MCP section below</span>
+                                </div>
+                            </div>
+
+                            <button onclick="saveToolsConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+                                💾 Save Tools Configuration
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tool Loading Configuration -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('toolLoading')">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl">⚡</span>
+                                <div>
+                                    <h3 class="font-semibold text-slate-800 dark:text-slate-100">Tool Loading</h3>
+                                    <p class="text-sm text-slate-500">On-demand tool loading to reduce token usage</p>
+                                </div>
+                            </div>
+                            <span class="text-slate-400 transition-transform" id="toolLoadingChevron">▼</span>
+                        </div>
+                        <div class="p-5 hidden" id="toolLoadingSettings">
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Mode</label>
+                                    <select id="toolLoadingMode" onchange="updateToolLoadingUI()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                        <option value="full">Full (load all tools)</option>
+                                        <option value="on_demand">On-Demand (load based on message)</option>
+                                    </select>
+                                    <p class="text-xs text-slate-500 mt-1">Full mode loads all tools. On-demand filters based on user message.</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Strategy</label>
+                                    <select id="toolLoadingStrategy" onchange="updateToolLoadingUI()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100">
+                                        <option value="bm25">BM25 (semantic relevance)</option>
+                                        <option value="keyword">Keyword (simple matching)</option>
+                                        <option value="regex">Regex (pattern matching)</option>
+                                    </select>
+                                    <p class="text-xs text-slate-500 mt-1">Strategy used when mode is on-demand.</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Max Tools</label>
+                                    <input type="number" id="toolLoadingMaxTools" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100" placeholder="15">
+                                    <p class="text-xs text-slate-500 mt-1">Maximum number of tools to load per request.</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Always Load (comma-separated)</label>
+                                    <input type="text" id="toolLoadingAlwaysLoad" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100" placeholder="get_time, send_notification">
+                                    <p class="text-xs text-slate-500 mt-1">Tools always included regardless of strategy.</p>
+                                </div>
+                            </div>
+
+                            <!-- BM25 Settings -->
+                            <div id="toolLoadingBM25Settings" class="border-t border-slate-200 dark:border-slate-600 pt-4 mt-4">
+                                <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">BM25 Settings</h4>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Top K</label>
+                                        <input type="number" id="toolLoadingBM25TopK" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100" placeholder="10">
+                                        <p class="text-xs text-slate-500 mt-1">Number of top-scoring tools to return.</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Threshold</label>
+                                        <input type="number" step="0.1" id="toolLoadingBM25Threshold" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100" placeholder="0.2">
+                                        <p class="text-xs text-slate-500 mt-1">Minimum score to include a tool.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Keyword Settings -->
+                            <div id="toolLoadingKeywordSettings" class="border-t border-slate-200 dark:border-slate-600 pt-4 mt-4 hidden">
+                                <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Keyword Rules</h4>
+                                <div id="keywordRulesList" class="space-y-2 mb-3"></div>
+                                <button onclick="addKeywordRule()" class="px-3 py-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded text-sm">
+                                    + Add Rule
+                                </button>
+                            </div>
+
+                            <!-- Regex Settings -->
+                            <div id="toolLoadingRegexSettings" class="border-t border-slate-200 dark:border-slate-600 pt-4 mt-4 hidden">
+                                <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">Regex Rules</h4>
+                                <div id="regexRulesList" class="space-y-2 mb-3"></div>
+                                <button onclick="addRegexRule()" class="px-3 py-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded text-sm">
+                                    + Add Rule
+                                </button>
+                            </div>
+
+                            <button onclick="saveToolLoadingConfig()" class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+                                💾 Save Tool Loading Config
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Feature Sections -->
+                    <div class="space-y-4" id="featureSections">
+                        <!-- Memory Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('memory')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">🧠</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Memory System</h3>
+                                        <p class="text-sm text-slate-500">Long-term memory and RAG</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleMemory" onchange="toggleFeature('memory')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="memoryChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="memorySettings">
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Embedding Model</label>
+                                        <input type="text" id="memoryEmbeddingModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="text-embedding-3-small">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Decision Model</label>
+                                        <input type="text" id="memoryDecisionModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="gpt-4o-mini">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Embedding Provider</label>
+                                        <select id="memoryEmbeddingProvider" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="">OpenAI (default)</option>
+                                            <option value="ollama">Ollama</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Max Memories/Query</label>
+                                        <input type="number" id="memoryMaxPerQuery" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="5">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Min Importance</label>
+                                        <input type="number" step="0.1" id="memoryMinImportance" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="0.3">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Min Similarity</label>
+                                        <input type="number" step="0.1" id="memoryMinSimilarity" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="0.3" title="Minimum cosine similarity for RAG retrieval">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Max Memories</label>
+                                        <input type="number" id="memoryMaxMemories" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="10000">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Chunk Size</label>
+                                        <input type="number" id="memoryChunkSize" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="1000">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Chunk Overlap</label>
+                                        <input type="number" id="memoryChunkOverlap" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="200">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Document Importance</label>
+                                        <input type="number" step="0.1" id="memoryDocImportance" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="0.5">
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex flex-wrap gap-4">
+                                    <label class="flex items-center gap-2 text-sm">
+                                        <input type="checkbox" id="memoryAutoPrune" class="rounded border-slate-300">
+                                        <span>Auto Prune</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm">
+                                        <input type="checkbox" id="memoryAutoIngest" class="rounded border-slate-300">
+                                        <span>Auto Ingest Files</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm" title="Extract memories from conversation messages">
+                                        <input type="checkbox" id="memoryAutoExtract" class="rounded border-slate-300">
+                                        <span>Auto Extract Memories</span>
+                                    </label>
+                                </div>
+                                <div class="mt-3 grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Ollama URL (if using Ollama)</label>
+                                        <input type="text" id="memoryOllamaUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="http://localhost:11434">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Ingest File Types</label>
+                                        <input type="text" id="memoryIngestTypes" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder=".txt, .md, .pdf" title="Comma-separated file extensions to ingest">
+                                    </div>
+                                </div>
+                                <button onclick="saveFeatureConfig('memory')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Memory Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filesystem Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('filesystem')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">📁</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">File System</h3>
+                                        <p class="text-sm text-slate-500">File storage and management</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleFiles" onchange="toggleFeature('filesystem')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="filesystemChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="filesystemSettings">
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Storage Path</label>
+                                        <input type="text" id="fsStoragePath" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="./data/files">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Max File Size (MB)</label>
+                                        <input type="number" id="fsMaxFileSize" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="50">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Retention Days</label>
+                                        <input type="number" id="fsRetentionDays" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="30">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Max Storage (MB)</label>
+                                        <input type="number" id="fsMaxStorage" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="1000">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Public URL Prefix</label>
+                                        <input type="text" id="fsPublicUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="/files">
+                                    </div>
+                                    <div class="flex items-end">
+                                        <label class="flex items-center gap-2 text-sm pb-2">
+                                            <input type="checkbox" id="fsCleanupOrphans" class="rounded border-slate-300">
+                                            <span>Cleanup Orphans</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <label class="block text-sm font-medium text-slate-700 mb-1">Allowed Types (comma-separated)</label>
+                                    <input type="text" id="fsAllowedTypes" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="image/*,application/pdf,text/*">
+                                </div>
+                                <button onclick="saveFeatureConfig('filesystem')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Filesystem Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Tasks Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('tasks')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">📋</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Task System</h3>
+                                        <p class="text-sm text-slate-500">Background tasks and queue</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleTasks" onchange="toggleFeature('tasks')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="tasksChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="tasksSettings">
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Max Concurrent</label>
+                                        <input type="number" id="tasksMaxConcurrent" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="5">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Default Timeout (sec)</label>
+                                        <input type="number" id="tasksTimeout" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="300">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Max Retries</label>
+                                        <input type="number" id="tasksMaxRetries" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="3">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Retry Delay (sec)</label>
+                                        <input type="number" id="tasksRetryDelay" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="60">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Cleanup Age (hours)</label>
+                                        <input type="number" id="tasksCleanupAge" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="24">
+                                    </div>
+                                    <div class="flex items-end">
+                                        <label class="flex items-center gap-2 text-sm pb-2">
+                                            <input type="checkbox" id="tasksPersist" class="rounded border-slate-300">
+                                            <span>Persist Tasks</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <button onclick="saveFeatureConfig('tasks')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Tasks Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Scheduler Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('scheduler')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">⏰</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Scheduler</h3>
+                                        <p class="text-sm text-slate-500">Cron jobs and scheduled tasks</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleScheduler" onchange="toggleFeature('scheduler')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="schedulerChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="schedulerSettings">
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Timezone</label>
+                                        <input type="text" id="schedulerTimezone" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="UTC">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Max Concurrent Jobs</label>
+                                        <input type="number" id="schedulerMaxConcurrent" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="3">
+                                    </div>
+                                    <div class="flex items-end">
+                                        <label class="flex items-center gap-2 text-sm pb-2">
+                                            <input type="checkbox" id="schedulerCatchUp" class="rounded border-slate-300">
+                                            <span>Catch Up Missed</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <button onclick="saveFeatureConfig('scheduler')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Scheduler Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- MCP Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('mcp')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">🔌</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">MCP Integration</h3>
+                                        <p class="text-sm text-slate-500">Model Context Protocol servers</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleMcp" onchange="toggleFeature('mcp')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="mcpChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="mcpSettings">
+                                <div class="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 mb-1">Server Timeout (sec)</label>
+                                        <input type="number" id="mcpTimeout" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="30">
+                                    </div>
+                                    <div class="flex items-end">
+                                        <label class="flex items-center gap-2 text-sm pb-2">
+                                            <input type="checkbox" id="mcpAutoReconnect" class="rounded border-slate-300">
+                                            <span>Auto Reconnect</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <!-- External MCP Servers Section -->
+                                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <div>
+                                            <h4 class="font-medium text-slate-700 dark:text-slate-300">🔌 External MCP Servers</h4>
+                                            <p class="text-xs text-slate-500">Connect to remote MCP servers (Composio, Smithery, custom)</p>
+                                        </div>
+                                        <button onclick="toggleAddExternalServer()" id="btnAddExternalServer" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-1">
+                                            <span>+</span> Add Server
+                                        </button>
+                                    </div>
+
+                                    <!-- Add/Edit Server Form (hidden by default) -->
+                                    <div id="externalServerForm" class="hidden mb-4 p-4 bg-blue-50 dark:bg-slate-700 border border-blue-200 dark:border-slate-600 rounded-lg">
+                                        <div class="flex items-center justify-between mb-3">
+                                            <span id="externalServerFormTitle" class="text-sm font-medium text-slate-700 dark:text-slate-300">Add External MCP Server</span>
+                                            <button onclick="toggleAddExternalServer()" class="text-slate-400 hover:text-slate-600">✕</button>
+                                        </div>
+                                        <input type="hidden" id="externalServerEditIndex" value="-1">
+
+                                        <div class="grid grid-cols-2 gap-3 mb-3">
+                                            <div>
+                                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Server Name *</label>
+                                                <input type="text" id="externalServerName" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-100 text-sm" placeholder="e.g., composio, smithery">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Provider</label>
+                                                <select id="externalServerProvider" onchange="onExternalServerProviderChange()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-100 text-sm">
+                                                    <option value="custom">Custom</option>
+                                                    <option value="composio">Composio</option>
+                                                    <option value="smithery">Smithery</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Server URL *</label>
+                                            <input type="url" id="externalServerUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-100 text-sm font-mono" placeholder="https://backend.composio.dev/v3/mcp/...">
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">API Key</label>
+                                            <input type="password" id="externalServerApiKey" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-100 text-sm font-mono" placeholder="Your API key (stored securely)">
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Custom Headers (optional)</label>
+                                            <input type="text" id="externalServerHeaders" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-800 dark:text-slate-100 text-sm font-mono" placeholder='{"Authorization": "Bearer xxx"}'>
+                                            <p class="text-xs text-slate-400 mt-1">JSON format. API key header is added automatically.</p>
+                                        </div>
+
+                                        <div class="flex items-center justify-between">
+                                            <label class="flex items-center gap-2 text-sm">
+                                                <input type="checkbox" id="externalServerEnabled" checked class="rounded border-slate-300">
+                                                <span class="text-slate-600 dark:text-slate-400">Enabled</span>
+                                            </label>
+                                            <div class="flex gap-2">
+                                                <button onclick="toggleAddExternalServer()" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-600 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 rounded-lg text-sm">Cancel</button>
+                                                <button onclick="saveExternalServer()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">Save Server</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Configured Servers List -->
+                                    <div id="externalServersList" class="space-y-2">
+                                        <div class="text-sm text-slate-400 italic p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">No external MCP servers configured</div>
+                                    </div>
+
+                                    <!-- Hidden field to store servers JSON for form submission -->
+                                    <input type="hidden" id="mcpServers" value="[]">
+                                </div>
+
+                                <!-- MCP Resources Section -->
+                                <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
+                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">📚 MCP Resources</h4>
+                                    <p class="text-xs text-slate-500 mb-3">Sync resources from MCP servers into memory for semantic retrieval (RAG)</p>
+
+                                    <!-- Enabled Resources (servers to sync from) -->
+                                    <div class="mb-4">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Enabled Resource Servers</label>
+                                            <button onclick="showAvailableResources()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-600 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 rounded text-xs">
+                                                Browse Available
+                                            </button>
+                                        </div>
+                                        <div id="mcpEnabledResources" class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg min-h-[60px]">
+                                            <span class="text-slate-400 text-sm">No resource servers enabled</span>
+                                        </div>
+                                        <div class="mt-2 flex gap-2">
+                                            <input type="text" id="mcpAddResourceServer" class="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="Server name (e.g., notion, github)">
+                                            <button onclick="addResourceServer()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">Add</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Available Resources Browser (modal-like) -->
+                                    <div id="mcpAvailableResourcesPanel" class="hidden mb-4 p-3 bg-blue-50 dark:bg-slate-700 border border-blue-200 dark:border-slate-600 rounded-lg">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Available Resources</span>
+                                            <div class="flex gap-2">
+                                                <select id="mcpResourceServerFilter" onchange="filterAvailableResources()" class="px-2 py-1 border border-slate-200 dark:border-slate-600 rounded text-xs dark:bg-slate-600 dark:text-slate-100">
+                                                    <option value="">All Servers</option>
+                                                </select>
+                                                <button onclick="hideAvailableResources()" class="px-2 py-1 text-slate-500 hover:text-slate-700 text-xs">✕ Close</button>
+                                            </div>
+                                        </div>
+                                        <div id="mcpAvailableResourcesList" class="max-h-[200px] overflow-y-auto text-xs">
+                                            <span class="text-slate-400">Loading...</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Resource Sync Settings -->
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="flex items-center">
+                                            <label class="flex items-center gap-2 text-sm">
+                                                <input type="checkbox" id="mcpResourcesEnabled" class="rounded border-slate-300">
+                                                <span>Enable Resource Sync</span>
+                                            </label>
+                                        </div>
+                                        <div class="flex items-center">
+                                            <label class="flex items-center gap-2 text-sm">
+                                                <input type="checkbox" id="mcpResourcesAutoSync" class="rounded border-slate-300">
+                                                <span>Auto Sync on Startup</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-3 gap-4 mt-3">
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Sync Interval</label>
+                                            <select id="mcpResourcesSyncInterval" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="">Manual only</option>
+                                                <option value="5m">Every 5 minutes</option>
+                                                <option value="15m">Every 15 minutes</option>
+                                                <option value="1h">Every hour</option>
+                                                <option value="6h">Every 6 hours</option>
+                                                <option value="24h">Daily</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Max Resource Size (KB)</label>
+                                            <input type="number" id="mcpResourcesMaxSize" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="1024">
+                                        </div>
+                                        <div class="flex items-end">
+                                            <label class="flex items-center gap-2 text-sm pb-2">
+                                                <input type="checkbox" id="mcpResourcesSubscribe" class="rounded border-slate-300">
+                                                <span>Subscribe to Changes</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-3">
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">URI Filters (one per line, supports wildcards)</label>
+                                        <textarea id="mcpResourcesFilters" rows="2" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm font-mono" placeholder="file://docs/*&#10;notion://*/notes/*"></textarea>
+                                    </div>
+
+                                    <!-- Sync Status -->
+                                    <div class="mt-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Sync Status</span>
+                                            <button onclick="syncMCPResources()" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs">
+                                                Sync Now
+                                            </button>
+                                        </div>
+                                        <div id="mcpResourcesStatus" class="text-xs text-slate-500">
+                                            <span>Loading status...</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- MCP Webhooks Section -->
+                                <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
+                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">📨 MCP Webhooks</h4>
+                                    <p class="text-xs text-slate-500 mb-3">Enable webhook events from MCP servers. The agent can subscribe to specific events in the Subscriptions tab.</p>
+
+                                    <!-- Enabled Webhook Servers -->
+                                    <div class="mb-4">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Enabled Webhook Servers</label>
+                                            <button onclick="refreshAvailableWebhookServers()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-600 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 rounded text-xs">
+                                                🔄 Refresh
+                                            </button>
+                                        </div>
+                                        <div id="mcpEnabledWebhooks" class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg min-h-[60px]">
+                                            <span class="text-slate-400 text-sm">No webhook servers enabled</span>
+                                        </div>
+                                        <div class="mt-2 flex gap-2">
+                                            <select id="mcpAddWebhookServer" class="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="">Select a server...</option>
+                                            </select>
+                                            <button onclick="addWebhookServer()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">Add</button>
+                                        </div>
+                                        <p class="text-xs text-slate-400 mt-1">Add servers that can send webhook events to this agent</p>
+                                    </div>
+                                </div>
+
+                                <!-- MCP Credentials Section -->
+                                <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
+                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">🔑 MCP Credentials</h4>
+                                    <p class="text-xs text-slate-500 mb-3">Credentials for authenticating with MCP servers (e.g., Stripe, GitHub). Loaded from backend.</p>
+
+                                    <!-- Credentials List -->
+                                    <div class="mb-4">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Available Credentials</label>
+                                            <button onclick="refreshCredentials()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-600 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 rounded text-xs">
+                                                🔄 Refresh
+                                            </button>
+                                        </div>
+                                        <div id="mcpCredentialsList" class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg min-h-[60px] max-h-[200px] overflow-y-auto">
+                                            <span class="text-slate-400 text-sm">Loading credentials...</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Selected Credentials for Agent -->
+                                    <div class="mb-4">
+                                        <label class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 block">Agent Credentials (used for subscriptions)</label>
+                                        <div id="mcpSelectedCredentials" class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg min-h-[40px]">
+                                            <span class="text-slate-400 text-sm">No credentials selected</span>
+                                        </div>
+                                        <div class="mt-2 flex gap-2">
+                                            <select id="mcpAddCredential" class="flex-1 px-3 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="">Select a credential...</option>
+                                            </select>
+                                            <button onclick="addAgentCredential()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">Add</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button onclick="saveFeatureConfig('mcp')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    Save MCP Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Operator Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('operator')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">🖥️</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Operator Mode</h3>
+                                        <p class="text-sm text-slate-500">Computer use and browser automation</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleOperator" onchange="toggleFeature('operator')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="operatorChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="operatorSettings">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Virtual Browser URL</label>
+                                        <input type="text" id="operatorBrowserUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="http://localhost:8098">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Max Actions/Turn</label>
+                                        <input type="number" id="operatorMaxActions" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="5">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Display Width</label>
+                                        <input type="number" id="operatorDisplayWidth" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="1024">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Display Height</label>
+                                        <input type="number" id="operatorDisplayHeight" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="768">
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Allowed Domains (comma-separated)</label>
+                                    <input type="text" id="operatorAllowedDomains" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="example.com, app.example.com">
+                                </div>
+                                <div class="mt-4">
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Blocked Domains (comma-separated)</label>
+                                    <input type="text" id="operatorBlockedDomains" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="malware.com, phishing.com">
+                                </div>
+                                <button onclick="saveFeatureConfig('operator')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Operator Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Agents Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('agents')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">🤝</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Multi-Agent Communication</h3>
+                                        <p class="text-sm text-slate-500">Agent discovery and coordination</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleAgents" onchange="toggleFeature('agents')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="agentsChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="agentsSettings">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mode</label>
+                                        <select id="agentsMode" onchange="updateAgentsModeStatus(this.value)" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="coordinator">Coordinator (can call agents)</option>
+                                            <option value="worker">Worker (receive-only)</option>
+                                        </select>
+                                        <p class="text-xs text-slate-500 mt-1">Coordinator: discovers & calls other agents. Worker: only receives calls.</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Discovery Group</label>
+                                        <input type="text" id="agentsGroup" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="production">
+                                        <p class="text-xs text-slate-500 mt-1">Agents in the same group can discover each other via mDNS.</p>
+                                    </div>
+                                </div>
+                                <div class="mt-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                                    <div class="flex items-center gap-2 text-sm">
+                                        <span id="agentsModeIcon">🎯</span>
+                                        <span id="agentsModeStatus" class="text-slate-600 dark:text-slate-300">Mode: Coordinator</span>
+                                    </div>
+                                </div>
+                                <button onclick="saveFeatureConfig('agents')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Agent Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Telemetry Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('telemetry')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">📡</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Telemetry</h3>
+                                        <p class="text-sm text-slate-500">Usage tracking and analytics</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleTelemetry" onchange="toggleFeature('telemetry')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="telemetryChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="telemetrySettings">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Endpoint URL</label>
+                                        <input type="text" id="telemetryEndpoint" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="https://api.example.com/telemetry">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">API Key (optional)</label>
+                                        <input type="password" id="telemetryApiKey" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="Optional auth key">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Batch Size</label>
+                                        <input type="number" id="telemetryBatchSize" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="10" value="10">
+                                        <p class="text-xs text-slate-500 mt-1">Events per batch (default: 10)</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Flush Interval (sec)</label>
+                                        <input type="number" id="telemetryFlushInterval" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="30" value="30">
+                                        <p class="text-xs text-slate-500 mt-1">Seconds between flushes (default: 30)</p>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Categories (comma-separated, empty = all)</label>
+                                    <input type="text" id="telemetryCategories" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="LLM, TOOL, CHAT">
+                                    <p class="text-xs text-slate-500 mt-1">Filter events by category: SYSTEM, CHAT, TOOL, DATABASE, MCP, SCHEDULER, LLM, TASK, MEMORY, AGENT, ERROR</p>
+                                </div>
+                                <button onclick="saveFeatureConfig('telemetry')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Telemetry Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Realtime Voice Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('realtime')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">🎙️</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Realtime Voice</h3>
+                                        <p class="text-sm text-slate-500">WebSocket voice endpoint (/voice)</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleRealtime" onchange="toggleFeature('realtime')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="realtimeChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="realtimeSettings">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Provider</label>
+                                        <select id="realtimeProvider" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="openai">OpenAI Realtime</option>
+                                            <option value="gemini">Google Gemini Live</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">VAD Type</label>
+                                        <select id="realtimeVadType" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="semantic_vad">Semantic VAD (recommended)</option>
+                                            <option value="server_vad">Server VAD</option>
+                                        </select>
+                                        <p class="text-xs text-slate-500 mt-1">Voice activity detection mode</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">OpenAI Model</label>
+                                        <select id="realtimeModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="gpt-realtime">gpt-realtime (GA, recommended)</option>
+                                            <option value="gpt-realtime-mini">gpt-realtime-mini (faster)</option>
+                                            <option value="gpt-4o-realtime-preview-2025-06-03">gpt-4o-realtime-preview-2025-06-03</option>
+                                            <option value="gpt-4o-realtime-preview-2024-12-17">gpt-4o-realtime-preview-2024-12-17</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gemini Model</label>
+                                        <select id="realtimeGeminiModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="gemini-2.5-flash-native-audio-preview-12-2025">gemini-2.5-flash (Dec 2025)</option>
+                                            <option value="gemini-2.5-flash-native-audio-preview-09-2025">gemini-2.5-flash (Sep 2025)</option>
+                                            <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">OpenAI Voice</label>
+                                        <select id="realtimeVoice" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="alloy">Alloy</option>
+                                            <option value="ash">Ash</option>
+                                            <option value="ballad">Ballad</option>
+                                            <option value="cedar">Cedar</option>
+                                            <option value="coral">Coral</option>
+                                            <option value="echo">Echo</option>
+                                            <option value="marin">Marin</option>
+                                            <option value="sage">Sage</option>
+                                            <option value="shimmer">Shimmer</option>
+                                            <option value="verse">Verse</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gemini Voice</label>
+                                        <select id="realtimeGeminiVoice" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="Aoede">Aoede</option>
+                                            <option value="Charon">Charon</option>
+                                            <option value="Fenrir">Fenrir</option>
+                                            <option value="Kore">Kore</option>
+                                            <option value="Puck">Puck</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="flex items-center gap-2">
+                                        <input type="checkbox" id="realtimeGoogleSearch" class="w-4 h-4 rounded border-slate-300">
+                                        <span class="text-sm text-slate-700 dark:text-slate-300">Enable Google Search (Gemini only)</span>
+                                    </label>
+                                    <p class="text-xs text-slate-500 mt-1">Allow Gemini to use Google Search for grounding responses</p>
+                                </div>
+                                <div class="mt-4 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                                    <p class="text-sm text-slate-600 dark:text-slate-400">
+                                        <strong>Endpoints:</strong><br>
+                                        • <code class="bg-slate-200 dark:bg-slate-700 px-1 rounded">/voice</code> - WebSocket for browser/app (JSON) or telephony (binary PCM)<br>
+                                        • <code class="bg-slate-200 dark:bg-slate-700 px-1 rounded">/realtime/sessions</code> - List active voice sessions
+                                    </p>
+                                </div>
+                                <button onclick="saveFeatureConfig('realtime')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                    💾 Save Realtime Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Raw Config -->
+                    <div class="mt-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center cursor-pointer" onclick="toggleConfigSection('raw')">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Raw Configuration (JSON)</h3>
+                            <div class="flex items-center gap-3">
+                                <button onclick="event.stopPropagation(); loadConfig()" class="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg">
+                                    🔄 Reload
+                                </button>
+                                <span class="text-slate-400 transition-transform" id="rawChevron">▼</span>
+                            </div>
+                        </div>
+                        <div class="p-5 hidden" id="rawSettings">
+                            <pre id="configRaw" class="code-block max-h-96 overflow-auto text-sm"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Tab -->
+                <div id="system" class="tab-pane hidden">
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Status</div>
+                            <div class="text-2xl font-bold" id="systemStatus">Healthy</div>
+                        </div>
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Uptime</div>
+                            <div class="text-2xl font-bold" id="systemUptime">-</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Memory</div>
+                            <div class="text-2xl font-bold" id="systemMemory">-</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Version</div>
+                            <div class="text-2xl font-bold" id="systemVersion">-</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Health Checks</h3>
+                            </div>
+                            <div id="healthChecks" class="p-5 space-y-3">
+                                <div class="text-center py-8 text-slate-400">Loading...</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">System Actions</h3>
+                            </div>
+                            <div class="p-5 space-y-3">
+                                <button onclick="resetDatabase()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium">
+                                    🗑️ Reset Database
+                                </button>
+                                <button onclick="clearEvents()" class="w-full px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium">
+                                    🧹 Clear Events
+                                </button>
+                                <button onclick="exportData()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+                                    📤 Export Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Events Tab -->
+                <div id="events" class="tab-pane hidden">
+                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                        <select id="eventCategoryFilter" onchange="filterEvents()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Categories</option>
+                            <option value="SYSTEM">System</option>
+                            <option value="CHAT">Chat</option>
+                            <option value="TOOL">Tool</option>
+                            <option value="LLM">LLM</option>
+                            <option value="TASK">Task</option>
+                            <option value="FILE">File</option>
+                            <option value="MEMORY">Memory</option>
+                            <option value="MCP">MCP</option>
+                            <option value="ERROR">Error</option>
+                        </select>
+                        <select id="eventLevelFilter" onchange="filterEvents()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Levels</option>
+                            <option value="debug">Debug</option>
+                            <option value="info">Info</option>
+                            <option value="warn">Warning</option>
+                            <option value="error">Error</option>
+                        </select>
+                        <div class="flex items-center gap-2">
+                            <label class="toggle">
+                                <input type="checkbox" id="eventAutoScroll" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="text-sm text-slate-600">Auto-scroll</span>
+                        </div>
+                        <button onclick="clearEventLog()" class="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors ml-auto">
+                            🧹 Clear
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">
+                                <span class="status-dot online animate-pulse-slow mr-2"></span>
+                                Live Event Stream
+                            </h3>
+                            <span class="text-sm text-slate-500" id="eventCount">0 events</span>
+                        </div>
+                        <div id="eventsList" class="max-h-[600px] overflow-y-auto font-mono text-sm">
+                            <div class="text-center py-12 text-slate-400">
+                                <div class="text-4xl mb-3">📡</div>
+                                <p>Waiting for events...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tracing Tab -->
+                <div id="tracing" class="tab-pane hidden">
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Traces</div>
+                            <div class="text-2xl font-bold" id="tracesTotal">0</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Avg Duration</div>
+                            <div class="text-2xl font-bold" id="tracesAvgDuration">-</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Spans</div>
+                            <div class="text-2xl font-bold" id="tracesSpans">0</div>
+                        </div>
+                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Errors</div>
+                            <div class="text-2xl font-bold" id="tracesErrors">0</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                        <input type="text" id="traceSearch" placeholder="Search traces..." class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 w-64">
+
+                        <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                            <input type="checkbox" id="traceTopLevel" class="rounded border-slate-300 dark:border-slate-600" checked>
+                            Top Level Only
+                        </label>
+
+                        <select id="traceSource" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Sources</option>
+                            <option value="chat">Chat</option>
+                            <option value="webhook">Webhook</option>
+                            <option value="task">Task</option>
+                            <option value="subtask">Subtask</option>
+                            <option value="agent_call">Agent Call</option>
+                        </select>
+
+                        <select id="traceStatus" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">All Statuses</option>
+                            <option value="running">Running</option>
+                            <option value="completed">Completed</option>
+                            <option value="error">Error</option>
+                        </select>
+
+                        <button onclick="loadTraces()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                            🔄 Refresh
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Request Traces</h3>
+                        </div>
+                        <div id="tracesList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
+                            <div class="text-center py-12 text-slate-400">
+                                <div class="text-4xl mb-3">🔍</div>
+                                <p>Loading traces...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Usage Tab -->
+                <div id="usage" class="tab-pane hidden">
+                    <div class="grid grid-cols-4 gap-4 mb-6">
+                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Total Tokens</div>
+                            <div class="text-2xl font-bold" id="usageTotalTokens">0</div>
+                        </div>
+                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Input Tokens</div>
+                            <div class="text-2xl font-bold" id="usageInputTokens">0</div>
+                        </div>
+                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">Output Tokens</div>
+                            <div class="text-2xl font-bold" id="usageOutputTokens">0</div>
+                        </div>
+                        <div class="gradient-red rounded-xl p-5 text-white shadow-lg">
+                            <div class="text-sm opacity-90 mb-1">LLM Calls</div>
+                            <div class="text-2xl font-bold" id="usageCallCount">0</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <label class="text-sm text-slate-600">From:</label>
+                            <input type="date" id="usageStartDate" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-sm text-slate-600">To:</label>
+                            <input type="date" id="usageEndDate" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                        </div>
+                        <select id="usageGroupBy" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
+                            <option value="">Summary Only</option>
+                            <option value="day">By Day</option>
+                            <option value="thread">By Thread</option>
+                        </select>
+                        <button onclick="loadUsage()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                            📊 Load Usage
+                        </button>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Usage Details</h3>
+                        </div>
+                        <div id="usageDetails" class="p-5">
+                            <div class="text-center py-12 text-slate-400">
+                                <div class="text-4xl mb-3">💰</div>
+                                <p>Click "Load Usage" to see usage data</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/web/js/common.js"></script>
+    <script src="/web/js/tabs/chat.js"></script>
+    <script src="/web/js/tabs/voice.js"></script>
+    <script src="/web/js/tabs/threads.js"></script>
+    <script src="/web/js/tabs/tasks.js"></script>
+    <script src="/web/js/tabs/subscriptions.js"></script>
+    <script src="/web/js/tabs/memories.js"></script>
+    <script src="/web/js/tabs/scheduler.js"></script>
+    <script src="/web/js/tabs/files.js"></script>
+    <script src="/web/js/tabs/mcp.js"></script>
+    <script src="/web/js/tabs/config.js?v=1.32.60"></script>
+    <script src="/web/js/tabs/system.js"></script>
+    <script src="/web/js/tabs/events.js"></script>
+    <script src="/web/js/tabs/tracing.js"></script>
+    <script src="/web/js/tabs/usage.js"></script>
+
+    <script>
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize dark mode from localStorage/system preference
+            initDarkMode();
+
+            // Load initial data
+            loadConfig();
+
+            // Connect event stream
+            connectEventStream(handleEvent);
+
+            // Set page title based on active tab
+            updatePageInfo('chat');
+
+            // Enable animations after page is fully rendered
+            requestAnimationFrame(() => {
+                document.body.classList.remove('no-animate');
+            });
+        });
+
+        const pageTitles = {
+            chat: { title: 'Chat', desc: 'Text conversation with the agent' },
+            voice: { title: 'Voice Chat', desc: 'Real-time voice interaction' },
+            threads: { title: 'Threads', desc: 'Conversation history and management' },
+            tasks: { title: 'Tasks', desc: 'Task queue and scheduling' },
+            memories: { title: 'Memories', desc: 'Long-term memory storage' },
+            scheduler: { title: 'Scheduler', desc: 'Automated task scheduling' },
+            files: { title: 'Files', desc: 'File storage management' },
+            config: { title: 'Configuration', desc: 'Agent settings and features' },
+            system: { title: 'System', desc: 'Health and diagnostics' },
+            events: { title: 'Events', desc: 'Real-time event stream' },
+            tracing: { title: 'Tracing', desc: 'Request tracing and spans' },
+            usage: { title: 'Usage', desc: 'Token usage statistics' }
+        };
+
+        function updatePageInfo(tab) {
+            const info = pageTitles[tab] || { title: tab, desc: '' };
+            document.getElementById('pageTitle').textContent = info.title;
+            document.getElementById('pageDescription').textContent = info.desc;
+        }
+
+        // Override switchTab to update page info
+        const originalSwitchTab = switchTab;
+        switchTab = function(event, tabName) {
+            originalSwitchTab(event, tabName);
+            updatePageInfo(tabName);
+        };
+
+        function refreshCurrentTab() {
+            const tabInitFunctions = {
+                chat: () => {},
+                voice: initVoiceTab,
+                threads: loadThreads,
+                tasks: loadTasks,
+                memories: loadMemories,
+                scheduler: loadSchedulerStatus,
+                files: loadFiles,
+                config: loadConfig,
+                system: loadSystemHealth,
+                events: () => {},
+                tracing: loadTraces,
+                usage: loadUsage
+            };
+
+            if (tabInitFunctions[currentTab]) {
+                tabInitFunctions[currentTab]();
+            }
+        }
+
+        function handleEvent(event) {
+            // Add to events list if on events tab
+            if (typeof addEventToList === 'function') {
+                addEventToList(event);
+            }
+        }
+    </script>
+</body>
+</html>

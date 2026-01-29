@@ -1,0 +1,739 @@
+package main
+
+import (
+	"bufio"
+	"database/sql"
+	"encoding/json"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"agent-server/config"
+	"agent-server/discovery"
+	"agent-server/events"
+	"agent-server/filesystem"
+	"agent-server/handlers/memories"
+	handlerMcp "agent-server/handlers/mcp"
+	"agent-server/handlers/observability"
+	"agent-server/handlers/tasks"
+	"agent-server/handlers/threads"
+	"agent-server/memory"
+	"agent-server/operator"
+	"agent-server/pdf"
+	"agent-server/providers"
+	"agent-server/scheduler"
+	"agent-server/stream"
+	"agent-server/tools"
+
+	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
+)
+
+func getVersion() string {
+	data, err := os.ReadFile("VERSION")
+	if err != nil {
+		return "1.0.0" // fallback
+	}
+	return strings.TrimSpace(string(data))
+}
+
+
+type HealthResponse struct {
+	Status  string `json:"status"`
+	Uptime  string `json:"uptime"`
+	Version string `json:"version"`
+}
+
+type ChatRequest struct {
+	Message  interface{} `json:"message"`  // Can be string or []ContentBlock
+	ThreadID *string     `json:"thread_id,omitempty"`
+	Stream   *bool       `json:"stream,omitempty"`   // If false, return complete response (default: true)
+	RawMode  *bool       `json:"raw_mode,omitempty"` // If true, bypass processor and stream raw LLM chunks
+}
+
+type ChatResponse struct {
+	ThreadID string `json:"thread_id"`
+}
+
+type ContentBlock struct {
+	Type      string                 `json:"type"`                    // "text", "image", "document", "tool_use", "tool_result"
+	Text      string                 `json:"text,omitempty"`          // for text blocks
+
+	// Image/Document fields
+	Source    *ContentSource         `json:"source,omitempty"`        // for image and document blocks
+
+	// Tool fields
+	ID        string                 `json:"id,omitempty"`            // for tool_use
+	Name      string                 `json:"name,omitempty"`          // for tool_use
+	Input     map[string]interface{} `json:"input,omitempty"`         // for tool_use
+	ToolUseID string                 `json:"tool_use_id,omitempty"`   // for tool_result
+	Content   interface{}            `json:"content,omitempty"`       // for tool_result (can be string or object)
+	IsError   bool                   `json:"is_error,omitempty"`      // for tool_result
+}
+
+type ContentSource struct {
+	Type      string `json:"type"`                     // "base64", "url", "file"
+	MediaType string `json:"media_type,omitempty"`     // "image/jpeg", "application/pdf", etc.
+	Data      string `json:"data,omitempty"`           // For base64
+	URL       string `json:"url,omitempty"`            // For URL
+	FileID    string `json:"file_id,omitempty"`        // For file reference
+}
+
+// Thread moved to threads package
+type Thread = threads.Thread
+
+// Message moved to threads package
+type Message = threads.Message
+
+// FileManagerAdapter adapts FileManager to stream.FileProcessor interface
+type FileManagerAdapter struct {
+	fm *filesystem.FileManager
+}
+
+func (a *FileManagerAdapter) ProcessContentBlocks(blocks []stream.ContentBlock, threadID, messageID, source string) ([]stream.ContentBlock, error) {
+	// Convert stream.ContentBlock to filesystem.ContentBlock
+	fsBlocks := make([]filesystem.ContentBlock, len(blocks))
+	for i, block := range blocks {
+		fsBlocks[i] = filesystem.ContentBlock{
+			Type: block.Type,
+			Text: block.Text,
+		}
+		if block.Source != nil {
+			fsBlocks[i].Source = &filesystem.ContentSource{
+				Type:      block.Source.Type,
+				MediaType: block.Source.MediaType,
+				Data:      block.Source.Data,
+				URL:       block.Source.URL,
+				FileID:    block.Source.FileID,
+			}
+		}
+	}
+
+	// Process with FileManager
+	processedBlocks, err := a.fm.ProcessContentBlocks(fsBlocks, threadID, messageID, source)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert back to stream.ContentBlock
+	streamBlocks := make([]stream.ContentBlock, len(processedBlocks))
+	for i, block := range processedBlocks {
+		streamBlocks[i] = stream.ContentBlock{
+			Type: block.Type,
+			Text: block.Text,
+		}
+		if block.Source != nil {
+			streamBlocks[i].Source = &stream.ContentSource{
+				Type:      block.Source.Type,
+				MediaType: block.Source.MediaType,
+				Data:      block.Source.Data,
+				URL:       block.Source.URL,
+				FileID:    block.Source.FileID,
+			}
+		}
+	}
+
+	return streamBlocks, nil
+}
+
+func (a *FileManagerAdapter) IsEnabled() bool {
+	return a.fm.IsEnabled()
+}
+
+// ResponseCapture captures SSE events to build a complete response
+type ResponseCapture struct {
+	http.ResponseWriter
+	textChunks []string
+}
+
+func (rc *ResponseCapture) Write(p []byte) (int, error) {
+	// Parse SSE events and capture content chunks
+	lines := strings.Split(string(p), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "data: ") {
+			dataJSON := strings.TrimPrefix(line, "data: ")
+			var event map[string]interface{}
+			if err := json.Unmarshal([]byte(dataJSON), &event); err == nil {
+				// Capture content from "content" type events
+				if event["type"] == "content" {
+					if text, ok := event["content"].(string); ok {
+						rc.textChunks = append(rc.textChunks, text)
+					}
+				}
+			}
+		}
+	}
+	// Don't actually write to the underlying ResponseWriter
+	return len(p), nil
+}
+
+// Flush implements http.Flusher interface (required for streaming)
+func (rc *ResponseCapture) Flush() {
+	// No-op for capture mode - we're just collecting data
+	// If the underlying writer supports flushing, we could call it, but not needed here
+}
+
+func (rc *ResponseCapture) ExtractCompleteResponse() string {
+	return strings.Join(rc.textChunks, "")
+}
+
+
+
+
+var (
+	startTime         = time.Now()
+	anthropicProvider *providers.AnthropicProvider
+	openaiProvider    *providers.OpenAIProvider
+	groqProvider      *providers.GroqProvider
+	db               *sql.DB
+	messageSaver     threads.MessageSaver
+	memoryManager    *memory.MemoryManager
+	agentScheduler   *scheduler.Scheduler
+	discoveryService discovery.DiscoveryService
+	fileManager      *filesystem.FileManager
+	cleanupJob       *filesystem.CleanupJob
+)
+
+func loadEnv() {
+	file, err := os.Open(".env")
+	if err != nil {
+		log.Printf("Warning: .env file not found")
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			os.Setenv(key, value)
+		}
+	}
+}
+
+func initDB() {
+	var err error
+	dbConnStart := time.Now()
+	db, err = sql.Open("sqlite3", "./app.db")
+	if err != nil {
+		log.Fatal("Failed to open database:", err)
+	}
+
+	// Publish database connection event
+	eventBus := events.GetEventBus()
+	connEvent := events.NewEvent(events.CategoryDatabase, "db_connection", events.LevelInfo).
+		WithData("database", "sqlite3").
+		WithData("path", "./app.db").
+		WithDuration(dbConnStart)
+	eventBus.Publish(connEvent)
+
+	// Create threads table
+	createThreadsTable := `
+	CREATE TABLE IF NOT EXISTS threads (
+		id TEXT PRIMARY KEY,
+		title TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		metadata TEXT DEFAULT '{}'
+	);`
+
+	tableCreateStart := time.Now()
+	result, err := db.Exec(createThreadsTable)
+	if err != nil {
+		log.Fatal("Failed to create threads table:", err)
+	}
+	rowsAffected, _ := result.RowsAffected()
+
+	// Publish table creation event
+	createEvent := events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "threads").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create messages table
+	createMessagesTable := `
+	CREATE TABLE IF NOT EXISTS messages (
+		id TEXT PRIMARY KEY,
+		thread_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		content TEXT NOT NULL,
+		model TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		metadata TEXT DEFAULT '{}',
+		FOREIGN KEY (thread_id) REFERENCES threads (id) ON DELETE CASCADE
+	);`
+
+	tableCreateStart = time.Now()
+	result, err = db.Exec(createMessagesTable)
+	if err != nil {
+		log.Fatal("Failed to create messages table:", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+
+	// Publish table creation event
+	createEvent = events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "messages").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create tasks table
+	createTasksTable := `
+	CREATE TABLE IF NOT EXISTS tasks (
+		id TEXT PRIMARY KEY,
+		thread_id TEXT,
+		title TEXT NOT NULL,
+		description TEXT,
+		type TEXT NOT NULL DEFAULT 'once' CHECK (type IN ('once', 'recurring')),
+		status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+		priority INTEGER DEFAULT 5 CHECK (priority >= 1 AND priority <= 10),
+		execute_at DATETIME,
+		executed_at DATETIME,
+		recurrence TEXT CHECK (recurrence IN ('daily', 'weekly', 'monthly', NULL)),
+		next_run DATETIME,
+		result TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (thread_id) REFERENCES threads (id) ON DELETE SET NULL
+	);`
+
+	tableCreateStart = time.Now()
+	result, err = db.Exec(createTasksTable)
+	if err != nil {
+		log.Fatal("Failed to create tasks table:", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+
+	// Publish table creation event
+	createEvent = events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "tasks").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create indexes for tasks table
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
+		"CREATE INDEX IF NOT EXISTS idx_tasks_execute_at ON tasks(execute_at)",
+		"CREATE INDEX IF NOT EXISTS idx_tasks_next_run ON tasks(next_run)",
+		"CREATE INDEX IF NOT EXISTS idx_tasks_thread ON tasks(thread_id)",
+	}
+
+	for _, indexSQL := range indexes {
+		if _, err := db.Exec(indexSQL); err != nil {
+			log.Printf("Warning: Failed to create index: %v", err)
+		}
+	}
+
+	// Create memories table
+	createMemoriesTable := `
+	CREATE TABLE IF NOT EXISTS memories (
+		id TEXT PRIMARY KEY,
+		content TEXT NOT NULL,
+		summary TEXT,
+		embedding BLOB,
+		thread_id TEXT,
+		message_id TEXT,
+		importance REAL DEFAULT 0.5,
+		category TEXT,
+		metadata TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_accessed TIMESTAMP,
+		access_count INTEGER DEFAULT 0,
+		FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+		FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+	);`
+
+	tableCreateStart = time.Now()
+	result, err = db.Exec(createMemoriesTable)
+	if err != nil {
+		log.Fatal("Failed to create memories table:", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+
+	// Publish table creation event
+	createEvent = events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "memories").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create indexes for memories table
+	memoryIndexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_memories_thread ON memories(thread_id)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_category ON memories(category)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_accessed ON memories(last_accessed DESC)",
+	}
+
+	for _, indexSQL := range memoryIndexes {
+		if _, err := db.Exec(indexSQL); err != nil {
+			log.Printf("Warning: Failed to create memory index: %v", err)
+		}
+	}
+
+	// Create traces table
+	createTracesTable := `
+	CREATE TABLE IF NOT EXISTS traces (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		thread_id TEXT,
+		service_name TEXT DEFAULT 'agent-core',
+		start_time TIMESTAMP NOT NULL,
+		end_time TIMESTAMP,
+		duration_ms INTEGER,
+		status TEXT CHECK (status IN ('ok', 'error', 'unfinished')) DEFAULT 'unfinished',
+		root_span_id TEXT,
+		span_count INTEGER DEFAULT 0,
+		error_count INTEGER DEFAULT 0,
+		metadata TEXT DEFAULT '{}',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE SET NULL
+	);`
+
+	tableCreateStart = time.Now()
+	result, err = db.Exec(createTracesTable)
+	if err != nil {
+		log.Fatal("Failed to create traces table:", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+
+	createEvent = events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "traces").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create spans table
+	createSpansTable := `
+	CREATE TABLE IF NOT EXISTS spans (
+		id TEXT PRIMARY KEY,
+		trace_id TEXT NOT NULL,
+		parent_span_id TEXT,
+		name TEXT NOT NULL,
+		kind TEXT CHECK (kind IN ('internal', 'server', 'client', 'tool', 'llm', 'agent')) DEFAULT 'internal',
+		start_time TIMESTAMP NOT NULL,
+		end_time TIMESTAMP,
+		duration_ms INTEGER,
+		status TEXT CHECK (status IN ('ok', 'error', 'running')) DEFAULT 'running',
+		status_message TEXT,
+		category TEXT,
+		thread_id TEXT,
+		session_id TEXT,
+		agent_id TEXT,
+		attributes TEXT DEFAULT '{}',
+		input_data TEXT,
+		output_data TEXT,
+		token_usage_input INTEGER,
+		token_usage_output INTEGER,
+		cost_usd REAL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (trace_id) REFERENCES traces(id) ON DELETE CASCADE,
+		FOREIGN KEY (parent_span_id) REFERENCES spans(id) ON DELETE CASCADE,
+		FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE SET NULL
+	);`
+
+	tableCreateStart = time.Now()
+	result, err = db.Exec(createSpansTable)
+	if err != nil {
+		log.Fatal("Failed to create spans table:", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+
+	createEvent = events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "spans").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create events table
+	createEventsTable := `
+	CREATE TABLE IF NOT EXISTS events (
+		id TEXT PRIMARY KEY,
+		trace_id TEXT,
+		span_id TEXT,
+		timestamp TIMESTAMP NOT NULL,
+		category TEXT NOT NULL,
+		type TEXT NOT NULL,
+		level TEXT NOT NULL,
+		thread_id TEXT,
+		session_id TEXT,
+		data TEXT DEFAULT '{}',
+		metadata TEXT DEFAULT '{}',
+		error TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (trace_id) REFERENCES traces(id) ON DELETE CASCADE,
+		FOREIGN KEY (span_id) REFERENCES spans(id) ON DELETE CASCADE,
+		FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE SET NULL
+	);`
+
+	tableCreateStart = time.Now()
+	result, err = db.Exec(createEventsTable)
+	if err != nil {
+		log.Fatal("Failed to create events table:", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+
+	createEvent = events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "events").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create indexes for tracing tables
+	tracingIndexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_traces_thread ON traces(thread_id)",
+		"CREATE INDEX IF NOT EXISTS idx_traces_start_time ON traces(start_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status)",
+		"CREATE INDEX IF NOT EXISTS idx_traces_service ON traces(service_name)",
+		"CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id)",
+		"CREATE INDEX IF NOT EXISTS idx_spans_parent ON spans(parent_span_id)",
+		"CREATE INDEX IF NOT EXISTS idx_spans_start_time ON spans(start_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_spans_thread ON spans(thread_id)",
+		"CREATE INDEX IF NOT EXISTS idx_spans_kind ON spans(kind)",
+		"CREATE INDEX IF NOT EXISTS idx_spans_status ON spans(status)",
+		"CREATE INDEX IF NOT EXISTS idx_events_trace ON events(trace_id)",
+		"CREATE INDEX IF NOT EXISTS idx_events_span ON events(span_id)",
+		"CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_events_category ON events(category)",
+		"CREATE INDEX IF NOT EXISTS idx_events_thread ON events(thread_id)",
+		"CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)",
+		"CREATE INDEX IF NOT EXISTS idx_events_level ON events(level)",
+	}
+
+	for _, indexSQL := range tracingIndexes {
+		if _, err := db.Exec(indexSQL); err != nil {
+			log.Printf("Warning: Failed to create tracing index: %v", err)
+		}
+	}
+
+	// Create files table (for file system storage)
+	createFilesTable := `
+	CREATE TABLE IF NOT EXISTS files (
+		id TEXT PRIMARY KEY,
+		thread_id TEXT,
+		message_id TEXT,
+		filename TEXT NOT NULL,
+		mime_type TEXT NOT NULL,
+		file_type TEXT NOT NULL,
+		size_bytes INTEGER NOT NULL,
+		checksum TEXT,
+		data BLOB NOT NULL,
+		width INTEGER,
+		height INTEGER,
+		duration INTEGER,
+		metadata TEXT DEFAULT '{}',
+		source TEXT DEFAULT 'unknown',
+		source_tool TEXT,
+		access_count INTEGER DEFAULT 0,
+		last_accessed TIMESTAMP,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		expires_at TIMESTAMP,
+		FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+		FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+	);`
+
+	tableCreateStart = time.Now()
+	result, err = db.Exec(createFilesTable)
+	if err != nil {
+		log.Fatal("Failed to create files table:", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+
+	createEvent = events.NewEvent(events.CategoryDatabase, "db_schema", events.LevelInfo).
+		WithData("operation", "CREATE TABLE IF NOT EXISTS").
+		WithData("table", "files").
+		WithData("rows_affected", rowsAffected).
+		WithDuration(tableCreateStart)
+	eventBus.Publish(createEvent)
+
+	// Create indexes for files table
+	filesIndexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_files_thread ON files(thread_id)",
+		"CREATE INDEX IF NOT EXISTS idx_files_message ON files(message_id)",
+		"CREATE INDEX IF NOT EXISTS idx_files_checksum ON files(checksum)",
+		"CREATE INDEX IF NOT EXISTS idx_files_created ON files(created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_files_expires ON files(expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_files_type ON files(file_type)",
+		"CREATE INDEX IF NOT EXISTS idx_files_source ON files(source)",
+	}
+
+	for _, indexSQL := range filesIndexes {
+		if _, err := db.Exec(indexSQL); err != nil {
+			log.Printf("Warning: Failed to create files index: %v", err)
+		}
+	}
+
+	log.Println("Database initialized with threads, messages, tasks, memories, traces, spans, events, and files tables")
+}
+
+// DatabaseMessageSaver implementation
+
+
+
+func main() {
+	loadEnv()
+	initDB()
+	defer db.Close()
+	defer func() {
+		if agentScheduler != nil && agentScheduler.IsRunning() {
+			agentScheduler.Stop()
+		}
+	}()
+
+	// Initialize event bus
+	eventBus := events.GetEventBus()
+	defer eventBus.Stop()
+
+	// Publish startup event
+	startupEvent := events.NewEvent(events.CategorySystem, events.TypeSystemStartup, events.LevelInfo).
+		WithData("version", getVersion()).
+		WithData("port", ":4015")
+	eventBus.Publish(startupEvent)
+
+	// Initialize providers and message saver
+	anthropicProvider = providers.NewAnthropicProvider()
+	openaiProvider = providers.NewOpenAIProvider()
+	groqProvider = providers.NewGroqProvider()
+	messageSaver = threads.NewDatabaseMessageSaver(db)
+
+	// Initialize task management
+	tools.SetTaskDB(db)
+	tools.RegisterTaskTools()
+
+	// Register operator session tools
+	tools.RegisterOperatorSessionTools()
+
+	// Register wait tool (independent, always available)
+	tools.RegisterWaitTool()
+
+	// Initialize memory manager if enabled
+	cfg := config.GetConfig()
+	agentConfig := cfg.Get()
+	if agentConfig.Memory != nil && agentConfig.Memory.Enabled {
+		var err error
+		memoryManager, err = memory.NewMemoryManager(db, agentConfig.Memory, eventBus)
+		if err != nil {
+			log.Printf("Failed to initialize memory manager: %v", err)
+		} else {
+			log.Println("Memory manager initialized successfully")
+		}
+	}
+
+	// Initialize file system if enabled
+	if agentConfig.FileSystem != nil {
+		fileManager = filesystem.NewFileManager(db, agentConfig.FileSystem)
+		if fileManager.IsEnabled() {
+			log.Printf("📁 File system enabled (max: %d MB, retention: %d days)",
+				agentConfig.FileSystem.MaxFileSize/(1024*1024),
+				agentConfig.FileSystem.RetentionDays)
+
+			// Start cleanup job
+			cleanupJob = filesystem.NewCleanupJob(fileManager, 1*time.Hour)
+			cleanupJob.Start()
+		} else {
+			log.Println("📁 File system disabled")
+		}
+	}
+
+	// Initialize MCP if enabled (non-blocking)
+	go handlerMcp.InitMCP()
+
+	// Initialize scheduler if enabled (non-blocking)
+	go initScheduler()
+
+	// Initialize browser session if operator mode enabled (non-blocking)
+	go operator.InitBrowserSession()
+
+	// Initialize agent communication if enabled
+	initAgentCommunication()
+
+	// Initialize tracing system - enable event persistence
+	events.EnablePersistence(db)
+	log.Println("Tracing system initialized with database persistence")
+
+	mux := http.NewServeMux()
+
+	// Core routes
+	mux.HandleFunc("/health", handleHealth)
+	mux.HandleFunc("/chat", handleChat)
+	mux.HandleFunc("/config", handleConfig)
+	mux.HandleFunc("/reset", handleReset)
+
+	// Scheduler routes
+	mux.HandleFunc("/scheduler/status", scheduler.HandleSchedulerStatus)
+	mux.HandleFunc("/scheduler/trigger", scheduler.HandleSchedulerTrigger)
+
+	// Event streaming endpoints (partial - query moved to observability)
+	mux.HandleFunc("/events", events.SSEHandler)
+	mux.HandleFunc("/events/stats", events.EventStatsHandler)
+
+	// Register handler package routes
+	threads.RegisterRoutes(mux, db)
+	tasks.RegisterRoutes(mux)
+	handlerMcp.RegisterRoutes(mux)
+	memories.RegisterRoutes(mux, memoryManager)
+	observability.RegisterRoutes(mux, db)
+
+	// File management endpoints
+	if fileManager != nil && fileManager.IsEnabled() {
+		mux.HandleFunc("/files", filesystem.HandleFilesCreateOrList(fileManager))
+		mux.HandleFunc("/files/stats", filesystem.HandleFilesStats(fileManager))
+		mux.HandleFunc("/files/cleanup", filesystem.HandleFilesCleanup(fileManager))
+		mux.Handle("/files/", http.StripPrefix("/files", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Route based on path and method
+			if strings.HasSuffix(r.URL.Path, "/download") {
+				filesystem.HandleFilesDownload(fileManager)(w, r)
+			} else if r.Method == http.MethodDelete {
+				filesystem.HandleFilesDelete(fileManager)(w, r)
+			} else if r.Method == http.MethodGet {
+				filesystem.HandleFilesGet(fileManager)(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		})))
+	}
+
+	// Tracing endpoints
+	mux.HandleFunc("/traces", handleTraces)
+	mux.HandleFunc("/traces/", handleTrace)
+	mux.HandleFunc("/traces/stats", handleTraceStats)
+	mux.HandleFunc("/spans", handleSpans)
+	mux.HandleFunc("/spans/", handleSpan)
+	mux.HandleFunc("/events/trace/", handleEventsForTrace)
+
+	// Serve web interface (development only)
+	mux.HandleFunc("/", handleWebInterface)
+
+	// Get port from environment or use default
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "4015"
+	}
+	if !strings.HasPrefix(port, ":") {
+		port = ":" + port
+	}
+	log.Printf("Server starting on port %s", port)
+
+	if err := http.ListenAndServe(port, loggingMiddleware(mux)); err != nil {
+		log.Fatal(err)
+	}
+}
