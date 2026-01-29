@@ -1,0 +1,301 @@
+/* Custom CSS for Debug Interface */
+
+/* Typing indicator */
+.typing-indicator span {
+    animation: blink 1.4s infinite both;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes blink {
+    0%, 80%, 100% { opacity: 0; }
+    40% { opacity: 1; }
+}
+
+/* Message content styling */
+.message-content pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+}
+.message-content code {
+    font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace;
+    font-size: 0.875rem;
+}
+.message-content p { margin: 0.5rem 0; }
+.message-content ul, .message-content ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.message-content li { margin: 0.25rem 0; }
+
+/* Animations */
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-out {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-10px); }
+}
+
+/* Only apply to elements that explicitly have this class added dynamically */
+.animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+}
+
+/* Prevent initial load animations */
+.no-animate * {
+    animation: none !important;
+    transition: none !important;
+}
+
+.animate-fade-out {
+    animation: fade-out 0.3s ease-out forwards;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+    background: #1e293b;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background: #475569;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
+/* Tab transitions - only animate after page load */
+.tab-pane.animate {
+    animation: fade-in 0.2s ease-out;
+}
+
+/* Code/JSON display */
+.code-block {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    background: #1e293b;
+    color: #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    overflow-x: auto;
+}
+
+/* Event stream items */
+.event-item {
+    transition: background-color 0.2s ease;
+}
+
+.event-item:hover {
+    background-color: #f8fafc;
+}
+
+.dark .event-item:hover {
+    background-color: #334155;
+}
+
+/* Memory/Task items */
+.data-item {
+    transition: all 0.2s ease;
+}
+
+.data-item:hover {
+    background-color: #f8fafc;
+    transform: translateX(2px);
+}
+
+.dark .data-item:hover {
+    background-color: #334155;
+}
+
+/* Status indicators */
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-dot.online { background-color: #10b981; }
+.status-dot.offline { background-color: #ef4444; }
+.status-dot.pending { background-color: #f59e0b; }
+
+/* Card hover effects */
+.card-hover {
+    transition: all 0.2s ease;
+}
+
+.card-hover:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.dark .card-hover:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Gradient backgrounds for stat cards */
+.gradient-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.gradient-green { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+.gradient-orange { background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%); }
+.gradient-red { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
+.gradient-blue { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+.gradient-pink { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+.gradient-teal { background: linear-gradient(135deg, #0cebeb 0%, #20e3b2 100%); }
+
+/* Input focus states */
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Button active states */
+button:active {
+    transform: scale(0.98);
+}
+
+/* Pulse animation for live indicators */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.animate-pulse-slow {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+/* Sidebar active state */
+.sidebar-item.active {
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.1) 0%, transparent 100%);
+    border-left: 3px solid #3b82f6;
+}
+
+/* Table styling */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    background: #f8fafc;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.data-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+}
+
+.data-table tr:hover td {
+    background: #f8fafc;
+}
+
+/* Dark mode table styling */
+.dark .data-table th {
+    background: #1e293b;
+    color: #94a3b8;
+    border-bottom: 1px solid #334155;
+}
+
+.dark .data-table td {
+    border-bottom: 1px solid #1e293b;
+    color: #e2e8f0;
+}
+
+.dark .data-table tr:hover td {
+    background: #334155;
+}
+
+/* Toggle switch */
+.toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #cbd5e1;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.toggle input:checked + .toggle-slider {
+    background-color: #3b82f6;
+}
+
+.toggle input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+
+/* Dark mode toggle */
+.dark .toggle-slider {
+    background-color: #475569;
+}
+
+.dark .toggle-slider:before {
+    background-color: #e2e8f0;
+}
+
+/* JSON syntax highlighting */
+.json-key { color: #93c5fd; }
+.json-string { color: #86efac; }
+.json-number { color: #fde047; }
+.json-boolean { color: #f9a8d4; }
+.json-null { color: #94a3b8; }

@@ -1,0 +1,157 @@
+{
+  "agent": {
+    "id": "agent-your-unique-id",
+    "name": "AI Assistant",
+    "description": "Your helpful AI assistant",
+    "test_mode": false,
+    "setup_mode": false,
+    "public_url": "",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-20250514",
+      "max_tokens": 8000,
+      "temperature": 0.7,
+      "system_prompt": "You are a helpful, friendly assistant.",
+      "tools": [],
+      "builtin_tools": [],
+      "vision": {
+        "enabled": true,
+        "max_images": 20,
+        "max_image_size": 5242880,
+        "allowed_types": ["jpeg", "png", "gif", "webp"],
+        "resize_images": true,
+        "max_dimension": 1568,
+        "pdf": {
+          "enabled": true,
+          "max_file_size": 33554432,
+          "max_pages": 100,
+          "allow_urls": true
+        }
+      },
+      "parallel_tools": {
+        "enabled": true,
+        "max_concurrent": 10
+      },
+      "tool_loading": {
+        "mode": "full",
+        "strategy": "bm25",
+        "always_load": null,
+        "max_tools": 0
+      }
+    },
+    "mcp": {
+      "enabled": false,
+      "base_url": "",
+      "api_key": "",
+      "timeout": "30s",
+      "retry_count": 3,
+      "cache_ttl": "15m",
+      "tools": [],
+      "credentials": {},
+      "resource_config": {
+        "enabled": false,
+        "auto_sync": false,
+        "sync_interval": "1h",
+        "subscribe": false,
+        "max_size": 10485760
+      },
+      "webhooks": [],
+      "servers": []
+    },
+    "skills": {
+      "enabled": false
+    },
+    "scheduler": {
+      "enabled": false,
+      "interval": "1h",
+      "max_tasks": 100
+    },
+    "tasks": {
+      "enabled": false,
+      "allow_scheduling": true,
+      "allow_recurring": true,
+      "max_tasks": 100,
+      "auto_execute": false
+    },
+    "memory": {
+      "enabled": false,
+      "embedding_model": "text-embedding-3-small",
+      "decision_model": "gpt-4o-mini",
+      "max_memories_per_query": 20,
+      "min_importance": 0.3,
+      "min_similarity": 0.3,
+      "auto_prune": true,
+      "max_memories": 10000,
+      "embedding_provider": "",
+      "ollama_url": "",
+      "auto_extract_memories": null,
+      "auto_ingest_files": true,
+      "ingest_types": ["text/plain", "text/markdown", "application/json"],
+      "chunk_size": 500,
+      "chunk_overlap": 200,
+      "document_importance": 0.6
+    },
+    "operator": {
+      "enabled": false,
+      "virtual_browser": "",
+      "display_width": 1024,
+      "display_height": 768,
+      "max_actions_per_turn": 5
+    },
+    "context": {
+      "max_messages": 50,
+      "max_tokens": 100000,
+      "keep_images": 5,
+      "compaction": {
+        "enabled": true,
+        "trigger_ratio": 0.7,
+        "keep_recent": 20,
+        "summary_max_tokens": 1500,
+        "model": "claude-haiku-4"
+      }
+    },
+    "agents": {
+      "enabled": false,
+      "group": "",
+      "settings": {
+        "default_timeout": "",
+        "retry_count": 0,
+        "retry_delay": "",
+        "max_context_messages": 0,
+        "allow_recursive_calls": false,
+        "max_call_depth": 0,
+        "track_call_chain": false
+      }
+    },
+    "filesystem": {
+      "enabled": false,
+      "max_file_size": 10485760,
+      "max_total_size": 104857600,
+      "auto_extract": true,
+      "min_extract_size": 10240,
+      "deduplication": true,
+      "auto_cleanup": true,
+      "retention_days": 7,
+      "cleanup_orphans": true,
+      "allowed_types": ["image", "document"]
+    },
+    "realtime": {
+      "enabled": false,
+      "provider": "openai",
+      "model": "gpt-4o-realtime-preview",
+      "gemini_model": "gemini-2.0-flash-exp",
+      "voice": "alloy",
+      "gemini_voice": "Kore",
+      "vad_type": "server_vad",
+      "google_search": false
+    },
+    "telemetry": {
+      "enabled": false,
+      "endpoint": "",
+      "api_key": "",
+      "batch_size": 10,
+      "flush_interval": 30
+    },
+    "version": "1.0.0"
+  }
+}

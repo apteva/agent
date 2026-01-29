@@ -1,0 +1,1484 @@
+// Config Tab Functions
+
+let currentConfig = null;
+let providersData = null;
+
+// Load available providers and models from API
+async function loadProviders() {
+    try {
+        const response = await makeRequest('/providers');
+        if (response.status === 200 && response.data) {
+            providersData = response.data;
+            populateProviderSelect();
+            return;
+        }
+    } catch (e) {
+        console.error('Failed to load providers:', e);
+    }
+
+    // Fallback if API fails
+    const providerSelect = document.getElementById('configProvider');
+    providerSelect.innerHTML = '<option value="">Failed to load providers</option>';
+}
+
+// Populate provider dropdown
+function populateProviderSelect() {
+    const providerSelect = document.getElementById('configProvider');
+    providerSelect.innerHTML = '';
+
+    if (!providersData || providersData.length === 0) {
+        providerSelect.innerHTML = '<option value="">No providers available</option>';
+        return;
+    }
+
+    providersData.forEach(provider => {
+        const option = document.createElement('option');
+        option.value = provider.id;
+        option.textContent = provider.name;
+        providerSelect.appendChild(option);
+    });
+
+    // Set current value if config is loaded
+    if (currentConfig?.llm?.provider) {
+        providerSelect.value = currentConfig.llm.provider;
+    }
+
+    // Update model options based on selected provider
+    updateModelOptions();
+}
+
+// Update model dropdown based on selected provider
+function updateModelOptions() {
+    const providerSelect = document.getElementById('configProvider');
+    const modelSelect = document.getElementById('configModel');
+    const selectedProvider = providerSelect.value;
+
+    modelSelect.innerHTML = '';
+
+    if (!providersData || !selectedProvider) {
+        modelSelect.innerHTML = '<option value="">Select provider first</option>';
+        return;
+    }
+
+    const provider = providersData.find(p => p.id === selectedProvider);
+    if (!provider || !provider.models || provider.models.length === 0) {
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+        return;
+    }
+
+    provider.models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model.value;
+        option.textContent = model.label;
+        if (model.recommended) {
+            option.textContent += ' ⭐';
+        }
+        modelSelect.appendChild(option);
+    });
+
+    // Set current model value if it matches this provider
+    if (currentConfig?.llm?.model) {
+        const modelExists = provider.models.some(m => m.value === currentConfig.llm.model);
+        if (modelExists) {
+            modelSelect.value = currentConfig.llm.model;
+        }
+    }
+}
+
+async function loadConfig() {
+    const response = await makeRequest('/config');
+
+    if (response.status === 200 && response.data) {
+        currentConfig = response.data;
+
+        // Update basic form fields
+        document.getElementById('configAgentId').value = currentConfig.id || '';
+        document.getElementById('configAgentName').value = currentConfig.name || '';
+        document.getElementById('configAgentDesc').value = currentConfig.description || '';
+        document.getElementById('configPublicUrl').value = currentConfig.public_url || '';
+        document.getElementById('configSystemPrompt').value = currentConfig.llm?.system_prompt || '';
+
+        // Set provider and model if providers are loaded
+        if (providersData) {
+            document.getElementById('configProvider').value = currentConfig.llm?.provider || 'anthropic';
+            updateModelOptions();
+        }
+
+        // Update feature toggles
+        document.getElementById('toggleMemory').checked = currentConfig.memory?.enabled || false;
+        document.getElementById('toggleTasks').checked = currentConfig.tasks?.enabled || false;
+        document.getElementById('toggleFiles').checked = currentConfig.filesystem?.enabled || false;
+        document.getElementById('toggleMcp').checked = currentConfig.mcp?.enabled || false;
+        document.getElementById('toggleScheduler').checked = currentConfig.scheduler?.enabled || false;
+        document.getElementById('toggleOperator').checked = currentConfig.operator?.enabled || false;
+        document.getElementById('toggleAgents').checked = currentConfig.agents?.enabled || false;
+
+        // Update version display
+        document.getElementById('agentVersion').textContent = currentConfig.version || '1.0.0';
+
+        // Load Memory settings
+        const mem = currentConfig.memory || {};
+        document.getElementById('memoryEmbeddingModel').value = mem.embedding_model || '';
+        document.getElementById('memoryDecisionModel').value = mem.decision_model || '';
+        document.getElementById('memoryEmbeddingProvider').value = mem.embedding_provider || '';
+        document.getElementById('memoryMaxPerQuery').value = mem.max_memories_per_query || '';
+        document.getElementById('memoryMinImportance').value = mem.min_importance != null ? mem.min_importance : '';
+        document.getElementById('memoryMinSimilarity').value = mem.min_similarity != null ? mem.min_similarity : '';
+        document.getElementById('memoryMaxMemories').value = mem.max_memories || '';
+        document.getElementById('memoryChunkSize').value = mem.chunk_size || '';
+        document.getElementById('memoryChunkOverlap').value = mem.chunk_overlap || '';
+        document.getElementById('memoryDocImportance').value = mem.document_importance != null ? mem.document_importance : '';
+        document.getElementById('memoryAutoPrune').checked = mem.auto_prune || false;
+        document.getElementById('memoryAutoIngest').checked = mem.auto_ingest_files || false;
+        // auto_extract_memories defaults to true when null/undefined
+        document.getElementById('memoryAutoExtract').checked = mem.auto_extract_memories !== false;
+        document.getElementById('memoryOllamaUrl').value = mem.ollama_url || '';
+        document.getElementById('memoryIngestTypes').value = (mem.ingest_types || []).join(', ');
+
+        // Load Filesystem settings
+        const fs = currentConfig.filesystem || {};
+        document.getElementById('fsStoragePath').value = fs.storage_path || '';
+        document.getElementById('fsMaxFileSize').value = fs.max_file_size ? Math.round(fs.max_file_size / 1024 / 1024) : '';
+        document.getElementById('fsRetentionDays').value = fs.retention_days || '';
+        document.getElementById('fsMaxStorage').value = fs.max_storage ? Math.round(fs.max_storage / 1024 / 1024) : '';
+        document.getElementById('fsPublicUrl').value = fs.public_url_prefix || '';
+        document.getElementById('fsCleanupOrphans').checked = fs.cleanup_orphans || false;
+        document.getElementById('fsAllowedTypes').value = (fs.allowed_types || []).join(', ');
+
+        // Load Tasks settings
+        const tasks = currentConfig.tasks || {};
+        document.getElementById('tasksMaxConcurrent').value = tasks.max_concurrent || '';
+        document.getElementById('tasksTimeout').value = tasks.default_timeout || '';
+        document.getElementById('tasksMaxRetries').value = tasks.max_retries || '';
+        document.getElementById('tasksRetryDelay').value = tasks.retry_delay || '';
+        document.getElementById('tasksCleanupAge').value = tasks.cleanup_age || '';
+        document.getElementById('tasksPersist').checked = tasks.persist || false;
+
+        // Load Scheduler settings
+        const sched = currentConfig.scheduler || {};
+        document.getElementById('schedulerTimezone').value = sched.timezone || '';
+        document.getElementById('schedulerMaxConcurrent').value = sched.max_concurrent || '';
+        document.getElementById('schedulerCatchUp').checked = sched.catch_up_missed || false;
+
+        // Load MCP settings
+        const mcp = currentConfig.mcp || {};
+        document.getElementById('mcpTimeout').value = mcp.timeout || '';
+        document.getElementById('mcpAutoReconnect').checked = mcp.auto_reconnect || false;
+
+        // Load external MCP servers
+        loadExternalServers();
+
+        // Load MCP Resources settings
+        const resourceConfig = mcp.resource_config || {};
+        document.getElementById('mcpResourcesEnabled').checked = resourceConfig.enabled || false;
+        document.getElementById('mcpResourcesAutoSync').checked = resourceConfig.auto_sync || false;
+        document.getElementById('mcpResourcesSyncInterval').value = resourceConfig.sync_interval || '';
+        document.getElementById('mcpResourcesMaxSize').value = resourceConfig.max_size ? Math.round(resourceConfig.max_size / 1024) : '';
+        document.getElementById('mcpResourcesSubscribe').checked = resourceConfig.subscribe || false;
+        document.getElementById('mcpResourcesFilters').value = (resourceConfig.filters || []).join('\n');
+
+        // Load enabled resource servers
+        loadEnabledResources();
+
+        // Load MCP resources status
+        loadMCPResourcesStatus();
+
+        // Load enabled webhook servers
+        loadEnabledWebhooks();
+
+        // Load Operator settings
+        const op = currentConfig.operator || {};
+        document.getElementById('operatorBrowserUrl').value = op.virtual_browser || '';
+        document.getElementById('operatorMaxActions').value = op.max_actions_per_turn || '';
+        document.getElementById('operatorDisplayWidth').value = op.display_width || '';
+        document.getElementById('operatorDisplayHeight').value = op.display_height || '';
+        document.getElementById('operatorAllowedDomains').value = (op.allowed_domains || []).join(', ');
+        document.getElementById('operatorBlockedDomains').value = (op.blocked_domains || []).join(', ');
+
+        // Load Agents settings
+        const agents = currentConfig.agents || {};
+        document.getElementById('agentsMode').value = agents.mode || 'coordinator';
+        document.getElementById('agentsGroup').value = agents.group || '';
+        updateAgentsModeStatus(agents.mode || 'coordinator');
+
+        // Load Telemetry settings
+        document.getElementById('toggleTelemetry').checked = currentConfig.telemetry?.enabled || false;
+        const tel = currentConfig.telemetry || {};
+        document.getElementById('telemetryEndpoint').value = tel.endpoint || '';
+        document.getElementById('telemetryApiKey').value = tel.api_key || '';
+        document.getElementById('telemetryBatchSize').value = tel.batch_size || 10;
+        document.getElementById('telemetryFlushInterval').value = tel.flush_interval || 30;
+        document.getElementById('telemetryCategories').value = (tel.categories || []).join(', ');
+
+        // Load Realtime settings
+        document.getElementById('toggleRealtime').checked = currentConfig.realtime?.enabled || false;
+        const rt = currentConfig.realtime || {};
+        document.getElementById('realtimeProvider').value = rt.provider || 'openai';
+        document.getElementById('realtimeModel').value = rt.model || 'gpt-realtime';
+        document.getElementById('realtimeGeminiModel').value = rt.gemini_model || 'gemini-2.5-flash-native-audio-preview-12-2025';
+        document.getElementById('realtimeVoice').value = rt.voice || 'alloy';
+        document.getElementById('realtimeGeminiVoice').value = rt.gemini_voice || 'Kore';
+        document.getElementById('realtimeVadType').value = rt.vad_type || 'semantic_vad';
+        document.getElementById('realtimeGoogleSearch').checked = rt.google_search || false;
+
+        // Show raw config
+        document.getElementById('configRaw').textContent = JSON.stringify(currentConfig, null, 2);
+
+        // Load tools configuration
+        loadToolsConfig();
+
+        // Load tool loading configuration
+        loadToolLoadingConfig();
+    }
+}
+
+async function saveConfig() {
+    const updates = {
+        id: document.getElementById('configAgentId').value,
+        name: document.getElementById('configAgentName').value,
+        description: document.getElementById('configAgentDesc').value,
+        public_url: document.getElementById('configPublicUrl').value || undefined,
+        llm: {
+            ...currentConfig?.llm,
+            provider: document.getElementById('configProvider').value,
+            model: document.getElementById('configModel').value,
+            system_prompt: document.getElementById('configSystemPrompt').value
+        }
+    };
+
+    const response = await makeRequest('/config', 'POST', updates);
+
+    if (response.status === 200) {
+        showToast('Configuration saved', 'success');
+        loadConfig();
+    } else {
+        showToast('Failed to save configuration', 'error');
+    }
+}
+
+async function toggleFeature(feature) {
+    const toggleMap = {
+        memory: 'toggleMemory',
+        tasks: 'toggleTasks',
+        filesystem: 'toggleFiles',
+        mcp: 'toggleMcp',
+        scheduler: 'toggleScheduler',
+        operator: 'toggleOperator',
+        agents: 'toggleAgents',
+        telemetry: 'toggleTelemetry',
+        realtime: 'toggleRealtime'
+    };
+
+    const enabled = document.getElementById(toggleMap[feature]).checked;
+
+    const updates = {
+        [feature]: {
+            ...currentConfig?.[feature],
+            enabled
+        }
+    };
+
+    const response = await makeRequest('/config', 'POST', updates);
+
+    if (response.status === 200) {
+        showToast(`${feature} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+        loadConfig();
+    } else {
+        showToast(`Failed to toggle ${feature}`, 'error');
+        // Revert toggle
+        document.getElementById(toggleMap[feature]).checked = !enabled;
+    }
+}
+
+function toggleConfigSection(section) {
+    const settingsEl = document.getElementById(`${section}Settings`);
+    const chevronEl = document.getElementById(`${section}Chevron`);
+
+    if (settingsEl) {
+        settingsEl.classList.toggle('hidden');
+    }
+    if (chevronEl) {
+        chevronEl.style.transform = settingsEl?.classList.contains('hidden') ? '' : 'rotate(180deg)';
+    }
+}
+
+async function saveFeatureConfig(feature) {
+    let updates = {};
+
+    switch (feature) {
+        case 'memory':
+            // Parse ingest types from comma-separated list
+            const ingestTypes = document.getElementById('memoryIngestTypes').value
+                .split(',')
+                .map(t => t.trim())
+                .filter(t => t);
+            updates = {
+                memory: {
+                    ...currentConfig?.memory,
+                    enabled: document.getElementById('toggleMemory').checked,
+                    embedding_model: document.getElementById('memoryEmbeddingModel').value || undefined,
+                    decision_model: document.getElementById('memoryDecisionModel').value || undefined,
+                    embedding_provider: document.getElementById('memoryEmbeddingProvider').value || undefined,
+                    max_memories_per_query: parseInt(document.getElementById('memoryMaxPerQuery').value) || undefined,
+                    min_importance: document.getElementById('memoryMinImportance').value ? parseFloat(document.getElementById('memoryMinImportance').value) : undefined,
+                    min_similarity: document.getElementById('memoryMinSimilarity').value ? parseFloat(document.getElementById('memoryMinSimilarity').value) : undefined,
+                    max_memories: parseInt(document.getElementById('memoryMaxMemories').value) || undefined,
+                    chunk_size: parseInt(document.getElementById('memoryChunkSize').value) || undefined,
+                    chunk_overlap: parseInt(document.getElementById('memoryChunkOverlap').value) || undefined,
+                    document_importance: document.getElementById('memoryDocImportance').value ? parseFloat(document.getElementById('memoryDocImportance').value) : undefined,
+                    auto_prune: document.getElementById('memoryAutoPrune').checked,
+                    auto_ingest_files: document.getElementById('memoryAutoIngest').checked,
+                    auto_extract_memories: document.getElementById('memoryAutoExtract').checked,
+                    ollama_url: document.getElementById('memoryOllamaUrl').value || undefined,
+                    ingest_types: ingestTypes.length > 0 ? ingestTypes : undefined
+                }
+            };
+            break;
+
+        case 'filesystem':
+            const allowedTypes = document.getElementById('fsAllowedTypes').value
+                .split(',')
+                .map(t => t.trim())
+                .filter(t => t);
+            updates = {
+                filesystem: {
+                    ...currentConfig?.filesystem,
+                    enabled: document.getElementById('toggleFiles').checked,
+                    storage_path: document.getElementById('fsStoragePath').value || undefined,
+                    max_file_size: (parseInt(document.getElementById('fsMaxFileSize').value) || 0) * 1024 * 1024 || undefined,
+                    retention_days: parseInt(document.getElementById('fsRetentionDays').value) || undefined,
+                    max_storage: (parseInt(document.getElementById('fsMaxStorage').value) || 0) * 1024 * 1024 || undefined,
+                    public_url_prefix: document.getElementById('fsPublicUrl').value || undefined,
+                    cleanup_orphans: document.getElementById('fsCleanupOrphans').checked,
+                    allowed_types: allowedTypes.length > 0 ? allowedTypes : undefined
+                }
+            };
+            break;
+
+        case 'tasks':
+            updates = {
+                tasks: {
+                    ...currentConfig?.tasks,
+                    enabled: document.getElementById('toggleTasks').checked,
+                    max_concurrent: parseInt(document.getElementById('tasksMaxConcurrent').value) || undefined,
+                    default_timeout: parseInt(document.getElementById('tasksTimeout').value) || undefined,
+                    max_retries: parseInt(document.getElementById('tasksMaxRetries').value) || undefined,
+                    retry_delay: parseInt(document.getElementById('tasksRetryDelay').value) || undefined,
+                    cleanup_age: parseInt(document.getElementById('tasksCleanupAge').value) || undefined,
+                    persist: document.getElementById('tasksPersist').checked
+                }
+            };
+            break;
+
+        case 'scheduler':
+            updates = {
+                scheduler: {
+                    ...currentConfig?.scheduler,
+                    enabled: document.getElementById('toggleScheduler').checked,
+                    timezone: document.getElementById('schedulerTimezone').value || undefined,
+                    max_concurrent: parseInt(document.getElementById('schedulerMaxConcurrent').value) || undefined,
+                    catch_up_missed: document.getElementById('schedulerCatchUp').checked
+                }
+            };
+            break;
+
+        case 'mcp':
+            // Parse resource filters
+            const resourceFilters = document.getElementById('mcpResourcesFilters').value
+                .split('\n')
+                .map(f => f.trim())
+                .filter(f => f);
+            // Get selected credentials from mcp.js (returns map keyed by provider)
+            const credentials = typeof getAgentCredentials === 'function' ? getAgentCredentials() : {};
+            updates = {
+                mcp: {
+                    ...currentConfig?.mcp,
+                    enabled: document.getElementById('toggleMcp').checked,
+                    timeout: parseInt(document.getElementById('mcpTimeout').value) || undefined,
+                    auto_reconnect: document.getElementById('mcpAutoReconnect').checked,
+                    // webhooks is an array of server names (managed via add/remove functions)
+                    // resources is an array of server names (managed separately via add/remove)
+                    // external servers managed via add/edit/delete UI (stored in externalServers array)
+                    servers: externalServers.length > 0 ? externalServers : undefined,
+                    // credentials for MCP tools (selected from backend)
+                    credentials: Object.keys(credentials).length > 0 ? credentials : undefined,
+                    // resource_config is the sync settings
+                    resource_config: {
+                        enabled: document.getElementById('mcpResourcesEnabled').checked,
+                        auto_sync: document.getElementById('mcpResourcesAutoSync').checked,
+                        sync_interval: document.getElementById('mcpResourcesSyncInterval').value || undefined,
+                        max_size: (parseInt(document.getElementById('mcpResourcesMaxSize').value) || 0) * 1024 || undefined,
+                        subscribe: document.getElementById('mcpResourcesSubscribe').checked,
+                        filters: resourceFilters.length > 0 ? resourceFilters : undefined
+                    }
+                }
+            };
+            break;
+
+        case 'operator':
+            const allowedDomains = document.getElementById('operatorAllowedDomains').value
+                .split(',')
+                .map(d => d.trim())
+                .filter(d => d);
+            const blockedDomains = document.getElementById('operatorBlockedDomains').value
+                .split(',')
+                .map(d => d.trim())
+                .filter(d => d);
+            updates = {
+                operator: {
+                    ...currentConfig?.operator,
+                    enabled: document.getElementById('toggleOperator').checked,
+                    virtual_browser: document.getElementById('operatorBrowserUrl').value || undefined,
+                    max_actions_per_turn: parseInt(document.getElementById('operatorMaxActions').value) || undefined,
+                    display_width: parseInt(document.getElementById('operatorDisplayWidth').value) || undefined,
+                    display_height: parseInt(document.getElementById('operatorDisplayHeight').value) || undefined,
+                    allowed_domains: allowedDomains.length > 0 ? allowedDomains : undefined,
+                    blocked_domains: blockedDomains.length > 0 ? blockedDomains : undefined
+                }
+            };
+            break;
+
+        case 'agents':
+            const agentsMode = document.getElementById('agentsMode').value;
+            updates = {
+                agents: {
+                    ...currentConfig?.agents,
+                    enabled: document.getElementById('toggleAgents').checked,
+                    mode: agentsMode,
+                    group: document.getElementById('agentsGroup').value || undefined
+                }
+            };
+            updateAgentsModeStatus(agentsMode);
+            break;
+
+        case 'telemetry':
+            const telCategories = document.getElementById('telemetryCategories').value
+                .split(',')
+                .map(c => c.trim())
+                .filter(c => c);
+            updates = {
+                telemetry: {
+                    ...currentConfig?.telemetry,
+                    enabled: document.getElementById('toggleTelemetry').checked,
+                    endpoint: document.getElementById('telemetryEndpoint').value || undefined,
+                    api_key: document.getElementById('telemetryApiKey').value || undefined,
+                    batch_size: parseInt(document.getElementById('telemetryBatchSize').value) || undefined,
+                    flush_interval: parseInt(document.getElementById('telemetryFlushInterval').value) || undefined,
+                    categories: telCategories.length > 0 ? telCategories : undefined
+                }
+            };
+            break;
+
+        case 'realtime':
+            updates = {
+                realtime: {
+                    ...currentConfig?.realtime,
+                    enabled: document.getElementById('toggleRealtime').checked,
+                    provider: document.getElementById('realtimeProvider').value || 'openai',
+                    model: document.getElementById('realtimeModel').value || 'gpt-realtime',
+                    gemini_model: document.getElementById('realtimeGeminiModel').value || undefined,
+                    voice: document.getElementById('realtimeVoice').value || 'alloy',
+                    gemini_voice: document.getElementById('realtimeGeminiVoice').value || 'Kore',
+                    vad_type: document.getElementById('realtimeVadType').value || 'semantic_vad',
+                    google_search: document.getElementById('realtimeGoogleSearch').checked
+                }
+            };
+            break;
+    }
+
+    const response = await makeRequest('/config', 'POST', updates);
+
+    if (response.status === 200) {
+        showToast(`${feature} settings saved`, 'success');
+        loadConfig();
+    } else {
+        showToast(`Failed to save ${feature} settings: ${response.data?.error || 'Unknown error'}`, 'error');
+    }
+}
+
+async function initConfigTab() {
+    // Load providers first, then config
+    await loadProviders();
+    await loadConfig();
+}
+
+// Load tools configuration from current config
+function loadToolsConfig() {
+    if (!currentConfig) return;
+
+    const llm = currentConfig.llm || {};
+    const tools = llm.tools || [];
+    const builtinTools = llm.builtin_tools || [];
+
+    // Check built-in tools
+    const hasWebSearch = builtinTools.some(t => t.type === 'web_search_20250305' || t.name === 'web_search');
+    const hasWebFetch = builtinTools.some(t => t.type === 'web_fetch_20250910' || t.name === 'web_fetch');
+    const hasComputer = builtinTools.some(t => t.type === 'computer_20250124' || t.name === 'computer');
+
+    document.getElementById('toolWebSearch').checked = hasWebSearch;
+    document.getElementById('toolWebFetch').checked = hasWebFetch;
+    document.getElementById('toolComputer').checked = hasComputer;
+
+    // Check agent tools
+    document.getElementById('toolSendNotification').checked = tools.includes('send_notification');
+    document.getElementById('toolGetTime').checked = tools.includes('get_time');
+    document.getElementById('toolWait').checked = tools.includes('wait');
+    document.getElementById('toolGenerateTestImage').checked = tools.includes('generate_test_image');
+    document.getElementById('toolAnalyzeImageUrl').checked = tools.includes('analyze_image_url');
+    document.getElementById('toolDocumentSearch').checked = tools.includes('document_search');
+
+    // Update MCP tools list
+    updateMCPToolsList();
+}
+
+function updateMCPToolsList() {
+    const mcpToolsEl = document.getElementById('mcpToolsList');
+    if (!mcpToolsEl) return;
+
+    const mcp = currentConfig?.mcp || {};
+    const mcpTools = mcp.tools || [];
+
+    if (mcpTools.length > 0) {
+        mcpToolsEl.innerHTML = mcpTools.map(t =>
+            `<span class="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs mr-1 mb-1">${t}</span>`
+        ).join('');
+    } else if (mcp.enabled) {
+        mcpToolsEl.innerHTML = '<span class="text-slate-400">MCP enabled - all tools available</span>';
+    } else {
+        mcpToolsEl.innerHTML = '<span class="text-slate-400">MCP disabled</span>';
+    }
+}
+
+function updateToolsConfig() {
+    // This is called on checkbox change - visual feedback only
+    // Actual save happens on button click
+}
+
+async function saveToolsConfig() {
+    // Build tools array
+    const tools = [];
+    if (document.getElementById('toolSendNotification').checked) tools.push('send_notification');
+    if (document.getElementById('toolGetTime').checked) tools.push('get_time');
+    if (document.getElementById('toolWait').checked) tools.push('wait');
+    if (document.getElementById('toolGenerateTestImage').checked) tools.push('generate_test_image');
+    if (document.getElementById('toolAnalyzeImageUrl').checked) tools.push('analyze_image_url');
+    if (document.getElementById('toolDocumentSearch').checked) tools.push('document_search');
+
+    // Build builtin_tools array
+    const builtinTools = [];
+    if (document.getElementById('toolWebSearch').checked) {
+        builtinTools.push({ type: 'web_search_20250305', name: 'web_search' });
+    }
+    if (document.getElementById('toolWebFetch').checked) {
+        builtinTools.push({ type: 'web_fetch_20250910', name: 'web_fetch' });
+    }
+    if (document.getElementById('toolComputer').checked) {
+        // Get display dimensions from operator config if available
+        const op = currentConfig?.operator || {};
+        builtinTools.push({
+            type: 'computer_20250124',
+            name: 'computer',
+            display_width_px: op.display_width || 1024,
+            display_height_px: op.display_height || 768,
+            display_number: 1
+        });
+    }
+
+    const updates = {
+        llm: {
+            ...currentConfig?.llm,
+            tools: tools,
+            builtin_tools: builtinTools
+        }
+    };
+
+    const response = await makeRequest('/config', 'POST', updates);
+
+    if (response.status === 200) {
+        showToast('Tools configuration saved', 'success');
+        loadConfig();
+    } else {
+        showToast('Failed to save tools configuration', 'error');
+    }
+}
+
+// Helper function to update the agents mode status display
+function updateAgentsModeStatus(mode) {
+    const iconEl = document.getElementById('agentsModeIcon');
+    const statusEl = document.getElementById('agentsModeStatus');
+
+    if (!iconEl || !statusEl) return;
+
+    if (mode === 'worker') {
+        iconEl.textContent = '👷';
+        statusEl.textContent = 'Mode: Worker (receive-only, no call_agent tool)';
+    } else {
+        iconEl.textContent = '🎯';
+        statusEl.textContent = 'Mode: Coordinator (discovers & calls other agents)';
+    }
+}
+
+// Track available resources data
+let availableResourcesData = null;
+
+// Load and display enabled resource servers
+function loadEnabledResources() {
+    const container = document.getElementById('mcpEnabledResources');
+    if (!container) return;
+
+    const mcp = currentConfig?.mcp || {};
+    const resources = mcp.resources || [];
+
+    if (resources.length === 0) {
+        container.innerHTML = '<span class="text-slate-400 text-sm">No resource servers enabled</span>';
+        return;
+    }
+
+    container.innerHTML = resources.map(server => `
+        <span class="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded text-sm mr-2 mb-1">
+            ${server}
+            <button onclick="removeResourceServer('${server}')" class="ml-1 text-emerald-500 hover:text-red-500">×</button>
+        </span>
+    `).join('');
+}
+
+// Add a resource server
+async function addResourceServer() {
+    const input = document.getElementById('mcpAddResourceServer');
+    const serverName = input.value.trim();
+
+    if (!serverName) {
+        showToast('Please enter a server name', 'error');
+        return;
+    }
+
+    const mcp = currentConfig?.mcp || {};
+    const resources = mcp.resources || [];
+
+    if (resources.includes(serverName)) {
+        showToast(`${serverName} is already enabled`, 'error');
+        return;
+    }
+
+    const newResources = [...resources, serverName];
+
+    const response = await makeRequest('/config', 'POST', {
+        mcp: {
+            ...mcp,
+            resources: newResources
+        }
+    });
+
+    if (response.status === 200) {
+        showToast(`Added ${serverName} to resource servers`, 'success');
+        input.value = '';
+        loadConfig();
+    } else {
+        showToast('Failed to add resource server', 'error');
+    }
+}
+
+// Remove a resource server
+async function removeResourceServer(serverName) {
+    const mcp = currentConfig?.mcp || {};
+    const resources = mcp.resources || [];
+
+    const newResources = resources.filter(s => s !== serverName);
+
+    const response = await makeRequest('/config', 'POST', {
+        mcp: {
+            ...mcp,
+            resources: newResources
+        }
+    });
+
+    if (response.status === 200) {
+        showToast(`Removed ${serverName} from resource servers`, 'success');
+        loadConfig();
+    } else {
+        showToast('Failed to remove resource server', 'error');
+    }
+}
+
+// Show available resources panel
+async function showAvailableResources() {
+    const panel = document.getElementById('mcpAvailableResourcesPanel');
+    const list = document.getElementById('mcpAvailableResourcesList');
+    const filter = document.getElementById('mcpResourceServerFilter');
+
+    panel.classList.remove('hidden');
+    list.innerHTML = '<span class="text-slate-400">Loading available resources...</span>';
+
+    try {
+        const response = await makeRequest('/mcp/resources/available');
+        if (response.status === 200 && response.data) {
+            availableResourcesData = response.data;
+
+            // Populate server filter dropdown
+            const servers = response.data.servers || [];
+            filter.innerHTML = '<option value="">All Servers</option>' +
+                servers.map(s => `<option value="${s}">${s}</option>`).join('');
+
+            // Display resources
+            renderAvailableResources();
+        } else {
+            list.innerHTML = '<span class="text-red-500">Failed to load resources</span>';
+        }
+    } catch (e) {
+        console.error('Failed to load available resources:', e);
+        list.innerHTML = '<span class="text-red-500">Error loading resources</span>';
+    }
+}
+
+// Hide available resources panel
+function hideAvailableResources() {
+    document.getElementById('mcpAvailableResourcesPanel').classList.add('hidden');
+}
+
+// Filter available resources by server
+function filterAvailableResources() {
+    renderAvailableResources();
+}
+
+// Render available resources list
+function renderAvailableResources() {
+    const list = document.getElementById('mcpAvailableResourcesList');
+    const filter = document.getElementById('mcpResourceServerFilter');
+    const selectedServer = filter.value;
+
+    if (!availableResourcesData) {
+        list.innerHTML = '<span class="text-slate-400">No data</span>';
+        return;
+    }
+
+    const resources = availableResourcesData.resources || {};
+    const enabledServers = currentConfig?.mcp?.resources || [];
+
+    let html = '';
+    let totalShown = 0;
+
+    for (const [serverName, serverResources] of Object.entries(resources)) {
+        if (selectedServer && serverName !== selectedServer) continue;
+
+        const isEnabled = enabledServers.includes(serverName);
+        const resourceCount = serverResources?.length || 0;
+
+        html += `
+            <div class="mb-3">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-medium text-slate-700 dark:text-slate-300">${serverName}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-400">${resourceCount} resources</span>
+                        ${isEnabled
+                            ? '<span class="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 rounded text-xs">Enabled</span>'
+                            : `<button onclick="quickAddResourceServer('${serverName}')" class="px-1.5 py-0.5 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-400 rounded text-xs">+ Enable</button>`
+                        }
+                    </div>
+                </div>
+                <div class="pl-2 border-l-2 border-slate-200 dark:border-slate-600">
+                    ${(serverResources || []).slice(0, 5).map(r => `
+                        <div class="py-0.5 text-slate-500 dark:text-slate-400 truncate" title="${r.uri || r.name}">
+                            ${r.name || r.uri || 'Unnamed resource'}
+                        </div>
+                    `).join('')}
+                    ${resourceCount > 5 ? `<div class="text-slate-400 italic">...and ${resourceCount - 5} more</div>` : ''}
+                </div>
+            </div>
+        `;
+        totalShown++;
+    }
+
+    if (totalShown === 0) {
+        html = '<span class="text-slate-400">No resources discovered. Make sure MCP is enabled and refresh.</span>';
+    }
+
+    list.innerHTML = html;
+}
+
+// Quick add from available resources panel
+async function quickAddResourceServer(serverName) {
+    const mcp = currentConfig?.mcp || {};
+    const resources = mcp.resources || [];
+
+    if (resources.includes(serverName)) {
+        showToast(`${serverName} is already enabled`, 'info');
+        return;
+    }
+
+    const newResources = [...resources, serverName];
+
+    const response = await makeRequest('/config', 'POST', {
+        mcp: {
+            ...mcp,
+            resources: newResources
+        }
+    });
+
+    if (response.status === 200) {
+        showToast(`Enabled ${serverName} for resource sync`, 'success');
+        await loadConfig();
+        renderAvailableResources(); // Re-render to update button state
+    } else {
+        showToast('Failed to enable resource server', 'error');
+    }
+}
+
+// Load MCP resources sync status
+async function loadMCPResourcesStatus() {
+    const statusEl = document.getElementById('mcpResourcesStatus');
+    if (!statusEl) return;
+
+    try {
+        const response = await makeRequest('/mcp/resources/status');
+        if (response.status === 200 && response.data) {
+            const { enabled, status } = response.data;
+
+            if (!enabled) {
+                statusEl.innerHTML = '<span class="text-slate-400">Resource sync not enabled</span>';
+                return;
+            }
+
+            if (!status) {
+                statusEl.innerHTML = '<span class="text-slate-400">No sync status available</span>';
+                return;
+            }
+
+            const lastSync = status.last_sync ? new Date(status.last_sync).toLocaleString() : 'Never';
+            const resourceCount = status.synced_resources || 0;
+            const serverCount = status.synced_servers || 0;
+
+            statusEl.innerHTML = `
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <span class="text-slate-400">Last sync:</span>
+                        <span class="ml-1">${lastSync}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400">Resources:</span>
+                        <span class="ml-1 font-medium">${resourceCount}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400">Servers:</span>
+                        <span class="ml-1 font-medium">${serverCount}</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            statusEl.innerHTML = '<span class="text-slate-400">Failed to load status</span>';
+        }
+    } catch (e) {
+        console.error('Failed to load MCP resources status:', e);
+        statusEl.innerHTML = '<span class="text-red-500">Error loading status</span>';
+    }
+}
+
+// Trigger MCP resources sync
+async function syncMCPResources() {
+    const statusEl = document.getElementById('mcpResourcesStatus');
+    if (statusEl) {
+        statusEl.innerHTML = '<span class="text-blue-500">Syncing resources...</span>';
+    }
+
+    try {
+        const response = await makeRequest('/mcp/resources/sync', 'POST');
+        if (response.status === 200 && response.data?.success) {
+            const stats = response.data.stats || {};
+            showToast(`Synced ${stats.synced || 0} resources from ${stats.servers || 0} servers`, 'success');
+            // Refresh status display
+            loadMCPResourcesStatus();
+        } else {
+            showToast(`Sync failed: ${response.data?.error || 'Unknown error'}`, 'error');
+            loadMCPResourcesStatus();
+        }
+    } catch (e) {
+        console.error('MCP resources sync failed:', e);
+        showToast('Sync failed: ' + e.message, 'error');
+        loadMCPResourcesStatus();
+    }
+}
+
+// ============= Tool Loading Functions =============
+
+// Load tool loading config from current config
+function loadToolLoadingConfig() {
+    if (!currentConfig) return;
+
+    console.log('Loading tool_loading config:', currentConfig.llm?.tool_loading);
+    const toolLoading = currentConfig.llm?.tool_loading || {};
+
+    // Set mode and strategy
+    document.getElementById('toolLoadingMode').value = toolLoading.mode || 'full';
+    document.getElementById('toolLoadingStrategy').value = toolLoading.strategy || 'bm25';
+    document.getElementById('toolLoadingMaxTools').value = toolLoading.max_tools || '';
+    document.getElementById('toolLoadingAlwaysLoad').value = (toolLoading.always_load || []).join(', ');
+
+    // BM25 settings
+    const bm25 = toolLoading.bm25 || {};
+    document.getElementById('toolLoadingBM25TopK').value = bm25.top_k || '';
+    document.getElementById('toolLoadingBM25Threshold').value = bm25.threshold != null ? bm25.threshold : '';
+
+    // Load keyword rules
+    loadKeywordRules(toolLoading.keyword?.rules || []);
+
+    // Load regex rules
+    loadRegexRules(toolLoading.regex?.rules || []);
+
+    // Update UI visibility
+    updateToolLoadingUI();
+}
+
+// Update tool loading UI based on mode and strategy
+function updateToolLoadingUI() {
+    const mode = document.getElementById('toolLoadingMode').value;
+    const strategy = document.getElementById('toolLoadingStrategy').value;
+
+    // Show/hide strategy settings based on mode
+    const strategyEnabled = mode === 'on_demand';
+    document.getElementById('toolLoadingStrategy').disabled = !strategyEnabled;
+
+    // Show/hide strategy-specific settings
+    document.getElementById('toolLoadingBM25Settings').classList.toggle('hidden', strategy !== 'bm25' || !strategyEnabled);
+    document.getElementById('toolLoadingKeywordSettings').classList.toggle('hidden', strategy !== 'keyword' || !strategyEnabled);
+    document.getElementById('toolLoadingRegexSettings').classList.toggle('hidden', strategy !== 'regex' || !strategyEnabled);
+}
+
+// Keyword rules management
+let keywordRules = [];
+
+function loadKeywordRules(rules) {
+    keywordRules = rules || [];
+    renderKeywordRules();
+}
+
+function renderKeywordRules() {
+    const container = document.getElementById('keywordRulesList');
+    if (!container) return;
+
+    if (keywordRules.length === 0) {
+        container.innerHTML = '<p class="text-sm text-slate-400">No keyword rules defined.</p>';
+        return;
+    }
+
+    container.innerHTML = keywordRules.map((rule, idx) => `
+        <div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded">
+            <div class="flex-1">
+                <input type="text" value="${(rule.keywords || []).join(', ')}" placeholder="Keywords (comma-separated)"
+                    class="w-full px-2 py-1 text-sm border border-slate-200 dark:border-slate-600 rounded dark:bg-slate-600 dark:text-slate-100 mb-1"
+                    onchange="updateKeywordRule(${idx}, 'keywords', this.value)">
+                <input type="text" value="${(rule.tools || []).join(', ')}" placeholder="Tools to load (comma-separated)"
+                    class="w-full px-2 py-1 text-sm border border-slate-200 dark:border-slate-600 rounded dark:bg-slate-600 dark:text-slate-100"
+                    onchange="updateKeywordRule(${idx}, 'tools', this.value)">
+            </div>
+            <button onclick="removeKeywordRule(${idx})" class="text-red-500 hover:text-red-700 px-2">×</button>
+        </div>
+    `).join('');
+}
+
+function addKeywordRule() {
+    keywordRules.push({ keywords: [], tools: [] });
+    renderKeywordRules();
+}
+
+function updateKeywordRule(idx, field, value) {
+    const arr = value.split(',').map(s => s.trim()).filter(s => s);
+    keywordRules[idx][field] = arr;
+}
+
+function removeKeywordRule(idx) {
+    keywordRules.splice(idx, 1);
+    renderKeywordRules();
+}
+
+// Regex rules management
+let regexRules = [];
+
+function loadRegexRules(rules) {
+    regexRules = rules || [];
+    renderRegexRules();
+}
+
+function renderRegexRules() {
+    const container = document.getElementById('regexRulesList');
+    if (!container) return;
+
+    if (regexRules.length === 0) {
+        container.innerHTML = '<p class="text-sm text-slate-400">No regex rules defined.</p>';
+        return;
+    }
+
+    container.innerHTML = regexRules.map((rule, idx) => `
+        <div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded">
+            <div class="flex-1">
+                <input type="text" value="${rule.pattern || ''}" placeholder="Regex pattern"
+                    class="w-full px-2 py-1 text-sm border border-slate-200 dark:border-slate-600 rounded dark:bg-slate-600 dark:text-slate-100 font-mono mb-1"
+                    onchange="updateRegexRule(${idx}, 'pattern', this.value)">
+                <input type="text" value="${(rule.tools || []).join(', ')}" placeholder="Tools to load (comma-separated)"
+                    class="w-full px-2 py-1 text-sm border border-slate-200 dark:border-slate-600 rounded dark:bg-slate-600 dark:text-slate-100"
+                    onchange="updateRegexRule(${idx}, 'tools', this.value)">
+            </div>
+            <button onclick="removeRegexRule(${idx})" class="text-red-500 hover:text-red-700 px-2">×</button>
+        </div>
+    `).join('');
+}
+
+function addRegexRule() {
+    regexRules.push({ pattern: '', tools: [] });
+    renderRegexRules();
+}
+
+function updateRegexRule(idx, field, value) {
+    if (field === 'tools') {
+        regexRules[idx].tools = value.split(',').map(s => s.trim()).filter(s => s);
+    } else {
+        regexRules[idx][field] = value;
+    }
+}
+
+function removeRegexRule(idx) {
+    regexRules.splice(idx, 1);
+    renderRegexRules();
+}
+
+// Save tool loading configuration
+async function saveToolLoadingConfig() {
+    const mode = document.getElementById('toolLoadingMode').value;
+    const strategy = document.getElementById('toolLoadingStrategy').value;
+    const maxTools = parseInt(document.getElementById('toolLoadingMaxTools').value) || undefined;
+    const alwaysLoad = document.getElementById('toolLoadingAlwaysLoad').value
+        .split(',').map(s => s.trim()).filter(s => s);
+
+    const toolLoading = {
+        mode: mode,
+        strategy: strategy,
+        max_tools: maxTools,
+        always_load: alwaysLoad.length > 0 ? alwaysLoad : undefined
+    };
+
+    // Add strategy-specific config
+    if (strategy === 'bm25') {
+        const topK = parseInt(document.getElementById('toolLoadingBM25TopK').value);
+        const threshold = parseFloat(document.getElementById('toolLoadingBM25Threshold').value);
+        if (topK || threshold) {
+            toolLoading.bm25 = {};
+            if (topK) toolLoading.bm25.top_k = topK;
+            if (!isNaN(threshold)) toolLoading.bm25.threshold = threshold;
+        }
+    } else if (strategy === 'keyword' && keywordRules.length > 0) {
+        toolLoading.keyword = { rules: keywordRules };
+    } else if (strategy === 'regex' && regexRules.length > 0) {
+        toolLoading.regex = { rules: regexRules };
+    }
+
+    const updates = {
+        llm: {
+            ...currentConfig?.llm,
+            tool_loading: toolLoading
+        }
+    };
+
+    console.log('Saving tool loading config:', JSON.stringify(updates, null, 2));
+
+    const response = await makeRequest('/config', 'POST', updates);
+    console.log('Save response:', response.status, response.data);
+
+    if (response.status === 200) {
+        console.log('Response config llm.tool_loading:', response.data?.config?.llm?.tool_loading);
+        showToast('Tool loading configuration saved', 'success');
+        loadConfig();
+    } else {
+        showToast('Failed to save tool loading configuration: ' + (response.data?.error || 'Unknown'), 'error');
+    }
+}
+
+// ============= MCP Webhooks Functions =============
+
+// Load and display enabled webhook servers from config
+function loadEnabledWebhooks() {
+    const container = document.getElementById('mcpEnabledWebhooks');
+    if (!container) return;
+
+    const webhooks = currentConfig?.mcp?.webhooks || [];
+
+    if (webhooks.length === 0) {
+        container.innerHTML = '<span class="text-slate-400 text-sm">No webhook servers enabled</span>';
+    } else {
+        container.innerHTML = webhooks.map(server => `
+            <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-sm">
+                📨 ${server}
+                <button onclick="removeWebhookServer('${server}')" class="ml-1 text-blue-500 hover:text-red-500">&times;</button>
+            </span>
+        `).join(' ');
+    }
+
+    // Also load available servers for the dropdown
+    refreshAvailableWebhookServers();
+}
+
+// Fetch available webhook servers from /mcp/webhooks and populate dropdown
+async function refreshAvailableWebhookServers() {
+    const select = document.getElementById('mcpAddWebhookServer');
+    if (!select) return;
+
+    try {
+        const response = await makeRequest('/mcp/webhooks');
+        if (response.status === 200 && response.data) {
+            const availableServers = response.data.available_servers || [];
+            const enabledServers = response.data.enabled_servers || [];
+
+            // Filter out already enabled servers
+            const notEnabled = availableServers.filter(s => !enabledServers.includes(s));
+
+            select.innerHTML = '<option value="">Select a server...</option>';
+            notEnabled.forEach(server => {
+                const option = document.createElement('option');
+                option.value = server;
+                option.textContent = server;
+                select.appendChild(option);
+            });
+
+            if (notEnabled.length === 0 && availableServers.length > 0) {
+                select.innerHTML = '<option value="">All servers already enabled</option>';
+            } else if (availableServers.length === 0) {
+                select.innerHTML = '<option value="">No webhook servers available</option>';
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load available webhook servers:', e);
+        select.innerHTML = '<option value="">Failed to load servers</option>';
+    }
+}
+
+// Add a webhook server to the enabled list
+async function addWebhookServer() {
+    const select = document.getElementById('mcpAddWebhookServer');
+    const server = select?.value;
+
+    if (!server) {
+        showToast('Please select a server', 'error');
+        return;
+    }
+
+    // Get current webhooks array
+    const currentWebhooks = currentConfig?.mcp?.webhooks || [];
+
+    // Check if already enabled
+    if (currentWebhooks.includes(server)) {
+        showToast('Server already enabled', 'error');
+        return;
+    }
+
+    // Add to array and save
+    const newWebhooks = [...currentWebhooks, server];
+
+    try {
+        const response = await makeRequest('/config', 'POST', {
+            mcp: {
+                ...currentConfig?.mcp,
+                webhooks: newWebhooks
+            }
+        });
+
+        if (response.status === 200) {
+            currentConfig = response.data.config || currentConfig;
+            if (currentConfig.mcp) {
+                currentConfig.mcp.webhooks = newWebhooks;
+            }
+            loadEnabledWebhooks();
+            showToast(`Webhook server "${server}" enabled`, 'success');
+        } else {
+            showToast('Failed to add webhook server', 'error');
+        }
+    } catch (e) {
+        console.error('Failed to add webhook server:', e);
+        showToast('Failed to add webhook server: ' + e.message, 'error');
+    }
+}
+
+// Remove a webhook server from the enabled list
+async function removeWebhookServer(server) {
+    const currentWebhooks = currentConfig?.mcp?.webhooks || [];
+    const newWebhooks = currentWebhooks.filter(s => s !== server);
+
+    try {
+        const response = await makeRequest('/config', 'POST', {
+            mcp: {
+                ...currentConfig?.mcp,
+                webhooks: newWebhooks
+            }
+        });
+
+        if (response.status === 200) {
+            currentConfig = response.data.config || currentConfig;
+            if (currentConfig.mcp) {
+                currentConfig.mcp.webhooks = newWebhooks;
+            }
+            loadEnabledWebhooks();
+            showToast(`Webhook server "${server}" disabled`, 'success');
+        } else {
+            showToast('Failed to remove webhook server', 'error');
+        }
+    } catch (e) {
+        console.error('Failed to remove webhook server:', e);
+        showToast('Failed to remove webhook server: ' + e.message, 'error');
+    }
+}
+
+// ============ External MCP Servers ============
+
+let externalServers = [];
+
+// Toggle the add/edit server form
+function toggleAddExternalServer() {
+    const form = document.getElementById('externalServerForm');
+    const isHidden = form.classList.contains('hidden');
+
+    if (isHidden) {
+        // Show form - reset for new server
+        form.classList.remove('hidden');
+        document.getElementById('externalServerFormTitle').textContent = 'Add External MCP Server';
+        document.getElementById('externalServerEditIndex').value = '-1';
+        document.getElementById('externalServerName').value = '';
+        document.getElementById('externalServerProvider').value = 'custom';
+        document.getElementById('externalServerUrl').value = '';
+        document.getElementById('externalServerApiKey').value = '';
+        document.getElementById('externalServerHeaders').value = '';
+        document.getElementById('externalServerEnabled').checked = true;
+    } else {
+        // Hide form
+        form.classList.add('hidden');
+    }
+}
+
+// Handle provider preset selection
+function onExternalServerProviderChange() {
+    const provider = document.getElementById('externalServerProvider').value;
+    const urlField = document.getElementById('externalServerUrl');
+    const nameField = document.getElementById('externalServerName');
+
+    switch (provider) {
+        case 'composio':
+            urlField.placeholder = 'https://backend.composio.dev/v3/mcp/YOUR_SERVER_ID/mcp?user_id=YOUR_USER_ID';
+            if (!nameField.value) nameField.value = 'composio';
+            break;
+        case 'smithery':
+            urlField.placeholder = 'https://server.smithery.ai/v1/mcp';
+            if (!nameField.value) nameField.value = 'smithery';
+            break;
+        default:
+            urlField.placeholder = 'https://your-mcp-server.com/mcp';
+    }
+}
+
+// Save external server (add or update)
+async function saveExternalServer() {
+    const name = document.getElementById('externalServerName').value.trim();
+    const url = document.getElementById('externalServerUrl').value.trim();
+    const apiKey = document.getElementById('externalServerApiKey').value.trim();
+    const headersStr = document.getElementById('externalServerHeaders').value.trim();
+    const enabled = document.getElementById('externalServerEnabled').checked;
+    const editIndex = parseInt(document.getElementById('externalServerEditIndex').value);
+
+    // Validation
+    if (!name) {
+        showToast('Server name is required', 'error');
+        return;
+    }
+    if (!url) {
+        showToast('Server URL is required', 'error');
+        return;
+    }
+
+    // Build headers object
+    let headers = {};
+    if (headersStr) {
+        try {
+            headers = JSON.parse(headersStr);
+        } catch (e) {
+            showToast('Invalid JSON for custom headers', 'error');
+            return;
+        }
+    }
+
+    // Add API key header based on provider
+    if (apiKey) {
+        const provider = document.getElementById('externalServerProvider').value;
+        if (provider === 'composio') {
+            headers['x-api-key'] = apiKey;
+        } else if (provider === 'smithery') {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+        } else {
+            // Default to x-api-key
+            headers['x-api-key'] = apiKey;
+        }
+    }
+
+    const server = { name, url, headers, enabled };
+
+    // Update or add
+    if (editIndex >= 0) {
+        externalServers[editIndex] = server;
+    } else {
+        // Check for duplicate name
+        if (externalServers.some(s => s.name === name)) {
+            showToast('A server with this name already exists', 'error');
+            return;
+        }
+        externalServers.push(server);
+    }
+
+    // Save to config
+    await saveExternalServersToConfig();
+
+    // Hide form and refresh list
+    toggleAddExternalServer();
+    renderExternalServersList();
+}
+
+// Edit an existing external server
+function editExternalServer(index) {
+    const server = externalServers[index];
+    if (!server) return;
+
+    const form = document.getElementById('externalServerForm');
+    form.classList.remove('hidden');
+
+    document.getElementById('externalServerFormTitle').textContent = 'Edit External MCP Server';
+    document.getElementById('externalServerEditIndex').value = index;
+    document.getElementById('externalServerName').value = server.name;
+    document.getElementById('externalServerUrl').value = server.url;
+    document.getElementById('externalServerEnabled').checked = server.enabled !== false;
+
+    // Try to detect provider and extract API key
+    const headers = server.headers || {};
+    let apiKey = '';
+    let provider = 'custom';
+
+    if (server.url.includes('composio.dev')) {
+        provider = 'composio';
+        apiKey = headers['x-api-key'] || '';
+    } else if (server.url.includes('smithery.ai')) {
+        provider = 'smithery';
+        const auth = headers['Authorization'] || '';
+        apiKey = auth.replace('Bearer ', '');
+    } else {
+        apiKey = headers['x-api-key'] || headers['Authorization'] || '';
+    }
+
+    document.getElementById('externalServerProvider').value = provider;
+    document.getElementById('externalServerApiKey').value = apiKey;
+
+    // Show remaining headers (excluding api key headers)
+    const remainingHeaders = { ...headers };
+    delete remainingHeaders['x-api-key'];
+    delete remainingHeaders['Authorization'];
+    if (Object.keys(remainingHeaders).length > 0) {
+        document.getElementById('externalServerHeaders').value = JSON.stringify(remainingHeaders, null, 2);
+    } else {
+        document.getElementById('externalServerHeaders').value = '';
+    }
+}
+
+// Delete an external server
+async function deleteExternalServer(index) {
+    const server = externalServers[index];
+    if (!server) return;
+
+    if (!confirm(`Delete server "${server.name}"?`)) return;
+
+    externalServers.splice(index, 1);
+    await saveExternalServersToConfig();
+    renderExternalServersList();
+}
+
+// Toggle server enabled state
+async function toggleExternalServerEnabled(index) {
+    const server = externalServers[index];
+    if (!server) return;
+
+    server.enabled = !server.enabled;
+    await saveExternalServersToConfig();
+    renderExternalServersList();
+}
+
+// Save external servers to config
+async function saveExternalServersToConfig() {
+    try {
+        const response = await makeRequest('/config', 'POST', {
+            mcp: {
+                ...currentConfig?.mcp,
+                servers: externalServers
+            }
+        });
+
+        if (response.status === 200) {
+            currentConfig = response.data.config || currentConfig;
+            showToast('External MCP servers updated', 'success');
+        } else {
+            showToast('Failed to save servers', 'error');
+        }
+    } catch (e) {
+        console.error('Failed to save external servers:', e);
+        showToast('Failed to save servers: ' + e.message, 'error');
+    }
+}
+
+// Render the list of configured external servers
+function renderExternalServersList() {
+    const container = document.getElementById('externalServersList');
+    if (!container) return;
+
+    // Also update hidden field for form compatibility
+    document.getElementById('mcpServers').value = JSON.stringify(externalServers);
+
+    if (externalServers.length === 0) {
+        container.innerHTML = '<div class="text-sm text-slate-400 italic p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">No external MCP servers configured</div>';
+        return;
+    }
+
+    container.innerHTML = externalServers.map((server, index) => {
+        const statusClass = server.enabled !== false
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300'
+            : 'bg-slate-100 text-slate-500 dark:bg-slate-600 dark:text-slate-400';
+        const statusText = server.enabled !== false ? 'Enabled' : 'Disabled';
+
+        // Detect provider icon
+        let icon = '🔌';
+        if (server.url.includes('composio.dev')) icon = '⚡';
+        else if (server.url.includes('smithery.ai')) icon = '🔨';
+
+        // Mask URL for display
+        const displayUrl = server.url.length > 60 ? server.url.substring(0, 57) + '...' : server.url;
+
+        return `
+            <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg">
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    <span class="text-xl">${icon}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2">
+                            <span class="font-medium text-slate-700 dark:text-slate-200">${escapeHtml(server.name)}</span>
+                            <span class="px-2 py-0.5 rounded text-xs ${statusClass}">${statusText}</span>
+                        </div>
+                        <p class="text-xs text-slate-400 truncate" title="${escapeHtml(server.url)}">${escapeHtml(displayUrl)}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1 ml-2">
+                    <button onclick="toggleExternalServerEnabled(${index})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-slate-700" title="${server.enabled !== false ? 'Disable' : 'Enable'}">
+                        ${server.enabled !== false ? '⏸️' : '▶️'}
+                    </button>
+                    <button onclick="editExternalServer(${index})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-blue-600" title="Edit">
+                        ✏️
+                    </button>
+                    <button onclick="deleteExternalServer(${index})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-red-600" title="Delete">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Load external servers from config
+function loadExternalServers() {
+    externalServers = currentConfig?.mcp?.servers || [];
+    renderExternalServersList();
+}

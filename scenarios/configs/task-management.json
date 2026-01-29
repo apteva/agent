@@ -1,0 +1,48 @@
+{
+  "agent": {
+    "id": "agent-test-tasks",
+    "name": "AI Assistant - Task Management Test",
+    "description": "Test agent for task management scenarios",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "max_tokens": 8000,
+      "temperature": 0.7,
+      "system_prompt": "You are a helpful AI assistant with task management capabilities. Be concise and accurate in your responses.",
+      "tools": [
+        "create_task",
+        "list_tasks",
+        "get_task",
+        "update_task",
+        "execute_task",
+        "delete_task",
+        "send_notification"
+      ],
+      "builtin_tools": [],
+      "vision": {
+        "enabled": false
+      }
+    },
+    "mcp": {
+      "enabled": false
+    },
+    "scheduler": {
+      "enabled": false
+    },
+    "tasks": {
+      "enabled": true,
+      "allow_scheduling": true
+    },
+    "memory": {
+      "enabled": false
+    },
+    "operator": {
+      "enabled": false
+    },
+    "context": {
+      "max_messages": 30,
+      "keep_images": 5
+    },
+    "version": "1.1.0"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "agent": {
+    "id": "agent-coordinator-001",
+    "name": "Coordinator Agent",
+    "description": "Coordinator that delegates MCP tool tasks to worker agents",
+    "llm": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "max_tokens": 8000,
+      "temperature": 0.7,
+      "system_prompt": "You are a coordinator agent. You do NOT have MCP tools yourself. When users ask you to send notifications or use external tools, you should delegate to the Notification Worker agent. IMPORTANT: Always use list_available_agents first to discover agents, then use call_agent with the correct agent ID.",
+      "tools": [
+        "get_time",
+        "call_agent",
+        "list_available_agents"
+      ],
+      "builtin_tools": [],
+      "vision": {
+        "enabled": false
+      }
+    },
+    "mcp": {
+      "enabled": false,
+      "test_mode": false
+    },
+    "scheduler": {
+      "enabled": false
+    },
+    "tasks": {
+      "enabled": false
+    },
+    "memory": {
+      "enabled": false
+    },
+    "operator": {
+      "enabled": false
+    },
+    "agents": {
+      "enabled": true,
+      "available_agents": [
+        {
+          "id": "agent-notification-worker-001",
+          "name": "Notification Worker",
+          "description": "Worker agent with MCP tools in test mode. Can send notifications via MCP.",
+          "url": "http://localhost:4016",
+          "api_key": "",
+          "capabilities": ["notifications", "mcp-tools", "external-services"],
+          "tags": ["worker", "mcp", "notifications"],
+          "enabled": true,
+          "timeout": "60s"
+        }
+      ],
+      "settings": {
+        "default_timeout": "30s",
+        "retry_count": 2,
+        "retry_delay": "2s",
+        "max_context_messages": 5,
+        "allow_recursive_calls": false,
+        "max_call_depth": 2,
+        "track_call_chain": true
+      }
+    },
+    "context": {
+      "max_messages": 30,
+      "keep_images": 5
+    },
+    "version": "1.1.0"
+  }
+}

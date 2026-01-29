@@ -1,0 +1,16 @@
+{
+  "agent_id": "agent-gemini",
+  "name": "Gemini Agent",
+  "version": "1.0.0",
+  "llm": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "max_tokens": 8192,
+    "temperature": 1.0
+  },
+  "system_prompt": "You are a helpful AI assistant powered by Google's Gemini model. You have access to various tools and can help with a wide range of tasks.",
+  "tools": {
+    "enabled": true,
+    "custom_tools": []
+  }
+}
