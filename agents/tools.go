@@ -1,7 +1,7 @@
 package agents
 
 import (
-	"agent-server/tools"
+	"github.com/apteva/agent/tools"
 )
 
 // CallAgentTool implements the call_agent tool with streaming support

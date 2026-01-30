@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"strings"
 
-	"agent-server/config"
-	"agent-server/stream"
-	"agent-server/tools"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/stream"
+	"github.com/apteva/agent/tools"
 )
 
 // needsFixedTemperature checks if a model requires a fixed temperature and doesn't allow custom values

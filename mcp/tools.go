@@ -1,8 +1,8 @@
 package mcp
 
 import (
-	"agent-server/config"
-	"agent-server/tools"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/tools"
 )
 
 // GetEnabledMCPTools returns MCP tools that are enabled in the configuration

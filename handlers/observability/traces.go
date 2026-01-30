@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-server/events"
+	"github.com/apteva/agent/events"
 )
 
 // HandleTraces - GET /traces - List traces with filters

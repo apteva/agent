@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"agent-server/events"
+	"github.com/apteva/agent/events"
 	"bytes"
 	"database/sql"
 	"encoding/json"

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"agent-server/config"
-	"agent-server/events"
-	"agent-server/mcp"
-	"agent-server/operator"
-	"agent-server/tools"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/events"
+	"github.com/apteva/agent/mcp"
+	"github.com/apteva/agent/operator"
+	"github.com/apteva/agent/tools"
 )
 
 type Message struct {

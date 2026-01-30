@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"agent-server/stream"
-	"agent-server/tools"
+	"github.com/apteva/agent/stream"
+	"github.com/apteva/agent/tools"
 )
 
 func TestStreamProcessor(t *testing.T) {

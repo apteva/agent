@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"agent-server/config"
-	"agent-server/events"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/events"
 )
 
 // Subscription represents an MCP webhook subscription

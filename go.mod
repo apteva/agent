@@ -1,4 +1,4 @@
-module agent-server
+module github.com/apteva/agent
 
 go 1.25.5
 

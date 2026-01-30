@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"os"
 
-	"agent-server/config"
-	"agent-server/stream"
-	"agent-server/tools"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/stream"
+	"github.com/apteva/agent/tools"
 )
 
 // ==================== Gemini Request/Response Types ====================

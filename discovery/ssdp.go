@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 
 	"github.com/koron/go-ssdp"
 )
@@ -68,7 +68,7 @@ func (d *SSDPDiscovery) Start() error {
 		d.serviceType(),                              // Service type
 		fmt.Sprintf("uuid:%s", d.agentID),            // USN (Unique Service Name)
 		d.agentURL,                                   // Location (agent URL)
-		"agent-server/1.0",                           // Server
+		"github.com/apteva/agent/1.0",                           // Server
 		1800,                                         // Max-Age (30 minutes)
 	)
 	if err != nil {

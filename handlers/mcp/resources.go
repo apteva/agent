@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"agent-server/config"
-	"agent-server/mcp"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/mcp"
 )
 
 // ResourceSyncerGetter is a function type for getting the resource syncer

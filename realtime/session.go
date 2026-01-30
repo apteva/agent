@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/events"
-	"agent-server/handlers/threads"
+	"github.com/apteva/agent/events"
+	"github.com/apteva/agent/handlers/threads"
 
 	"github.com/gorilla/websocket"
 )

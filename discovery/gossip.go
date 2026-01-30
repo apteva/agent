@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // GossipDiscovery implements agent discovery using gossip protocol (memberlist)

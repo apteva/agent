@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // HTTPDiscovery implements agent discovery using direct HTTP polling

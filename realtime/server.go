@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
-	"agent-server/events"
-	"agent-server/handlers/threads"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/events"
+	"github.com/apteva/agent/handlers/threads"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"

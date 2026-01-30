@@ -3,7 +3,7 @@ package memories
 import (
 	"net/http"
 
-	"agent-server/memory"
+	"github.com/apteva/agent/memory"
 )
 
 // MemoryManagerGetter is a function that returns the current memory manager

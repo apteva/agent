@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"agent-server/config"
-	"agent-server/operator"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/operator"
 )
 
 // SetPendingURL stores a URL to be used when creating the next session

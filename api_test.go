@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"agent-server/config"
-	"agent-server/handlers/threads"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/handlers/threads"
 )
 
 func TestHealthEndpoint(t *testing.T) {

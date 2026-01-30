@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // Compactor handles automatic context compaction via summarization

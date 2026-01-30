@@ -7,9 +7,9 @@ import (
 	"log"
 	"net/http"
 
-	appConfig "agent-server/config"
-	"agent-server/mcp"
-	"agent-server/scheduler"
+	appConfig "github.com/apteva/agent/config"
+	"github.com/apteva/agent/mcp"
+	"github.com/apteva/agent/scheduler"
 )
 
 var globalDB *sql.DB

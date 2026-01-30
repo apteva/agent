@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // TelemetryPayload is the payload sent to the telemetry endpoint

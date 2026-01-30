@@ -1,7 +1,7 @@
 package discovery
 
 import (
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // DiscoveryService handles automatic agent discovery

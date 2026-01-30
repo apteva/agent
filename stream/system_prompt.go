@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // BuildTaskManagementContext builds context about task management capabilities
