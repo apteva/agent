@@ -16,8 +16,10 @@ jobs:
         include:
           - goarch: amd64
             artifact: agent-linux-amd64
+            npm_platform: linux-x64
           - goarch: arm64
             artifact: agent-linux-arm64
+            npm_platform: linux-arm64
             cc: aarch64-linux-gnu-gcc
 
     steps:
@@ -47,6 +49,14 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
 
+      - name: Upload npm platform info
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.npm_platform }}
+          path: |
+            ${{ matrix.artifact }}
+            npm/${{ matrix.npm_platform }}/
+
   build-darwin:
     runs-on: macos-latest
     strategy:
@@ -54,8 +64,10 @@ jobs:
         include:
           - goarch: amd64
             artifact: agent-darwin-amd64
+            npm_platform: darwin-x64
           - goarch: arm64
             artifact: agent-darwin-arm64
+            npm_platform: darwin-arm64
 
     steps:
       - name: Checkout code
@@ -78,6 +90,14 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
+
+      - name: Upload npm platform info
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.npm_platform }}
+          path: |
+            ${{ matrix.artifact }}
+            npm/${{ matrix.npm_platform }}/
 
   build-windows:
     runs-on: windows-latest
@@ -102,6 +122,14 @@ jobs:
         with:
           name: agent-windows-amd64.exe
           path: agent-windows-amd64.exe
+
+      - name: Upload npm platform info
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-win32-x64
+          path: |
+            agent-windows-amd64.exe
+            npm/win32-x64/
 
   release:
     needs: [build-linux, build-darwin, build-windows]
@@ -141,3 +169,68 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+
+  publish-npm:
+    needs: [build-linux, build-darwin, build-windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Prepare and publish npm packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          echo "Publishing version: $VERSION"
+
+          # Map of artifact names to npm package directories
+          declare -A PLATFORMS=(
+            ["agent-darwin-arm64"]="darwin-arm64"
+            ["agent-darwin-amd64"]="darwin-x64"
+            ["agent-linux-amd64"]="linux-x64"
+            ["agent-linux-arm64"]="linux-arm64"
+            ["agent-windows-amd64.exe"]="win32-x64"
+          )
+
+          for artifact in "${!PLATFORMS[@]}"; do
+            platform="${PLATFORMS[$artifact]}"
+            pkg_dir="npm/$platform"
+
+            echo "=== Publishing @apteva/agent-$platform ==="
+
+            # Copy binary to package directory
+            if [[ "$artifact" == *".exe" ]]; then
+              cp "artifacts/$artifact/$artifact" "$pkg_dir/agent.exe"
+            else
+              cp "artifacts/$artifact/$artifact" "$pkg_dir/agent"
+              chmod +x "$pkg_dir/agent"
+            fi
+
+            # Update version in package.json
+            cd "$pkg_dir"
+            npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+            # Publish
+            npm publish --access public || echo "Failed to publish $platform (may already exist)"
+
+            cd ../..
+          done
+
+          echo "=== All packages published ==="

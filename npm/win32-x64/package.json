@@ -1,0 +1,14 @@
+{
+  "name": "@apteva/agent-win32-x64",
+  "version": "0.0.0",
+  "description": "Apteva agent binary for Windows x64",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apteva/agent.git"
+  },
+  "license": "MIT",
+  "preferUnplugged": true
+}

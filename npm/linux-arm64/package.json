@@ -1,0 +1,14 @@
+{
+  "name": "@apteva/agent-linux-arm64",
+  "version": "0.0.0",
+  "description": "Apteva agent binary for Linux ARM64",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apteva/agent.git"
+  },
+  "license": "MIT",
+  "preferUnplugged": true
+}
