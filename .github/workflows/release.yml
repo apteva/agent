@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact: agent-linux-amd64
+            cc: zig cc -target x86_64-linux-gnu
+            cxx: zig c++ -target x86_64-linux-gnu
+          - goos: linux
+            goarch: arm64
+            artifact: agent-linux-arm64
+            cc: zig cc -target aarch64-linux-gnu
+            cxx: zig c++ -target aarch64-linux-gnu
+          - goos: darwin
+            goarch: amd64
+            artifact: agent-darwin-amd64
+            cc: zig cc -target x86_64-macos
+            cxx: zig c++ -target x86_64-macos
+          - goos: darwin
+            goarch: arm64
+            artifact: agent-darwin-arm64
+            cc: zig cc -target aarch64-macos
+            cxx: zig c++ -target aarch64-macos
+          - goos: windows
+            goarch: amd64
+            artifact: agent-windows-amd64.exe
+            cc: zig cc -target x86_64-windows-gnu
+            cxx: zig c++ -target x86_64-windows-gnu
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.11.0
+
+      - name: Create Zig wrapper scripts
+        run: |
+          mkdir -p /tmp/zig-wrapper
+          echo '#!/bin/bash' > /tmp/zig-wrapper/zcc
+          echo 'zig cc $@' >> /tmp/zig-wrapper/zcc
+          chmod +x /tmp/zig-wrapper/zcc
+          echo '#!/bin/bash' > /tmp/zig-wrapper/zcxx
+          echo 'zig c++ $@' >> /tmp/zig-wrapper/zcxx
+          chmod +x /tmp/zig-wrapper/zcxx
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          go build -ldflags="-s -w" -o ${{ matrix.artifact }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in artifacts/*/; do
+            artifact_name=$(basename "$dir")
+            # Handle both with and without extension
+            if [ -f "$dir$artifact_name" ]; then
+              cp "$dir$artifact_name" "release/$artifact_name"
+            fi
+          done
+          ls -la release/
+
+      - name: Create checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
