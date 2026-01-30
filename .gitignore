@@ -6,6 +6,32 @@
 # Config with secrets (use agent-config.example.json as template)
 agent-config.json
 
+# Test scripts
+test-*.sh
+test-*.html
+
+# Binary files
+agent
+agent-core
+agent-go
+agent-server
+agent-server-stripped
+test-agent-server
+bin/
+dist/
+
+# Database files
+*.db
+
+# Backup files
+*.backup
+*.bak
+*.go.bak
+main.go.before_adding_functions
+
+# Claude settings
+.claude/
+
 # Go build artifacts
 *.exe
 *.exe~
