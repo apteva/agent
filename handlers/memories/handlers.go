@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"agent-server/config"
-	"agent-server/memory"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/memory"
 )
 
 // HandleMemories - GET/DELETE /memories

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"agent-server/operator"
+	"github.com/apteva/agent/operator"
 )
 
 // BrowserTool provides browser control for non-Claude models with vision capabilities.

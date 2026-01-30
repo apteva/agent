@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // ToolLoader handles on-demand tool loading based on configured strategy

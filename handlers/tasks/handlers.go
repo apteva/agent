@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"agent-server/tools"
+	"github.com/apteva/agent/tools"
 )
 
 // HandleTasks - GET/POST /tasks

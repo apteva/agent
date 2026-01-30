@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"agent-server/config"
-	"agent-server/filesystem"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/filesystem"
 )
 
 // Global file manager reference (set by main.go)

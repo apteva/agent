@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 
 	_ "github.com/mattn/go-sqlite3"
 )

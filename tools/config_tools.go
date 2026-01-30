@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // ConfigSetTool allows the agent to modify its own configuration

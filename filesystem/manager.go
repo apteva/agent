@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"agent-server/config"
-	"agent-server/events"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/events"
 )
 
 // File represents a stored file

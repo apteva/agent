@@ -4,8 +4,8 @@ import (
 	"log"
 	"time"
 
-	"agent-server/config"
-	"agent-server/mcp"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/mcp"
 )
 
 // InitMCP initializes MCP connection and auto-refreshes cache if enabled

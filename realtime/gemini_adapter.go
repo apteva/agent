@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
-	"agent-server/events"
-	"agent-server/handlers/threads"
-	"agent-server/mcp"
-	"agent-server/tools"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/events"
+	"github.com/apteva/agent/handlers/threads"
+	"github.com/apteva/agent/mcp"
+	"github.com/apteva/agent/tools"
 
 	"github.com/gorilla/websocket"
 )

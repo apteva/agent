@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
-	"agent-server/events"
-	"agent-server/tools"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/events"
+	"github.com/apteva/agent/tools"
 )
 
 // ToolCall represents a single tool invocation

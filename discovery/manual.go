@@ -3,7 +3,7 @@ package discovery
 import (
 	"log"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // ManualDiscovery uses the manually configured available_agents array (legacy mode)

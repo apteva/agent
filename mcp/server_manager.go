@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // ExternalServerManager manages connections to external standard MCP servers

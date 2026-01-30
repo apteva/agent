@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // MCPToolExecutor handles execution of MCP tools

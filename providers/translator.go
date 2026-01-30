@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"agent-server/stream"
+	"github.com/apteva/agent/stream"
 )
 
 // MessageTranslator converts messages from universal format to provider-specific format

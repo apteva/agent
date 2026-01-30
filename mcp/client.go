@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // MCPServer represents a cached MCP server

@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"agent-server/config"
-	"agent-server/events"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/events"
 
 	chromem "github.com/philippgille/chromem-go"
 )

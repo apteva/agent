@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"agent-server/config"
+	"github.com/apteva/agent/config"
 )
 
 // getOpenAIKey retrieves the OpenAI API key from environment

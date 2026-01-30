@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"agent-server/tools"
+	"github.com/apteva/agent/tools"
 )
 
 func TestToolRegistry(t *testing.T) {

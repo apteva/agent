@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"agent-server/events"
+	"github.com/apteva/agent/events"
 )
 
 // HandleFilesCreateOrList handles POST /files (upload) and returns list metadata

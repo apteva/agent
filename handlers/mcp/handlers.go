@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"agent-server/config"
-	"agent-server/mcp"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/mcp"
 )
 
 // HandleMCPServers - GET /mcp/servers

@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"agent-server/config"
-	"agent-server/handlers/threads"
-	"agent-server/providers"
-	"agent-server/stream"
-	"agent-server/tools"
+	"github.com/apteva/agent/config"
+	"github.com/apteva/agent/handlers/threads"
+	"github.com/apteva/agent/providers"
+	"github.com/apteva/agent/stream"
+	"github.com/apteva/agent/tools"
 
 	_ "github.com/mattn/go-sqlite3"
 )

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-server/events"
+	"github.com/apteva/agent/events"
 
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
