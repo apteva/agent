@@ -10,11 +10,20 @@ import (
 	"github.com/apteva/agent/config"
 )
 
+// ExternalClientInterface for both HTTP and stdio external MCP clients
+type ExternalClientInterface interface {
+	Initialize() error
+	ListTools() ([]MCPToolDefinition, error)
+	CallTool(name string, arguments map[string]interface{}) (*ToolCallResult, error)
+	Name() string
+}
+
 // ExternalServerManager manages connections to external standard MCP servers
 type ExternalServerManager struct {
-	clients map[string]*StandardMCPClient // keyed by server name
-	tools   map[string]ExternalMCPTool    // keyed by "server__tool"
-	mu      sync.RWMutex
+	httpClients  map[string]*StandardMCPClient // HTTP clients keyed by server name
+	stdioClients map[string]*StdioMCPClient    // Stdio clients keyed by server name
+	tools        map[string]ExternalMCPTool    // keyed by "server__tool"
+	mu           sync.RWMutex
 }
 
 // ExternalMCPTool represents a tool from an external MCP server
@@ -34,14 +43,15 @@ var externalManagerOnce sync.Once
 func GetExternalServerManager() *ExternalServerManager {
 	externalManagerOnce.Do(func() {
 		globalExternalManager = &ExternalServerManager{
-			clients: make(map[string]*StandardMCPClient),
-			tools:   make(map[string]ExternalMCPTool),
+			httpClients:  make(map[string]*StandardMCPClient),
+			stdioClients: make(map[string]*StdioMCPClient),
+			tools:        make(map[string]ExternalMCPTool),
 		}
 	})
 	return globalExternalManager
 }
 
-// AddServer adds and initializes a new external MCP server
+// AddServer adds and initializes a new HTTP-based external MCP server
 func (m *ExternalServerManager) AddServer(cfg StandardMCPServerConfig) error {
 	if !cfg.Enabled {
 		return nil
@@ -51,8 +61,8 @@ func (m *ExternalServerManager) AddServer(cfg StandardMCPServerConfig) error {
 	defer m.mu.Unlock()
 
 	// Check if already exists
-	if _, exists := m.clients[cfg.Name]; exists {
-		log.Printf("🔌 MCP External [%s]: Already connected, skipping", cfg.Name)
+	if _, exists := m.httpClients[cfg.Name]; exists {
+		log.Printf("🔌 MCP HTTP [%s]: Already connected, skipping", cfg.Name)
 		return nil
 	}
 
@@ -64,27 +74,68 @@ func (m *ExternalServerManager) AddServer(cfg StandardMCPServerConfig) error {
 		return fmt.Errorf("failed to initialize server %s: %w", cfg.Name, err)
 	}
 
-	m.clients[cfg.Name] = client
+	m.httpClients[cfg.Name] = client
 
 	// Load tools from this server
 	tools, err := client.ListTools()
 	if err != nil {
-		log.Printf("⚠️ MCP External [%s]: Failed to list tools: %v", cfg.Name, err)
+		log.Printf("⚠️ MCP HTTP [%s]: Failed to list tools: %v", cfg.Name, err)
 	} else {
-		for _, tool := range tools {
-			fullName := MakeExternalToolName(cfg.Name, tool.Name)
-			m.tools[fullName] = ExternalMCPTool{
-				ServerName:  cfg.Name,
-				Name:        tool.Name,
-				FullName:    fullName,
-				Description: tool.Description,
-				InputSchema: tool.InputSchema,
-			}
-		}
-		log.Printf("🔧 MCP External [%s]: Loaded %d tools", cfg.Name, len(tools))
+		m.addToolsFromServer(cfg.Name, tools)
 	}
 
 	return nil
+}
+
+// AddStdioServer adds and initializes a new stdio-based MCP server
+func (m *ExternalServerManager) AddStdioServer(cfg StdioMCPServerConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check if already exists
+	if _, exists := m.stdioClients[cfg.Name]; exists {
+		log.Printf("🔌 MCP Stdio [%s]: Already connected, skipping", cfg.Name)
+		return nil
+	}
+
+	// Create client
+	client := NewStdioMCPClient(cfg)
+
+	// Initialize connection (starts process and handshakes)
+	if err := client.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize stdio server %s: %w", cfg.Name, err)
+	}
+
+	m.stdioClients[cfg.Name] = client
+
+	// Load tools from this server
+	tools, err := client.ListTools()
+	if err != nil {
+		log.Printf("⚠️ MCP Stdio [%s]: Failed to list tools: %v", cfg.Name, err)
+	} else {
+		m.addToolsFromServer(cfg.Name, tools)
+	}
+
+	return nil
+}
+
+// addToolsFromServer adds tools from a server to the tools map (must be called with lock held)
+func (m *ExternalServerManager) addToolsFromServer(serverName string, tools []MCPToolDefinition) {
+	for _, tool := range tools {
+		fullName := MakeExternalToolName(serverName, tool.Name)
+		m.tools[fullName] = ExternalMCPTool{
+			ServerName:  serverName,
+			Name:        tool.Name,
+			FullName:    fullName,
+			Description: tool.Description,
+			InputSchema: tool.InputSchema,
+		}
+	}
+	log.Printf("🔧 MCP External [%s]: Loaded %d tools", serverName, len(tools))
 }
 
 // RemoveServer removes an external MCP server
@@ -92,14 +143,17 @@ func (m *ExternalServerManager) RemoveServer(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	client, exists := m.clients[name]
-	if !exists {
-		return nil
+	// Check HTTP clients
+	if client, exists := m.httpClients[name]; exists {
+		client.Close()
+		delete(m.httpClients, name)
 	}
 
-	// Close client
-	client.Close()
-	delete(m.clients, name)
+	// Check stdio clients
+	if client, exists := m.stdioClients[name]; exists {
+		client.Stop()
+		delete(m.stdioClients, name)
+	}
 
 	// Remove tools from this server
 	for key, tool := range m.tools {
@@ -144,14 +198,20 @@ func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]i
 		return nil, fmt.Errorf("tool '%s' not found", fullName)
 	}
 
-	client, clientExists := m.clients[tool.ServerName]
-	m.mu.RUnlock()
-
-	if !clientExists {
-		return nil, fmt.Errorf("server '%s' not connected", tool.ServerName)
+	// Try HTTP client first
+	if client, ok := m.httpClients[tool.ServerName]; ok {
+		m.mu.RUnlock()
+		return client.CallTool(tool.Name, arguments)
 	}
 
-	return client.CallTool(tool.Name, arguments)
+	// Try stdio client
+	if client, ok := m.stdioClients[tool.ServerName]; ok {
+		m.mu.RUnlock()
+		return client.CallTool(tool.Name, arguments)
+	}
+
+	m.mu.RUnlock()
+	return nil, fmt.Errorf("server '%s' not connected", tool.ServerName)
 }
 
 // GetServerNames returns list of connected server names
@@ -159,8 +219,11 @@ func (m *ExternalServerManager) GetServerNames() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	names := make([]string, 0, len(m.clients))
-	for name := range m.clients {
+	names := make([]string, 0, len(m.httpClients)+len(m.stdioClients))
+	for name := range m.httpClients {
+		names = append(names, name)
+	}
+	for name := range m.stdioClients {
 		names = append(names, name)
 	}
 	return names
@@ -171,11 +234,6 @@ func (m *ExternalServerManager) RefreshServer(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	client, exists := m.clients[name]
-	if !exists {
-		return fmt.Errorf("server '%s' not connected", name)
-	}
-
 	// Remove old tools from this server
 	for key, tool := range m.tools {
 		if tool.ServerName == name {
@@ -183,8 +241,18 @@ func (m *ExternalServerManager) RefreshServer(name string) error {
 		}
 	}
 
-	// Reload tools
-	tools, err := client.ListTools()
+	var tools []MCPToolDefinition
+	var err error
+
+	// Try HTTP client
+	if client, exists := m.httpClients[name]; exists {
+		tools, err = client.ListTools()
+	} else if client, exists := m.stdioClients[name]; exists {
+		tools, err = client.ListTools()
+	} else {
+		return fmt.Errorf("server '%s' not connected", name)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to list tools: %w", err)
 	}
@@ -213,17 +281,52 @@ func InitializeExternalServers(servers []config.ExternalMCPServer) error {
 			continue
 		}
 
-		cfg := StandardMCPServerConfig{
-			Name:    server.Name,
-			URL:     server.URL,
-			Headers: server.Headers,
-			Timeout: 30 * time.Second,
-			Enabled: server.Enabled,
+		// Determine server type (default to http for backwards compatibility)
+		serverType := server.Type
+		if serverType == "" {
+			if len(server.Command) > 0 {
+				serverType = "stdio"
+			} else {
+				serverType = "http"
+			}
 		}
 
-		if err := manager.AddServer(cfg); err != nil {
-			log.Printf("⚠️ MCP External [%s]: Failed to connect: %v", server.Name, err)
-			// Continue with other servers
+		switch serverType {
+		case "stdio":
+			// Build command with args
+			command := server.Command
+			if len(server.Args) > 0 {
+				command = append(command, server.Args...)
+			}
+
+			cfg := StdioMCPServerConfig{
+				Name:    server.Name,
+				Command: command,
+				Env:     server.Env,
+				Enabled: server.Enabled,
+			}
+
+			if err := manager.AddStdioServer(cfg); err != nil {
+				log.Printf("⚠️ MCP Stdio [%s]: Failed to start: %v", server.Name, err)
+				// Continue with other servers
+			}
+
+		case "http":
+			cfg := StandardMCPServerConfig{
+				Name:    server.Name,
+				URL:     server.URL,
+				Headers: server.Headers,
+				Timeout: 30 * time.Second,
+				Enabled: server.Enabled,
+			}
+
+			if err := manager.AddServer(cfg); err != nil {
+				log.Printf("⚠️ MCP HTTP [%s]: Failed to connect: %v", server.Name, err)
+				// Continue with other servers
+			}
+
+		default:
+			log.Printf("⚠️ MCP External [%s]: Unknown server type: %s", server.Name, serverType)
 		}
 	}
 

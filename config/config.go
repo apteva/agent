@@ -134,8 +134,12 @@ type MCPConfig struct {
 // ExternalMCPServer configures a connection to an external standard MCP server
 type ExternalMCPServer struct {
 	Name    string            `json:"name"`              // Unique name for this server (e.g., "time", "fetch")
-	URL     string            `json:"url"`               // Server endpoint URL (e.g., "https://mcp-time.example.com")
-	Headers map[string]string `json:"headers,omitempty"` // Optional headers for auth
+	Type    string            `json:"type,omitempty"`    // "http" (default) or "stdio"
+	URL     string            `json:"url,omitempty"`     // Server endpoint URL for HTTP type
+	Headers map[string]string `json:"headers,omitempty"` // Optional headers for HTTP auth
+	Command []string          `json:"command,omitempty"` // Command to run for stdio type (e.g., ["npx", "-y", "@dangahagan/weather-mcp"])
+	Args    []string          `json:"args,omitempty"`    // Additional arguments for stdio command
+	Env     map[string]string `json:"env,omitempty"`     // Environment variables for stdio command
 	Enabled bool              `json:"enabled"`           // Whether to connect to this server
 }
 
