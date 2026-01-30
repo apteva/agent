@@ -62,4 +62,14 @@ go.work.sum
 
 # OS files
 .DS_Store
-Thumbs.dbrelease/
+Thumbs.db
+
+# Release artifacts
+release/
+
+# Internal documentation (prevent accidental secret exposure)
+*-IMPLEMENTATION*.md
+*-PROPOSAL*.md
+*-COMPLETE*.md
+*QUICK-START*.md
+*QUICK_REFERENCE*.md
