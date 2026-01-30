@@ -3245,9 +3245,12 @@ func main() {
 	// Initialize request tracker for cancellation support
 	requestTracker = agents.NewRequestTracker()
 
-	// Initialize task management
+	// Initialize task management (only if tasks are enabled)
 	tools.SetTaskDB(db)
-	tools.RegisterTaskTools()
+	if agentConfig.Tasks != nil && agentConfig.Tasks.Enabled {
+		tools.RegisterTaskTools()
+		log.Printf("📋 Task tools enabled")
+	}
 
 	// Initialize subscription management tools (always register if MCP enabled - config controls visibility)
 	if agentConfig.MCP != nil && agentConfig.MCP.Enabled {
@@ -3259,8 +3262,11 @@ func main() {
 		}
 	}
 
-	// Register operator session tools
-	tools.RegisterOperatorSessionTools()
+	// Register operator session tools (only if operator is enabled)
+	if agentConfig.Operator != nil && agentConfig.Operator.Enabled {
+		tools.RegisterOperatorSessionTools()
+		log.Printf("🖥️ Operator tools enabled")
+	}
 
 	// Register wait tool (independent, always available)
 	tools.RegisterWaitTool()
