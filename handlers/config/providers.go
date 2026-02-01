@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/apteva/agent/config"
 )
 
 // ProviderModel represents a model available for a provider
@@ -142,6 +144,85 @@ func GetProviders() []ProviderInfo {
 	}
 }
 
+// EmbeddingProviderInfo represents an embedding provider and its configuration
+type EmbeddingProviderInfo struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	DefaultModel string `json:"default_model"`
+	Dimensions   int    `json:"dimensions"`
+	HasAPIKey    bool   `json:"has_api_key"`
+	EnvVar       string `json:"env_var"`
+}
+
+// GetEmbeddingProviders returns the list of supported embedding providers
+func GetEmbeddingProviders() []EmbeddingProviderInfo {
+	providers := []EmbeddingProviderInfo{
+		{
+			ID:           "openai",
+			Name:         "OpenAI",
+			DefaultModel: "text-embedding-3-small",
+			Dimensions:   1536,
+			HasAPIKey:    config.HasAPIKey("openai"),
+			EnvVar:       "OPENAI_API_KEY",
+		},
+		{
+			ID:           "gemini",
+			Name:         "Google Gemini",
+			DefaultModel: "text-embedding-004",
+			Dimensions:   768,
+			HasAPIKey:    config.HasAPIKey("gemini"),
+			EnvVar:       "GEMINI_API_KEY",
+		},
+		{
+			ID:           "jina",
+			Name:         "Jina AI",
+			DefaultModel: "jina-embeddings-v3",
+			Dimensions:   1024,
+			HasAPIKey:    config.HasAPIKey("jina"),
+			EnvVar:       "JINA_API_KEY",
+		},
+		{
+			ID:           "voyage",
+			Name:         "Voyage AI",
+			DefaultModel: "voyage-3.5-lite",
+			Dimensions:   1024,
+			HasAPIKey:    config.HasAPIKey("voyage"),
+			EnvVar:       "VOYAGE_API_KEY",
+		},
+		{
+			ID:           "cohere",
+			Name:         "Cohere",
+			DefaultModel: "embed-english-v3.0",
+			Dimensions:   1024,
+			HasAPIKey:    config.HasAPIKey("cohere"),
+			EnvVar:       "COHERE_API_KEY",
+		},
+		{
+			ID:           "huggingface",
+			Name:         "HuggingFace",
+			DefaultModel: "BAAI/bge-small-en-v1.5",
+			Dimensions:   384,
+			HasAPIKey:    config.HasAPIKey("huggingface"),
+			EnvVar:       "HUGGINGFACE_API_KEY",
+		},
+		{
+			ID:           "ollama",
+			Name:         "Ollama (Local)",
+			DefaultModel: "nomic-embed-text",
+			Dimensions:   768,
+			HasAPIKey:    true, // Always available if Ollama is running
+			EnvVar:       "",
+		},
+	}
+	return providers
+}
+
+// ProvidersResponse is the response format for the /providers endpoint
+type ProvidersResponse struct {
+	LLM       []ProviderInfo          `json:"llm"`
+	Embedding []EmbeddingProviderInfo `json:"embedding"`
+}
+
 // HandleProviders handles GET requests for available providers and models
 func HandleProviders(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -149,8 +230,11 @@ func HandleProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	providers := GetProviders()
+	response := ProvidersResponse{
+		LLM:       GetProviders(),
+		Embedding: GetEmbeddingProviders(),
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(providers)
+	json.NewEncoder(w).Encode(response)
 }

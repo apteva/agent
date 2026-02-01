@@ -2,14 +2,22 @@
 
 let currentConfig = null;
 let providersData = null;
+let embeddingProvidersData = null;
 
 // Load available providers and models from API
 async function loadProviders() {
     try {
         const response = await makeRequest('/providers');
         if (response.status === 200 && response.data) {
-            providersData = response.data;
+            // Handle both old format (array) and new format (object with llm/embedding)
+            if (Array.isArray(response.data)) {
+                providersData = response.data;
+            } else {
+                providersData = response.data.llm || [];
+                embeddingProvidersData = response.data.embedding || [];
+            }
             populateProviderSelect();
+            populateEmbeddingProviderSelect();
             return;
         }
     } catch (e) {
@@ -85,6 +93,80 @@ function updateModelOptions() {
     }
 }
 
+// Populate embedding provider dropdown from API
+function populateEmbeddingProviderSelect() {
+    const providerSelect = document.getElementById('memoryEmbeddingProvider');
+    if (!providerSelect) return;
+
+    providerSelect.innerHTML = '<option value="">-- Select Provider --</option>';
+
+    if (!embeddingProvidersData || embeddingProvidersData.length === 0) {
+        return;
+    }
+
+    embeddingProvidersData.forEach(provider => {
+        const option = document.createElement('option');
+        option.value = provider.id;
+        // Show API key status
+        let label = provider.name;
+        if (provider.has_api_key) {
+            label += ' ✓';
+        } else if (provider.env_var) {
+            label += ` (needs ${provider.env_var})`;
+        }
+        option.textContent = label;
+        providerSelect.appendChild(option);
+    });
+
+    // Set current value if config is loaded
+    if (currentConfig?.memory?.embedding_provider) {
+        providerSelect.value = currentConfig.memory.embedding_provider;
+        updateEmbeddingModelOptions();
+    }
+}
+
+// Update embedding model dropdown based on selected embedding provider
+function updateEmbeddingModelOptions() {
+    const providerSelect = document.getElementById('memoryEmbeddingProvider');
+    const modelSelect = document.getElementById('memoryEmbeddingModel');
+    const selectedProvider = providerSelect?.value;
+
+    if (!modelSelect) return;
+
+    modelSelect.innerHTML = '';
+
+    if (!selectedProvider) {
+        modelSelect.innerHTML = '<option value="">Select provider first</option>';
+        return;
+    }
+
+    const provider = embeddingProvidersData?.find(p => p.id === selectedProvider);
+    if (!provider) {
+        modelSelect.innerHTML = '<option value="">No models available</option>';
+        return;
+    }
+
+    // Add default model option (recommended)
+    const defaultOption = document.createElement('option');
+    defaultOption.value = provider.default_model;
+    defaultOption.textContent = `${provider.default_model} (default, ${provider.dimensions}d)`;
+    modelSelect.appendChild(defaultOption);
+
+    // Add empty option to allow custom/override
+    const customOption = document.createElement('option');
+    customOption.value = '';
+    customOption.textContent = '-- Use default --';
+    modelSelect.insertBefore(customOption, modelSelect.firstChild);
+
+    // Set current model value
+    if (currentConfig?.memory?.embedding_model) {
+        modelSelect.value = currentConfig.memory.embedding_model;
+    } else {
+        // Select the default model
+        modelSelect.value = provider.default_model;
+    }
+}
+
 async function loadConfig() {
     const response = await makeRequest('/config');
 
@@ -118,9 +200,22 @@ async function loadConfig() {
 
         // Load Memory settings
         const mem = currentConfig.memory || {};
-        document.getElementById('memoryEmbeddingModel').value = mem.embedding_model || '';
         document.getElementById('memoryDecisionModel').value = mem.decision_model || '';
-        document.getElementById('memoryEmbeddingProvider').value = mem.embedding_provider || '';
+        // Set embedding provider first, then update model options
+        if (embeddingProvidersData) {
+            document.getElementById('memoryEmbeddingProvider').value = mem.embedding_provider || '';
+            updateEmbeddingModelOptions();
+            // Now set the model value if specified
+            if (mem.embedding_model) {
+                document.getElementById('memoryEmbeddingModel').value = mem.embedding_model;
+            }
+        } else {
+            document.getElementById('memoryEmbeddingProvider').value = mem.embedding_provider || '';
+        }
+        // Differential memory settings
+        document.getElementById('memoryDecisionMode').value = mem.decision_mode || 'differential';
+        document.getElementById('memoryNoveltyThreshold').value = mem.novelty_threshold != null ? mem.novelty_threshold : '0.80';
+        document.getElementById('memoryMinSentenceWords').value = mem.min_sentence_words || '4';
         document.getElementById('memoryMaxPerQuery').value = mem.max_memories_per_query || '';
         document.getElementById('memoryMinImportance').value = mem.min_importance != null ? mem.min_importance : '';
         document.getElementById('memoryMinSimilarity').value = mem.min_similarity != null ? mem.min_similarity : '';
@@ -132,6 +227,8 @@ async function loadConfig() {
         document.getElementById('memoryAutoIngest').checked = mem.auto_ingest_files || false;
         // auto_extract_memories defaults to true when null/undefined
         document.getElementById('memoryAutoExtract').checked = mem.auto_extract_memories !== false;
+        // skip_questions defaults to true
+        document.getElementById('memorySkipQuestions').checked = mem.skip_questions !== false;
         document.getElementById('memoryOllamaUrl').value = mem.ollama_url || '';
         document.getElementById('memoryIngestTypes').value = (mem.ingest_types || []).join(', ');
 
@@ -319,6 +416,11 @@ async function saveFeatureConfig(feature) {
                     embedding_model: document.getElementById('memoryEmbeddingModel').value || undefined,
                     decision_model: document.getElementById('memoryDecisionModel').value || undefined,
                     embedding_provider: document.getElementById('memoryEmbeddingProvider').value || undefined,
+                    // Differential memory settings
+                    decision_mode: document.getElementById('memoryDecisionMode').value || 'differential',
+                    novelty_threshold: document.getElementById('memoryNoveltyThreshold').value ? parseFloat(document.getElementById('memoryNoveltyThreshold').value) : undefined,
+                    min_sentence_words: parseInt(document.getElementById('memoryMinSentenceWords').value) || undefined,
+                    skip_questions: document.getElementById('memorySkipQuestions').checked,
                     max_memories_per_query: parseInt(document.getElementById('memoryMaxPerQuery').value) || undefined,
                     min_importance: document.getElementById('memoryMinImportance').value ? parseFloat(document.getElementById('memoryMinImportance').value) : undefined,
                     min_similarity: document.getElementById('memoryMinSimilarity').value ? parseFloat(document.getElementById('memoryMinSimilarity').value) : undefined,

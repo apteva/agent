@@ -175,8 +175,8 @@ type TasksConfig struct {
 
 type MemoryConfig struct {
 	Enabled             bool    `json:"enabled"`
-	EmbeddingModel      string  `json:"embedding_model"`        // "text-embedding-3-small" or "nomic-embed-text" for Ollama
-	DecisionModel       string  `json:"decision_model"`         // "gpt-5-mini" for memory decisions
+	EmbeddingModel      string  `json:"embedding_model"`        // "text-embedding-3-small" or model for selected provider
+	DecisionModel       string  `json:"decision_model"`         // Model for memory decisions (auto-selected if empty)
 	MaxMemoriesPerQuery int     `json:"max_memories_per_query"` // 20
 	MinImportance       float64 `json:"min_importance"`         // 0.3
 	MinSimilarity       float64 `json:"min_similarity"`         // 0.3 - minimum cosine similarity for RAG retrieval
@@ -184,8 +184,22 @@ type MemoryConfig struct {
 	MaxMemories         int     `json:"max_memories"`           // 10000
 
 	// Embedding provider configuration
-	EmbeddingProvider string `json:"embedding_provider"` // "openai" (default) or "ollama"
+	// REQUIRED when memory is enabled - must be explicitly set
+	// Options: "openai", "gemini", "jina", "voyage", "cohere", "huggingface", "ollama"
+	EmbeddingProvider string `json:"embedding_provider"` // Required: "openai", "gemini", "jina", "voyage", "cohere", "huggingface", "ollama"
 	OllamaURL         string `json:"ollama_url"`         // Ollama API URL (default: http://localhost:11434)
+
+	// Decision model provider configuration
+	// When empty or "auto", uses the same provider as main LLM with a small model
+	DecisionProvider string `json:"decision_provider"` // "auto" (default), "anthropic", "openai", "gemini"
+
+	// Differential memory mode - pure RAG-based novelty detection without LLM calls
+	// "differential" (default): Uses embedding similarity to detect novel information
+	// "llm": Uses LLM to decide what to remember (requires decision_provider)
+	DecisionMode      string  `json:"decision_mode"`       // "differential" (default) or "llm"
+	NoveltyThreshold  float64 `json:"novelty_threshold"`   // Max similarity to existing memories to be considered novel (default: 0.80)
+	MinSentenceWords  int     `json:"min_sentence_words"`  // Minimum words in a sentence to consider (default: 4)
+	SkipQuestions     bool    `json:"skip_questions"`      // Skip storing questions (default: true)
 
 	// Memory extraction from conversations
 	AutoExtractMemories *bool `json:"auto_extract_memories"` // Auto-extract memories from conversations (default: true when nil)
@@ -438,15 +452,23 @@ func (c *Config) loadDefaults() {
 		},
 		Memory: &MemoryConfig{
 			Enabled:             false, // Disabled by default, enable via config
-			EmbeddingModel:      "text-embedding-3-small",
-			DecisionModel:       "gpt-4o-mini",
+			EmbeddingModel:      "",    // Auto-selected based on provider
+			DecisionModel:       "",    // Auto-selected based on main LLM provider
 			MaxMemoriesPerQuery: 5,
 			MinImportance:       0.3,  // Allow more memories to be stored
 			AutoPrune:           true,
 			MaxMemories:         10000,
-			// Embedding provider (default: OpenAI)
-			EmbeddingProvider: "openai",
+			// Embedding provider: MUST be explicitly set when memory is enabled
+			// Options: openai, gemini, jina, voyage, cohere, huggingface, ollama
+			EmbeddingProvider: "",     // Required - no default
 			OllamaURL:         "http://localhost:11434",
+			// Decision model provider: "auto" uses main LLM provider with small model
+			DecisionProvider:  "auto",
+			// Differential memory: pure RAG-based novelty detection (default)
+			DecisionMode:     "differential", // "differential" (default) or "llm"
+			NoveltyThreshold: 0.80,           // Similarity < 0.80 = novel
+			MinSentenceWords: 4,              // Skip very short fragments
+			SkipQuestions:    true,           // Don't store questions
 			// File ingestion for RAG
 			AutoIngestFiles:    true, // Auto-chunk uploaded text files into memories
 			IngestTypes:        []string{"text/plain", "text/markdown", "application/json", "text/csv"},
@@ -998,12 +1020,48 @@ func IsAutoExtractMemoriesEnabled(memoryConfig *MemoryConfig) bool {
 }
 
 // GetEmbeddingProvider returns the embedding provider to use
-// Default: "openai"
+// Default: "auto" (selects based on available API keys)
 func GetEmbeddingProvider(memoryConfig *MemoryConfig) string {
 	if memoryConfig == nil || memoryConfig.EmbeddingProvider == "" {
-		return "openai"
+		return "auto"
 	}
 	return memoryConfig.EmbeddingProvider
+}
+
+// GetDecisionMode returns the memory decision mode
+// Default: "differential" (pure RAG-based novelty detection)
+func GetDecisionMode(memoryConfig *MemoryConfig) string {
+	if memoryConfig == nil || memoryConfig.DecisionMode == "" {
+		return "differential"
+	}
+	return memoryConfig.DecisionMode
+}
+
+// GetNoveltyThreshold returns the novelty threshold for differential mode
+// Default: 0.80 (memories with similarity < 0.80 are considered novel)
+func GetNoveltyThreshold(memoryConfig *MemoryConfig) float64 {
+	if memoryConfig == nil || memoryConfig.NoveltyThreshold <= 0 {
+		return 0.80
+	}
+	return memoryConfig.NoveltyThreshold
+}
+
+// GetMinSentenceWords returns the minimum words required for a sentence to be considered
+// Default: 4
+func GetMinSentenceWords(memoryConfig *MemoryConfig) int {
+	if memoryConfig == nil || memoryConfig.MinSentenceWords <= 0 {
+		return 4
+	}
+	return memoryConfig.MinSentenceWords
+}
+
+// ShouldSkipQuestions returns whether questions should be skipped in differential mode
+// Default: true
+func ShouldSkipQuestions(memoryConfig *MemoryConfig) bool {
+	if memoryConfig == nil {
+		return true
+	}
+	return memoryConfig.SkipQuestions
 }
 
 // GetOllamaURL returns the Ollama API URL

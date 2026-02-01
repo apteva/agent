@@ -446,6 +446,15 @@ func (m *MemoryManager) ShouldRemember(messages []interface{}, threadID string) 
 		return []MemoryCandidate{}, nil
 	}
 
+	// Check decision mode
+	decisionMode := config.GetDecisionMode(m.config)
+	log.Printf("[Memory] Decision mode: %s", decisionMode)
+
+	if decisionMode == "differential" {
+		return m.ShouldRememberDifferential(messages, threadID)
+	}
+
+	// LLM mode - use the original implementation
 	// Format messages for decision model
 	messagesJSON, _ := json.Marshal(messages)
 
@@ -482,8 +491,11 @@ Return JSON array:`, string(messagesJSON))
 	// Call decision model
 	completion, err := m.callCompletionAPI(prompt)
 	if err != nil {
+		log.Printf("[Memory] Decision model error: %v", err)
 		return []MemoryCandidate{}, err
 	}
+
+	log.Printf("[Memory] Decision model response: %s", completion)
 
 	// Parse response
 	var candidates []MemoryCandidate
@@ -494,50 +506,362 @@ Return JSON array:`, string(messagesJSON))
 		if start >= 0 && end > start {
 			jsonStr := completion[start : end+1]
 			if err := json.Unmarshal([]byte(jsonStr), &candidates); err != nil {
-				log.Printf("Failed to parse memory candidates: %v", err)
+				log.Printf("[Memory] Failed to parse memory candidates: %v", err)
 				return []MemoryCandidate{}, nil
 			}
+		} else {
+			log.Printf("[Memory] No JSON array found in response")
+			return []MemoryCandidate{}, nil
 		}
 	}
+
+	log.Printf("[Memory] Parsed %d candidates from response", len(candidates))
 
 	// Filter by minimum importance
 	filtered := []MemoryCandidate{}
 	for _, c := range candidates {
 		if c.Importance >= m.config.MinImportance {
 			filtered = append(filtered, c)
+		} else {
+			log.Printf("[Memory] Filtered out candidate (importance %.2f < %.2f): %s", c.Importance, m.config.MinImportance, c.Content)
 		}
 	}
+
+	log.Printf("[Memory] Returning %d candidates after filtering (min importance: %.2f)", len(filtered), m.config.MinImportance)
 
 	return filtered, nil
 }
 
-func (m *MemoryManager) callCompletionAPI(prompt string) (string, error) {
-	openAIKey := getOpenAIKey()
-	if openAIKey == "" {
-		return "", fmt.Errorf("OPENAI_API_KEY not set for decision model")
+// ShouldRememberDifferential uses pure RAG-based novelty detection without LLM calls
+// It extracts sentences from messages and checks if they're novel compared to existing memories
+func (m *MemoryManager) ShouldRememberDifferential(messages []interface{}, threadID string) ([]MemoryCandidate, error) {
+	log.Printf("[Memory] Using differential mode for novelty detection")
+
+	// Get config values
+	noveltyThreshold := config.GetNoveltyThreshold(m.config)
+	minWords := config.GetMinSentenceWords(m.config)
+	skipQuestions := config.ShouldSkipQuestions(m.config)
+
+	log.Printf("[Memory] Differential config: threshold=%.2f, minWords=%d, skipQuestions=%v",
+		noveltyThreshold, minWords, skipQuestions)
+
+	// Extract text from messages
+	var userTexts []string
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		role, _ := msgMap["role"].(string)
+		// Only process user messages for memory extraction
+		if role != "user" {
+			continue
+		}
+		content, _ := msgMap["content"].(string)
+		if content != "" {
+			userTexts = append(userTexts, content)
+		}
 	}
 
-	req := CompletionRequest{
-		Model:       m.config.DecisionModel,
-		Temperature: 0.3,
-		Messages: []Message{
-			{Role: "system", Content: "You are a memory extraction assistant. Return only valid JSON."},
-			{Role: "user", Content: prompt},
+	if len(userTexts) == 0 {
+		log.Printf("[Memory] No user text to process")
+		return []MemoryCandidate{}, nil
+	}
+
+	// Split into sentences
+	sentences := m.extractSentences(strings.Join(userTexts, " "))
+	log.Printf("[Memory] Extracted %d sentences from user messages", len(sentences))
+
+	// Filter sentences
+	var filteredSentences []string
+	for _, sentence := range sentences {
+		words := strings.Fields(sentence)
+		// Skip if too short
+		if len(words) < minWords {
+			log.Printf("[Memory] Skipping short sentence (%d words): %s", len(words), truncateContent(sentence, 50))
+			continue
+		}
+		// Skip questions if configured
+		if skipQuestions && (strings.HasSuffix(strings.TrimSpace(sentence), "?") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "what ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "how ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "why ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "when ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "where ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "who ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "can you ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "could you ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "would you ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "is there ") ||
+			strings.HasPrefix(strings.ToLower(strings.TrimSpace(sentence)), "are there ")) {
+			log.Printf("[Memory] Skipping question: %s", truncateContent(sentence, 50))
+			continue
+		}
+		filteredSentences = append(filteredSentences, sentence)
+	}
+
+	log.Printf("[Memory] %d sentences after filtering", len(filteredSentences))
+
+	if len(filteredSentences) == 0 {
+		return []MemoryCandidate{}, nil
+	}
+
+	// Check each sentence for novelty against existing memories
+	var candidates []MemoryCandidate
+	for _, sentence := range filteredSentences {
+		isNovel, similarity, err := m.checkNovelty(sentence, noveltyThreshold)
+		if err != nil {
+			log.Printf("[Memory] Error checking novelty: %v", err)
+			continue
+		}
+
+		if isNovel {
+			log.Printf("[Memory] Novel content (similarity=%.3f < %.3f): %s",
+				similarity, noveltyThreshold, truncateContent(sentence, 80))
+
+			// Determine category based on content analysis
+			category := m.inferCategory(sentence)
+
+			// Calculate importance based on content characteristics
+			importance := m.calculateImportance(sentence, similarity)
+
+			candidates = append(candidates, MemoryCandidate{
+				Content:    sentence,
+				Summary:    "",
+				Importance: importance,
+				Category:   category,
+			})
+		} else {
+			log.Printf("[Memory] Not novel (similarity=%.3f >= %.3f): %s",
+				similarity, noveltyThreshold, truncateContent(sentence, 50))
+		}
+	}
+
+	log.Printf("[Memory] Differential mode found %d novel candidates", len(candidates))
+	return candidates, nil
+}
+
+// extractSentences splits text into sentences
+func (m *MemoryManager) extractSentences(text string) []string {
+	// Simple sentence splitting by common terminators
+	// Handle multiple punctuation marks and newlines
+	text = strings.ReplaceAll(text, "\n", ". ")
+	text = strings.ReplaceAll(text, "\r", "")
+
+	var sentences []string
+	var current strings.Builder
+
+	for i, r := range text {
+		current.WriteRune(r)
+
+		// Check for sentence boundaries
+		isBoundary := false
+		if r == '.' || r == '!' || r == ';' {
+			// Check if it's not an abbreviation (simple check)
+			if i+1 < len(text) {
+				next := rune(text[i+1])
+				if next == ' ' || next == '\n' || next == '\t' {
+					isBoundary = true
+				}
+			} else {
+				isBoundary = true
+			}
+		}
+
+		if isBoundary {
+			sentence := strings.TrimSpace(current.String())
+			if sentence != "" && sentence != "." {
+				sentences = append(sentences, sentence)
+			}
+			current.Reset()
+		}
+	}
+
+	// Add any remaining text
+	remaining := strings.TrimSpace(current.String())
+	if remaining != "" {
+		sentences = append(sentences, remaining)
+	}
+
+	return sentences
+}
+
+// checkNovelty checks if content is novel compared to existing memories
+func (m *MemoryManager) checkNovelty(content string, threshold float64) (bool, float64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// If no existing memories, everything is novel
+	if m.collection.Count() == 0 {
+		return true, 0.0, nil
+	}
+
+	// Search for similar content
+	results, err := m.collection.Query(context.Background(), content, 1, nil, nil)
+	if err != nil {
+		return false, 0.0, err
+	}
+
+	if len(results) == 0 {
+		return true, 0.0, nil
+	}
+
+	// Get highest similarity
+	maxSimilarity := float64(results[0].Similarity)
+
+	// Novel if similarity is below threshold
+	return maxSimilarity < threshold, maxSimilarity, nil
+}
+
+// inferCategory determines the category of content based on patterns
+func (m *MemoryManager) inferCategory(content string) string {
+	lower := strings.ToLower(content)
+
+	// Check for preference indicators
+	if strings.Contains(lower, "i prefer") ||
+		strings.Contains(lower, "i like") ||
+		strings.Contains(lower, "i love") ||
+		strings.Contains(lower, "i hate") ||
+		strings.Contains(lower, "i don't like") ||
+		strings.Contains(lower, "my favorite") ||
+		strings.Contains(lower, "i usually") ||
+		strings.Contains(lower, "i always") {
+		return "preference"
+	}
+
+	// Check for instruction indicators
+	if strings.Contains(lower, "please always") ||
+		strings.Contains(lower, "make sure to") ||
+		strings.Contains(lower, "remember to") ||
+		strings.Contains(lower, "don't forget") ||
+		strings.Contains(lower, "never ") ||
+		strings.Contains(lower, "you should") ||
+		strings.Contains(lower, "you must") {
+		return "instruction"
+	}
+
+	// Check for context indicators (work/project related)
+	if strings.Contains(lower, "i'm working on") ||
+		strings.Contains(lower, "i am working on") ||
+		strings.Contains(lower, "my project") ||
+		strings.Contains(lower, "our project") ||
+		strings.Contains(lower, "the project") ||
+		strings.Contains(lower, "my team") ||
+		strings.Contains(lower, "my company") ||
+		strings.Contains(lower, "at work") {
+		return "context"
+	}
+
+	// Default to fact
+	return "fact"
+}
+
+// calculateImportance calculates importance score based on content characteristics
+func (m *MemoryManager) calculateImportance(content string, similarity float64) float64 {
+	importance := 0.5 // Base importance
+
+	// More novel = more important (inverse of similarity)
+	noveltyBonus := (1.0 - similarity) * 0.2
+	importance += noveltyBonus
+
+	lower := strings.ToLower(content)
+
+	// Boost for personal information
+	if strings.Contains(lower, "my ") || strings.Contains(lower, "i am") || strings.Contains(lower, "i'm") {
+		importance += 0.1
+	}
+
+	// Boost for instructions
+	if strings.Contains(lower, "always") || strings.Contains(lower, "never") || strings.Contains(lower, "must") {
+		importance += 0.1
+	}
+
+	// Boost for specific technical content
+	if strings.Contains(content, "://") || // URLs
+		strings.Contains(content, "@") || // Emails or handles
+		strings.Contains(lower, "api") ||
+		strings.Contains(lower, "database") ||
+		strings.Contains(lower, "password") || // (generic mention, not actual passwords)
+		strings.Contains(lower, "key") {
+		importance += 0.1
+	}
+
+	// Cap at reasonable bounds
+	if importance < m.config.MinImportance {
+		importance = m.config.MinImportance
+	}
+	if importance > 0.9 {
+		importance = 0.9
+	}
+
+	return importance
+}
+
+func (m *MemoryManager) callCompletionAPI(prompt string) (string, error) {
+	// Get main LLM provider to determine which API to use
+	mainProvider := config.GetConfig().Get().LLM.Provider
+
+	// Find an available provider for decision making
+	decisionProvider := config.GetAvailableDecisionProvider(mainProvider)
+	if decisionProvider == "" {
+		return "", fmt.Errorf("no API key available for memory decisions (tried: anthropic, openai, gemini)")
+	}
+
+	// Get the small model for the selected provider
+	// Only use configured model if DecisionProvider is explicitly set (not "auto")
+	// Otherwise, always use the appropriate small model for the auto-detected provider
+	model := ""
+	if m.config.DecisionProvider != "" && m.config.DecisionProvider != "auto" && m.config.DecisionModel != "" {
+		// User explicitly configured both provider and model - use their choice
+		model = m.config.DecisionModel
+	} else {
+		// Auto-select model based on the detected provider
+		model = config.GetSmallModel(decisionProvider)
+	}
+
+	log.Printf("[Memory] Using %s/%s for memory decision", decisionProvider, model)
+
+	switch decisionProvider {
+	case "anthropic":
+		return m.callAnthropicAPI(prompt, model)
+	case "gemini":
+		return m.callGeminiAPI(prompt, model)
+	case "openai", "openrouter", "venice":
+		return m.callOpenAICompatibleAPI(prompt, model, decisionProvider)
+	default:
+		return m.callOpenAICompatibleAPI(prompt, model, "openai")
+	}
+}
+
+// callAnthropicAPI calls the Anthropic API for memory decisions
+func (m *MemoryManager) callAnthropicAPI(prompt, model string) (string, error) {
+	apiKey := config.GetAPIKey("anthropic")
+	if apiKey == "" {
+		return "", fmt.Errorf("ANTHROPIC_API_KEY not set")
+	}
+
+	reqBody := map[string]interface{}{
+		"model":      model,
+		"max_tokens": 1024,
+		"system":     "You are a memory extraction assistant. Return only valid JSON.",
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
 		},
 	}
 
-	jsonData, err := json.Marshal(req)
+	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", err
 	}
 
-	httpReq, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	httpReq, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", err
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+openAIKey)
+	httpReq.Header.Set("x-api-key", apiKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(httpReq)
@@ -552,7 +876,143 @@ func (m *MemoryManager) callCompletionAPI(prompt string) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("OpenAI API error: %s", string(body))
+		return "", fmt.Errorf("Anthropic API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	if len(result.Content) == 0 {
+		return "", fmt.Errorf("no content returned from Anthropic")
+	}
+
+	return result.Content[0].Text, nil
+}
+
+// callGeminiAPI calls the Gemini API for memory decisions
+func (m *MemoryManager) callGeminiAPI(prompt, model string) (string, error) {
+	apiKey := config.GetAPIKey("gemini")
+	if apiKey == "" {
+		return "", fmt.Errorf("GEMINI_API_KEY not set")
+	}
+
+	reqBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]string{
+					{"text": "You are a memory extraction assistant. Return only valid JSON.\n\n" + prompt},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"temperature": 0.3,
+			"maxOutputTokens": 1024,
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Gemini API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+
+	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("no content returned from Gemini")
+	}
+
+	return result.Candidates[0].Content.Parts[0].Text, nil
+}
+
+// callOpenAICompatibleAPI calls OpenAI-compatible APIs (OpenAI, OpenRouter, Venice)
+func (m *MemoryManager) callOpenAICompatibleAPI(prompt, model, provider string) (string, error) {
+	apiKey := config.GetAPIKey(provider)
+	if apiKey == "" {
+		return "", fmt.Errorf("%s API key not set", provider)
+	}
+
+	endpoint := config.GetCompletionEndpoint(provider)
+
+	req := CompletionRequest{
+		Model:       model,
+		Temperature: 0.3,
+		Messages: []Message{
+			{Role: "system", Content: "You are a memory extraction assistant. Return only valid JSON."},
+			{Role: "user", Content: prompt},
+		},
+	}
+
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+
+	httpReq, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%s API error (status %d): %s", provider, resp.StatusCode, string(body))
 	}
 
 	var compResp CompletionResponse
@@ -561,7 +1021,7 @@ func (m *MemoryManager) callCompletionAPI(prompt string) (string, error) {
 	}
 
 	if len(compResp.Choices) == 0 {
-		return "", fmt.Errorf("no completion returned")
+		return "", fmt.Errorf("no completion returned from %s", provider)
 	}
 
 	return compResp.Choices[0].Message.Content, nil
@@ -569,6 +1029,14 @@ func (m *MemoryManager) callCompletionAPI(prompt string) (string, error) {
 
 func (m *MemoryManager) StoreMemories(candidates []MemoryCandidate, threadID, messageID string) error {
 	if !m.initialized || !m.config.Enabled {
+		log.Printf("[Memory] StoreMemories skipped: initialized=%v, enabled=%v", m.initialized, m.config.Enabled)
+		return nil
+	}
+
+	log.Printf("[Memory] StoreMemories called with %d candidates for thread %s", len(candidates), threadID)
+
+	if len(candidates) == 0 {
+		log.Printf("[Memory] No candidates to store")
 		return nil
 	}
 
@@ -576,6 +1044,7 @@ func (m *MemoryManager) StoreMemories(candidates []MemoryCandidate, threadID, me
 	defer m.mu.Unlock()
 
 	for _, candidate := range candidates {
+		log.Printf("[Memory] Processing candidate: %s (importance: %.2f, category: %s)", candidate.Content, candidate.Importance, candidate.Category)
 		// Check for duplicate or very similar memories before storing
 		if isDuplicate, err := m.checkForDuplicates(candidate.Content, candidate.Category); err != nil {
 			log.Printf("Error checking for duplicates: %v", err)
@@ -585,11 +1054,13 @@ func (m *MemoryManager) StoreMemories(candidates []MemoryCandidate, threadID, me
 			continue
 		}
 		// Generate embedding
+		log.Printf("[Memory] Generating embedding for: %s", candidate.Content[:min(50, len(candidate.Content))])
 		embedding, err := m.generateEmbedding(candidate.Content)
 		if err != nil {
-			log.Printf("Failed to generate embedding: %v", err)
+			log.Printf("[Memory] Failed to generate embedding: %v", err)
 			continue
 		}
+		log.Printf("[Memory] Embedding generated successfully (%d dimensions)", len(embedding))
 
 		// Generate ID
 		id := fmt.Sprintf("%d_%s", time.Now().UnixNano(), threadID[:8])
