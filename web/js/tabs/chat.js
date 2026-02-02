@@ -537,13 +537,15 @@ function toggleThinking(btn) {
 // Track accumulated tool input for each tool
 const toolInputAccumulator = {};
 
-function addChatToolCall(toolName, toolId) {
+function addChatToolCall(toolName, toolId, displayName) {
     const container = document.getElementById('chatMessagesContainer');
     const div = document.createElement('div');
     div.className = 'flex justify-start';
     div.id = 'chat-tool-' + toolId;
     // Reset accumulator for this tool
     toolInputAccumulator[toolId] = '';
+    // Use display name if provided, otherwise fall back to tool name
+    const shownName = displayName || toolName;
     div.innerHTML = `
         <div class="max-w-[80%] bg-purple-100 dark:bg-purple-900/50 border border-purple-200 dark:border-purple-800 rounded-xl px-4 py-2">
             <div class="flex items-center gap-2 text-sm text-purple-700 dark:text-purple-300">
@@ -551,7 +553,7 @@ function addChatToolCall(toolName, toolId) {
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
-                <span>Calling <strong>${escapeHtml(toolName)}</strong>...</span>
+                <span>Calling <strong>${escapeHtml(shownName)}</strong>...</span>
             </div>
             <div id="chat-tool-input-${toolId}" class="hidden mt-2 text-xs text-purple-600 dark:text-purple-400 font-mono bg-purple-50 dark:bg-purple-950 rounded p-2 max-h-32 overflow-y-auto whitespace-pre-wrap break-all"></div>
         </div>
@@ -648,7 +650,7 @@ function addStreamingToolContainer(toolId, toolName) {
 }
 
 function handleToolStreamEvent(data) {
-    const container = addStreamingToolContainer(data.tool_id, data.tool_name);
+    const container = addStreamingToolContainer(data.tool_id, data.tool_display_name || data.tool_name);
     if (!container) return;
 
     const progressBar = container.querySelector('.tool-progress-bar');
@@ -867,7 +869,7 @@ async function sendChatMessage(e) {
                                 assistantDiv = null;
                                 fullContent = '';
                             }
-                            addChatToolCall(data.tool_name, data.tool_id);
+                            addChatToolCall(data.tool_name, data.tool_id, data.tool_display_name);
                             break;
 
                         case 'tool_input_delta':

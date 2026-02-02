@@ -139,12 +139,17 @@ func (m *ExternalServerManager) AddStdioServer(cfg StdioMCPServerConfig) error {
 
 // addToolsFromServer adds tools from a server to the tools map (must be called with lock held)
 func (m *ExternalServerManager) addToolsFromServer(serverName, displayName string, tools []MCPToolDefinition) {
-	for _, tool := range tools {
+	for i, tool := range tools {
 		fullName := MakeExternalToolName(serverName, tool.Name)
 		// Use Title, DisplayName, or empty (will fall back to description later)
 		title := tool.Title
 		if title == "" {
 			title = tool.DisplayName
+		}
+		// Debug: log first few tools to see what fields are being returned
+		if i < 3 {
+			log.Printf("🔍 DEBUG Tool[%d]: name=%s, title=%q, displayName=%q, desc=%q",
+				i, tool.Name, tool.Title, tool.DisplayName, truncateString(tool.Description, 50))
 		}
 		m.tools[fullName] = ExternalMCPTool{
 			ServerName:        serverName,
@@ -155,11 +160,16 @@ func (m *ExternalServerManager) addToolsFromServer(serverName, displayName strin
 			Description:       tool.Description,
 			InputSchema:       tool.InputSchema,
 		}
-		if title != "" {
-			log.Printf("🔧 Tool [%s]: %s", tool.Name, title)
-		}
 	}
 	log.Printf("🔧 MCP External [%s] (%s): Loaded %d tools", serverName, displayName, len(tools))
+}
+
+// truncateString truncates a string to max length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // RemoveServer removes an external MCP server
