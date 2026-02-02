@@ -493,6 +493,19 @@ func (c *MCPClient) ListWebhooks() ([]map[string]interface{}, error) {
 // GetToolDisplayName returns the display name for an MCP tool
 // Returns empty string if tool not found
 func GetToolDisplayName(toolName string) string {
+	// Check external tools first (format: serverName__toolName)
+	if IsExternalTool(toolName) {
+		externalTool := GetExternalServerManager().GetTool(toolName)
+		if externalTool != nil {
+			// Format: "ServerDisplayName: ToolDisplayName" or just "ToolDisplayName"
+			toolDisplay := toTitleCase(externalTool.Name)
+			if externalTool.ServerDisplayName != "" && externalTool.ServerDisplayName != externalTool.ServerName {
+				return externalTool.ServerDisplayName + ": " + toolDisplay
+			}
+			return toolDisplay
+		}
+	}
+
 	cache := GetMCPCache()
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()

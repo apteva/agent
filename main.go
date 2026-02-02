@@ -847,6 +847,41 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, response)
 }
 
+// handleDiscoveredAgents returns the list of discovered peer agents
+func handleDiscoveredAgents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := config.GetConfig().Get()
+	agentsConfig := cfg.Agents
+
+	response := map[string]interface{}{
+		"enabled":   agentsConfig != nil && agentsConfig.Enabled,
+		"mode":      "",
+		"group":     "",
+		"running":   false,
+		"agents":    []config.AgentInfo{},
+	}
+
+	if agentsConfig != nil {
+		response["mode"] = agentsConfig.Mode
+		response["group"] = agentsConfig.Group
+	}
+
+	if discoveryService != nil {
+		response["running"] = discoveryService.IsRunning()
+		if discoveryService.IsRunning() {
+			agents := discoveryService.GetAgents()
+			response["agents"] = agents
+			response["count"] = len(agents)
+		}
+	}
+
+	sendJSON(w, http.StatusOK, response)
+}
+
 // handleSubscriptions handles GET /subscriptions - lists all webhook subscriptions
 func handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -3492,6 +3527,9 @@ func main() {
 	mux.HandleFunc("/scheduler/start", scheduler.HandleSchedulerStart)
 	mux.HandleFunc("/scheduler/stop", scheduler.HandleSchedulerStop)
 	mux.HandleFunc("/scheduler/jobs", scheduler.HandleSchedulerJobs)
+
+	// Discovery endpoint - returns discovered peer agents
+	mux.HandleFunc("/discovery/agents", handleDiscoveredAgents)
 
 	// Subscriptions endpoint
 	mux.HandleFunc("/subscriptions", handleSubscriptions)

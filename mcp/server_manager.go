@@ -28,11 +28,12 @@ type ExternalServerManager struct {
 
 // ExternalMCPTool represents a tool from an external MCP server
 type ExternalMCPTool struct {
-	ServerName  string                 `json:"server_name"`
-	Name        string                 `json:"name"`
-	FullName    string                 `json:"full_name"` // "server__tool"
-	Description string                 `json:"description"`
-	InputSchema map[string]interface{} `json:"inputSchema"`
+	ServerName        string                 `json:"server_name"`
+	ServerDisplayName string                 `json:"server_display_name"` // From MCP server's ServerInfo.Name
+	Name              string                 `json:"name"`
+	FullName          string                 `json:"full_name"` // "server__tool"
+	Description       string                 `json:"description"`
+	InputSchema       map[string]interface{} `json:"inputSchema"`
 }
 
 // Global external server manager
@@ -76,12 +77,18 @@ func (m *ExternalServerManager) AddServer(cfg StandardMCPServerConfig) error {
 
 	m.httpClients[cfg.Name] = client
 
+	// Get display name from server's self-reported info
+	displayName := cfg.Name
+	if serverInfo := client.ServerInfo(); serverInfo != nil && serverInfo.Name != "" {
+		displayName = serverInfo.Name
+	}
+
 	// Load tools from this server
 	tools, err := client.ListTools()
 	if err != nil {
 		log.Printf("⚠️ MCP HTTP [%s]: Failed to list tools: %v", cfg.Name, err)
 	} else {
-		m.addToolsFromServer(cfg.Name, tools)
+		m.addToolsFromServer(cfg.Name, displayName, tools)
 	}
 
 	return nil
@@ -112,30 +119,37 @@ func (m *ExternalServerManager) AddStdioServer(cfg StdioMCPServerConfig) error {
 
 	m.stdioClients[cfg.Name] = client
 
+	// Get display name from server's self-reported info
+	displayName := cfg.Name
+	if serverInfo := client.ServerInfo(); serverInfo != nil && serverInfo.Name != "" {
+		displayName = serverInfo.Name
+	}
+
 	// Load tools from this server
 	tools, err := client.ListTools()
 	if err != nil {
 		log.Printf("⚠️ MCP Stdio [%s]: Failed to list tools: %v", cfg.Name, err)
 	} else {
-		m.addToolsFromServer(cfg.Name, tools)
+		m.addToolsFromServer(cfg.Name, displayName, tools)
 	}
 
 	return nil
 }
 
 // addToolsFromServer adds tools from a server to the tools map (must be called with lock held)
-func (m *ExternalServerManager) addToolsFromServer(serverName string, tools []MCPToolDefinition) {
+func (m *ExternalServerManager) addToolsFromServer(serverName, displayName string, tools []MCPToolDefinition) {
 	for _, tool := range tools {
 		fullName := MakeExternalToolName(serverName, tool.Name)
 		m.tools[fullName] = ExternalMCPTool{
-			ServerName:  serverName,
-			Name:        tool.Name,
-			FullName:    fullName,
-			Description: tool.Description,
-			InputSchema: tool.InputSchema,
+			ServerName:        serverName,
+			ServerDisplayName: displayName,
+			Name:              tool.Name,
+			FullName:          fullName,
+			Description:       tool.Description,
+			InputSchema:       tool.InputSchema,
 		}
 	}
-	log.Printf("🔧 MCP External [%s]: Loaded %d tools", serverName, len(tools))
+	log.Printf("🔧 MCP External [%s] (%s): Loaded %d tools", serverName, displayName, len(tools))
 }
 
 // RemoveServer removes an external MCP server
@@ -243,12 +257,19 @@ func (m *ExternalServerManager) RefreshServer(name string) error {
 
 	var tools []MCPToolDefinition
 	var err error
+	displayName := name
 
 	// Try HTTP client
 	if client, exists := m.httpClients[name]; exists {
 		tools, err = client.ListTools()
+		if serverInfo := client.ServerInfo(); serverInfo != nil && serverInfo.Name != "" {
+			displayName = serverInfo.Name
+		}
 	} else if client, exists := m.stdioClients[name]; exists {
 		tools, err = client.ListTools()
+		if serverInfo := client.ServerInfo(); serverInfo != nil && serverInfo.Name != "" {
+			displayName = serverInfo.Name
+		}
 	} else {
 		return fmt.Errorf("server '%s' not connected", name)
 	}
@@ -260,15 +281,16 @@ func (m *ExternalServerManager) RefreshServer(name string) error {
 	for _, tool := range tools {
 		fullName := MakeExternalToolName(name, tool.Name)
 		m.tools[fullName] = ExternalMCPTool{
-			ServerName:  name,
-			Name:        tool.Name,
-			FullName:    fullName,
-			Description: tool.Description,
-			InputSchema: tool.InputSchema,
+			ServerName:        name,
+			ServerDisplayName: displayName,
+			Name:              tool.Name,
+			FullName:          fullName,
+			Description:       tool.Description,
+			InputSchema:       tool.InputSchema,
 		}
 	}
 
-	log.Printf("🔧 MCP External [%s]: Refreshed %d tools", name, len(tools))
+	log.Printf("🔧 MCP External [%s] (%s): Refreshed %d tools", name, displayName, len(tools))
 	return nil
 }
 

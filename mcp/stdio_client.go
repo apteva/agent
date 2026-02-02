@@ -384,6 +384,11 @@ func (c *StdioMCPClient) GetServerInfo() *ServerInfo {
 	return c.serverInfo
 }
 
+// ServerInfo returns server info (alias for GetServerInfo for interface consistency)
+func (c *StdioMCPClient) ServerInfo() *ServerInfo {
+	return c.GetServerInfo()
+}
+
 // IsInitialized returns whether the client is initialized
 func (c *StdioMCPClient) IsInitialized() bool {
 	c.mu.Lock()
