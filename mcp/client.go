@@ -497,8 +497,13 @@ func GetToolDisplayName(toolName string) string {
 	if IsExternalTool(toolName) {
 		externalTool := GetExternalServerManager().GetTool(toolName)
 		if externalTool != nil {
-			// Format: "ServerDisplayName: ToolDisplayName" or just "ToolDisplayName"
-			toolDisplay := toTitleCase(externalTool.Name)
+			// Use description if available (much nicer than programmatic name)
+			toolDisplay := getShortDescription(externalTool.Description)
+			if toolDisplay == "" {
+				// Fall back to title-cased name
+				toolDisplay = toTitleCase(externalTool.Name)
+			}
+			// Optionally prefix with server display name
 			if externalTool.ServerDisplayName != "" && externalTool.ServerDisplayName != externalTool.ServerName {
 				return externalTool.ServerDisplayName + ": " + toolDisplay
 			}
@@ -547,4 +552,45 @@ func toTitleCase(s string) string {
 		}
 	}
 	return string(words)
+}
+
+// getShortDescription extracts a short display name from a tool description
+// Returns first sentence or truncated string (max 50 chars)
+func getShortDescription(desc string) string {
+	if desc == "" {
+		return ""
+	}
+
+	// Find first sentence (period, question mark, or newline)
+	for i, c := range desc {
+		if c == '.' || c == '?' || c == '\n' {
+			if i > 0 && i <= 60 {
+				return desc[:i]
+			}
+			break
+		}
+		// Cap at 50 chars
+		if i >= 50 {
+			// Find last space before 50 chars
+			for j := i; j > 30; j-- {
+				if desc[j] == ' ' {
+					return desc[:j] + "..."
+				}
+			}
+			return desc[:50] + "..."
+		}
+	}
+
+	// Description is short enough, use as-is
+	if len(desc) <= 60 {
+		return desc
+	}
+
+	// Truncate at word boundary
+	for i := 50; i > 30; i-- {
+		if desc[i] == ' ' {
+			return desc[:i] + "..."
+		}
+	}
+	return desc[:50] + "..."
 }
