@@ -67,6 +67,7 @@ func init() {
 	// Register built-in tools
 	globalRegistry.RegisterTool(&SendNotificationTool{})
 	globalRegistry.RegisterTool(&GetTimeTool{})
+	globalRegistry.RegisterTool(&PingTool{}) // No-input tool for testing
 	globalRegistry.RegisterTool(&WaitToolWrapper{})
 	globalRegistry.RegisterTool(&GenerateTestImageTool{})
 	globalRegistry.RegisterTool(&AnalyzeImageURLTool{})
