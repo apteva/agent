@@ -228,6 +228,18 @@ func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]i
 	m.mu.RLock()
 	tool, exists := m.tools[fullName]
 	if !exists {
+		// Try reverse lookup: Claude may have received a sanitized name
+		// Look for a tool whose sanitized name matches the requested name
+		for originalName, t := range m.tools {
+			if sanitizeToolName(originalName) == fullName {
+				tool = t
+				exists = true
+				log.Printf("🔧 MCP: Matched sanitized tool name '%s' to original '%s'", fullName, originalName)
+				break
+			}
+		}
+	}
+	if !exists {
 		m.mu.RUnlock()
 		return nil, fmt.Errorf("tool '%s' not found", fullName)
 	}
@@ -420,4 +432,25 @@ func ParseExternalToolName(fullName string) (serverName, toolName string) {
 // MakeExternalToolName creates a full tool name from server and tool names
 func MakeExternalToolName(serverName, toolName string) string {
 	return serverName + ExternalToolSeparator + toolName
+}
+
+// sanitizeToolName ensures a tool name matches Anthropic's pattern ^[a-zA-Z0-9_-]{1,128}$
+// Invalid characters are replaced with underscores
+func sanitizeToolName(name string) string {
+	sanitized := make([]byte, 0, len(name))
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			sanitized = append(sanitized, c)
+		} else {
+			sanitized = append(sanitized, '_')
+		}
+	}
+	if len(sanitized) > 128 {
+		sanitized = sanitized[:128]
+	}
+	if len(sanitized) == 0 {
+		return "unnamed_tool"
+	}
+	return string(sanitized)
 }
