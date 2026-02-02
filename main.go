@@ -3227,9 +3227,21 @@ func authMiddleware(next http.Handler) http.Handler {
 		whitelistedPaths := []string{
 			"/health",
 			"/debug/api-key", // localhost-only, has its own protection
+			"/debug",         // debug UI page
+			"/",              // main UI page
 		}
+		whitelistedPrefixes := []string{
+			"/web/", // static assets (JS, CSS)
+		}
+
 		for _, path := range whitelistedPaths {
 			if r.URL.Path == path {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		for _, prefix := range whitelistedPrefixes {
+			if strings.HasPrefix(r.URL.Path, prefix) {
 				next.ServeHTTP(w, r)
 				return
 			}
