@@ -183,3 +183,8 @@ func GetTool(name string) (Tool, error) {
 func GetToolsForNames(names []string) []ToolDefinition {
 	return globalRegistry.GetToolsForNames(names)
 }
+
+// ListAllTools returns all registered tools with full details
+func ListAllTools() []ToolDefinition {
+	return globalRegistry.ListTools()
+}

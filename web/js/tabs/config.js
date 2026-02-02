@@ -624,6 +624,7 @@ function loadToolsConfig() {
     // Check agent tools
     document.getElementById('toolSendNotification').checked = tools.includes('send_notification');
     document.getElementById('toolGetTime').checked = tools.includes('get_time');
+    document.getElementById('toolPing').checked = tools.includes('ping');
     document.getElementById('toolWait').checked = tools.includes('wait');
     document.getElementById('toolGenerateTestImage').checked = tools.includes('generate_test_image');
     document.getElementById('toolAnalyzeImageUrl').checked = tools.includes('analyze_image_url');
@@ -661,6 +662,7 @@ async function saveToolsConfig() {
     const tools = [];
     if (document.getElementById('toolSendNotification').checked) tools.push('send_notification');
     if (document.getElementById('toolGetTime').checked) tools.push('get_time');
+    if (document.getElementById('toolPing').checked) tools.push('ping');
     if (document.getElementById('toolWait').checked) tools.push('wait');
     if (document.getElementById('toolGenerateTestImage').checked) tools.push('generate_test_image');
     if (document.getElementById('toolAnalyzeImageUrl').checked) tools.push('analyze_image_url');

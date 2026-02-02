@@ -882,6 +882,40 @@ func handleDiscoveredAgents(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, response)
 }
 
+// handleCustomTools handles GET /tools/custom - lists all available custom tools
+func handleCustomTools(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	allTools := tools.ListAllTools()
+
+	// Convert to response format with display name
+	type ToolInfo struct {
+		Name        string                 `json:"name"`
+		DisplayName string                 `json:"display_name"`
+		Description string                 `json:"description"`
+		InputSchema map[string]interface{} `json:"input_schema"`
+	}
+
+	toolList := make([]ToolInfo, len(allTools))
+	for i, t := range allTools {
+		toolList[i] = ToolInfo{
+			Name:        t.Name,
+			DisplayName: t.DisplayName,
+			Description: t.Description,
+			InputSchema: t.InputSchema,
+		}
+	}
+
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"tools":   toolList,
+		"count":   len(toolList),
+	})
+}
+
 // handleSubscriptions handles GET /subscriptions - lists all webhook subscriptions
 func handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -3530,6 +3564,9 @@ func main() {
 
 	// Discovery endpoint - returns discovered peer agents
 	mux.HandleFunc("/discovery/agents", handleDiscoveredAgents)
+
+	// Custom tools endpoint
+	mux.HandleFunc("/tools/custom", handleCustomTools)
 
 	// Subscriptions endpoint
 	mux.HandleFunc("/subscriptions", handleSubscriptions)
