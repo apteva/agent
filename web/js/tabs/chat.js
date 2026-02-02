@@ -10,9 +10,11 @@ let currentChunkDetail = null; // Currently viewed chunk in modal
 // Setup mode functions
 async function toggleSetupMode(enabled) {
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (API_KEY) headers['X-API-Key'] = API_KEY;
         const response = await fetch('/config', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({ setup_mode: enabled })
         });
 
@@ -44,7 +46,9 @@ async function toggleSetupMode(enabled) {
 // Load initial setup mode state
 async function loadSetupModeState() {
     try {
-        const response = await fetch('/config');
+        const headers = {};
+        if (API_KEY) headers['X-API-Key'] = API_KEY;
+        const response = await fetch('/config', { headers });
         const config = await response.json();
         const toggle = document.getElementById('setupModeToggle');
         if (toggle && config.setup_mode !== undefined) {
@@ -803,9 +807,11 @@ async function sendChatMessage(e) {
     let fullContent = '';
 
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (API_KEY) headers['X-API-Key'] = API_KEY;
         const response = await fetch('/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({
                 message: messageContent,
                 thread_id: chatThreadId

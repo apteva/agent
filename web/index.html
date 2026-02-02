@@ -114,6 +114,9 @@
                     <button onclick="refreshCurrentTab()" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
                         🔄 Refresh
                     </button>
+                    <button onclick="showApiKeyModal()" id="apiKeyButton" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Configure API Key">
+                        🔑
+                    </button>
                     <button onclick="toggleDarkMode()" id="darkModeToggle" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
                         🌙
                     </button>
@@ -2098,6 +2101,38 @@
         </main>
     </div>
 
+    <!-- API Key Modal -->
+    <div id="apiKeyModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+            <h3 class="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100">API Key Configuration</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                Enter the API key to authenticate with the agent. This is stored locally in your browser.
+            </p>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">API Key</label>
+                    <input type="password" id="apiKeyInput"
+                        class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        placeholder="Enter your API key">
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="apiKeyStatus" class="text-sm"></span>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="clearApiKeyAndClose()" class="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                    Clear Key
+                </button>
+                <button onclick="hideApiKeyModal()" class="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                    Cancel
+                </button>
+                <button onclick="saveApiKey()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/web/js/common.js"></script>
@@ -2192,6 +2227,79 @@
                 addEventToList(event);
             }
         }
+
+        // API Key Modal functions
+        function showApiKeyModal() {
+            document.getElementById('apiKeyModal').classList.remove('hidden');
+            const input = document.getElementById('apiKeyInput');
+            input.value = getApiKey();
+            input.focus();
+            updateApiKeyStatus();
+        }
+
+        function hideApiKeyModal() {
+            document.getElementById('apiKeyModal').classList.add('hidden');
+        }
+
+        function saveApiKey() {
+            const key = document.getElementById('apiKeyInput').value.trim();
+            setApiKey(key);
+            updateApiKeyButtonState();
+            hideApiKeyModal();
+            // Reconnect event stream with new key
+            connectEventStream(handleEvent);
+            showToast(key ? 'API key saved' : 'API key cleared', 'success');
+        }
+
+        function clearApiKeyAndClose() {
+            clearApiKey();
+            document.getElementById('apiKeyInput').value = '';
+            updateApiKeyButtonState();
+            hideApiKeyModal();
+            connectEventStream(handleEvent);
+            showToast('API key cleared', 'info');
+        }
+
+        function updateApiKeyStatus() {
+            const status = document.getElementById('apiKeyStatus');
+            const key = getApiKey();
+            if (key) {
+                status.innerHTML = '<span class="text-green-600 dark:text-green-400">✓ API key configured</span>';
+            } else {
+                status.innerHTML = '<span class="text-slate-400">No API key set</span>';
+            }
+        }
+
+        function updateApiKeyButtonState() {
+            const btn = document.getElementById('apiKeyButton');
+            const key = getApiKey();
+            if (key) {
+                btn.classList.add('text-green-600', 'dark:text-green-400');
+                btn.classList.remove('text-slate-600', 'dark:text-slate-300');
+            } else {
+                btn.classList.remove('text-green-600', 'dark:text-green-400');
+                btn.classList.add('text-slate-600', 'dark:text-slate-300');
+            }
+        }
+
+        // Initialize API key button state on load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateApiKeyButtonState();
+        });
+
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                hideApiKeyModal();
+            }
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('apiKeyModal').addEventListener('click', (e) => {
+            if (e.target.id === 'apiKeyModal') {
+                hideApiKeyModal();
+            }
+        });
     </script>
 </body>
 </html>

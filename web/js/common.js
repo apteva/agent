@@ -2,6 +2,23 @@
 
 const API_BASE = '';
 
+// API Key for authentication - loaded from localStorage or can be set via setApiKey()
+let API_KEY = localStorage.getItem('agent_api_key') || '';
+
+function setApiKey(key) {
+    API_KEY = key;
+    localStorage.setItem('agent_api_key', key);
+}
+
+function getApiKey() {
+    return API_KEY;
+}
+
+function clearApiKey() {
+    API_KEY = '';
+    localStorage.removeItem('agent_api_key');
+}
+
 // ========== Dark Mode ==========
 
 function toggleDarkMode() {
@@ -28,9 +45,16 @@ function initDarkMode() {
 
 async function makeRequest(endpoint, method = 'GET', body = null) {
     try {
+        const headers = { 'Content-Type': 'application/json' };
+
+        // Add API key if configured
+        if (API_KEY) {
+            headers['X-API-Key'] = API_KEY;
+        }
+
         const options = {
             method,
-            headers: { 'Content-Type': 'application/json' }
+            headers
         };
         if (body) options.body = JSON.stringify(body);
 
@@ -302,7 +326,9 @@ function connectEventStream(onEvent) {
         eventSource.close();
     }
 
-    eventSource = new EventSource(`${API_BASE}/events`);
+    // Include API key as query param (EventSource doesn't support custom headers)
+    const url = API_KEY ? `${API_BASE}/events?api_key=${encodeURIComponent(API_KEY)}` : `${API_BASE}/events`;
+    eventSource = new EventSource(url);
 
     // Handler for parsing and forwarding events
     const handleEvent = (e) => {

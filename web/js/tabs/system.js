@@ -76,7 +76,9 @@ async function exportData() {
     showToast('Preparing export...', 'info');
 
     try {
-        const response = await fetch('/admin/export');
+        const headers = {};
+        if (API_KEY) headers['X-API-Key'] = API_KEY;
+        const response = await fetch('/admin/export', { headers });
         if (response.ok) {
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);

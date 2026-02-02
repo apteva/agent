@@ -3181,6 +3181,47 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, fmt.Errorf("responseWriter does not implement http.Hijacker")
 }
 
+// authMiddleware checks for valid API key on protected endpoints
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get required API key from environment
+		requiredKey := os.Getenv("AGENT_API_KEY")
+
+		// If no API key configured, auth is disabled (development mode)
+		if requiredKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Whitelist certain endpoints that don't require auth
+		whitelistedPaths := []string{
+			"/health",
+		}
+		for _, path := range whitelistedPaths {
+			if r.URL.Path == path {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		// Check API key from header
+		providedKey := r.Header.Get("X-API-Key")
+		if providedKey == "" {
+			// Also check query parameter for WebSocket/SSE connections
+			providedKey = r.URL.Query().Get("api_key")
+		}
+
+		if providedKey != requiredKey {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error": "Unauthorized", "message": "Invalid or missing API key"}`))
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // loggingMiddleware logs HTTP requests with color-coded output
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3641,7 +3682,10 @@ func main() {
 
 	log.Printf("✅ HTTP server ready in %v - listening on %s", time.Since(startupTime), port)
 
-	if err := http.ListenAndServe(port, loggingMiddleware(mux)); err != nil {
+	// Chain middleware: auth -> logging -> handler
+	handler := authMiddleware(loggingMiddleware(mux))
+
+	if err := http.ListenAndServe(port, handler); err != nil {
 		log.Fatal(err)
 	}
 }
