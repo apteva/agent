@@ -77,7 +77,7 @@ async function exportData() {
 
     try {
         const headers = {};
-        if (API_KEY) headers['X-API-Key'] = API_KEY;
+        if (getApiKey()) headers['X-API-Key'] = getApiKey();
         const response = await fetch('/admin/export', { headers });
         if (response.ok) {
             const blob = await response.blob();

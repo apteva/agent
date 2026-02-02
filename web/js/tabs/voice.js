@@ -139,8 +139,8 @@ async function startVoiceSession() {
         // Build WebSocket URL with API key if configured
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         let wsUrl = `${protocol}//${window.location.host}/voice`;
-        if (API_KEY) {
-            wsUrl += `?api_key=${encodeURIComponent(API_KEY)}`;
+        if (getApiKey()) {
+            wsUrl += `?api_key=${encodeURIComponent(getApiKey())}`;
         }
 
         voiceWs = new WebSocket(wsUrl);
