@@ -2152,37 +2152,13 @@
     <script src="/web/js/tabs/usage.js"></script>
 
     <script>
-        // Auto-fetch API key from localhost endpoint (for development)
-        async function autoConfigureApiKey() {
-            // Skip if already configured
-            if (getApiKey()) {
-                updateApiKeyButtonState();
-                return;
-            }
-
-            try {
-                const response = await fetch('/debug/api-key');
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.api_key) {
-                        setApiKey(data.api_key);
-                        updateApiKeyButtonState();
-                        console.log('API key auto-configured from server');
-                    }
-                }
-            } catch (e) {
-                // Silently fail - user can configure manually
-                console.log('Could not auto-configure API key:', e.message);
-            }
-        }
-
         // Initialize on page load
-        document.addEventListener('DOMContentLoaded', async () => {
+        document.addEventListener('DOMContentLoaded', () => {
             // Initialize dark mode from localStorage/system preference
             initDarkMode();
 
-            // Auto-configure API key for local development
-            await autoConfigureApiKey();
+            // Update API key button state (key stored in localStorage)
+            updateApiKeyButtonState();
 
             // Load initial data (providers first, then config)
             initConfigTab();
