@@ -187,15 +187,18 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 				processedMsg.Content = blocks
 			} else if contentSlice, ok := msg.Content.([]interface{}); ok {
 				// Handle raw JSON content (from DB or previous API response)
-				for _, item := range contentSlice {
+				log.Printf("🔍 Processing []interface{} content with %d items for role=%s", len(contentSlice), msg.Role)
+				for i, item := range contentSlice {
 					if blockMap, ok := item.(map[string]interface{}); ok {
-						if blockMap["type"] == "tool_use" {
-							// Ensure input field exists for tool_use blocks
-							if _, hasInput := blockMap["input"]; !hasInput {
+						blockType, _ := blockMap["type"].(string)
+						if blockType == "tool_use" {
+							name, _ := blockMap["name"].(string)
+							_, hasInput := blockMap["input"]
+							log.Printf("🔍 tool_use block[%d]: name=%s, hasInput=%v", i, name, hasInput)
+							// ALWAYS set input for tool_use blocks
+							if !hasInput {
 								blockMap["input"] = map[string]interface{}{}
-								if name, _ := blockMap["name"].(string); name != "" {
-									log.Printf("⚠️  Fixed missing input for tool_use block (raw JSON): %s", name)
-								}
+								log.Printf("⚠️  Fixed missing input for tool_use block: %s", name)
 							}
 						}
 					}
@@ -235,6 +238,37 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 	reqBody, err := json.Marshal(anthropicReq)
 	if err != nil {
 		return nil, fmt.Errorf("error preparing request: %w", err)
+	}
+
+	// CRITICAL FIX: Ensure all tool_use blocks have input field
+	// This is the final safety net - fix the JSON directly before sending
+	var reqMap map[string]interface{}
+	if err := json.Unmarshal(reqBody, &reqMap); err == nil {
+		modified := false
+		if messages, ok := reqMap["messages"].([]interface{}); ok {
+			for _, msg := range messages {
+				if msgMap, ok := msg.(map[string]interface{}); ok {
+					if content, ok := msgMap["content"].([]interface{}); ok {
+						for _, block := range content {
+							if blockMap, ok := block.(map[string]interface{}); ok {
+								if blockMap["type"] == "tool_use" {
+									if _, hasInput := blockMap["input"]; !hasInput {
+										blockMap["input"] = map[string]interface{}{}
+										name, _ := blockMap["name"].(string)
+										log.Printf("🔧 FINAL FIX: Added missing input to tool_use: %s", name)
+										modified = true
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if modified {
+			reqBody, _ = json.Marshal(reqMap)
+			log.Printf("🔧 Re-marshaled request after fixing tool_use input fields")
+		}
 	}
 
 	// DEBUG: Log full request to check tool_use blocks
