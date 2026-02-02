@@ -530,7 +530,7 @@ func GetToolDisplayName(toolName string) string {
 	return ""
 }
 
-// toTitleCase converts "tool-name" to "Tool Name"
+// toTitleCase converts "TOOL_NAME" or "tool-name" to "Tool Name"
 func toTitleCase(s string) string {
 	words := make([]byte, 0, len(s))
 	capitalizeNext := true
@@ -539,12 +539,21 @@ func toTitleCase(s string) string {
 		if c == '-' || c == '_' {
 			words = append(words, ' ')
 			capitalizeNext = true
-		} else if capitalizeNext && c >= 'a' && c <= 'z' {
-			words = append(words, c-32)
+		} else if capitalizeNext {
+			// Capitalize: uppercase if lowercase, keep if already upper
+			if c >= 'a' && c <= 'z' {
+				words = append(words, c-32)
+			} else {
+				words = append(words, c)
+			}
 			capitalizeNext = false
 		} else {
-			words = append(words, c)
-			capitalizeNext = false
+			// Lowercase: convert uppercase to lowercase
+			if c >= 'A' && c <= 'Z' {
+				words = append(words, c+32)
+			} else {
+				words = append(words, c)
+			}
 		}
 	}
 	return string(words)
