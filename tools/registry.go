@@ -3,7 +3,42 @@ package tools
 import (
 	"fmt"
 	"log"
+	"regexp"
 )
+
+// validToolNameRegex matches Anthropic's required pattern: ^[a-zA-Z0-9_-]{1,128}$
+var validToolNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
+
+// SanitizeToolName ensures a tool name matches the Anthropic API pattern ^[a-zA-Z0-9_-]{1,128}$
+// Invalid characters are replaced with underscores, and the name is truncated to 128 chars
+func SanitizeToolName(name string) string {
+	if validToolNameRegex.MatchString(name) {
+		return name
+	}
+
+	// Replace invalid characters with underscores
+	sanitized := make([]byte, 0, len(name))
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+			sanitized = append(sanitized, c)
+		} else {
+			sanitized = append(sanitized, '_')
+		}
+	}
+
+	// Truncate to 128 characters
+	if len(sanitized) > 128 {
+		sanitized = sanitized[:128]
+	}
+
+	// Ensure not empty
+	if len(sanitized) == 0 {
+		return "unnamed_tool"
+	}
+
+	return string(sanitized)
+}
 
 type Tool interface {
 	Name() string

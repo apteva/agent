@@ -72,9 +72,16 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 	// Combine custom and built-in tools
 	var allTools []interface{}
 
-	// Add custom tools
+	// Add custom tools with sanitized names
 	for _, toolDef := range customTools {
-		allTools = append(allTools, toolDef)
+		// Sanitize tool name to match Anthropic's pattern ^[a-zA-Z0-9_-]{1,128}$
+		sanitizedDef := tools.ToolDefinition{
+			Name:        tools.SanitizeToolName(toolDef.Name),
+			DisplayName: toolDef.DisplayName,
+			Description: toolDef.Description,
+			InputSchema: toolDef.InputSchema,
+		}
+		allTools = append(allTools, sanitizedDef)
 	}
 
 	// Add built-in tools (convert from config format to API format)
