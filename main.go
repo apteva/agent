@@ -2517,6 +2517,36 @@ func handleWebInterface(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(web.EmbeddedChatHTML))
 }
 
+// handleDebugApiKey returns the API key for localhost requests only
+// This allows the debug UI to auto-configure when running locally
+func handleDebugApiKey(w http.ResponseWriter, r *http.Request) {
+	// Only allow from localhost
+	remoteIP := r.RemoteAddr
+	// Extract IP from "IP:port" format
+	if idx := strings.LastIndex(remoteIP, ":"); idx != -1 {
+		remoteIP = remoteIP[:idx]
+	}
+	// Handle IPv6 localhost formats
+	remoteIP = strings.Trim(remoteIP, "[]")
+
+	isLocalhost := remoteIP == "127.0.0.1" || remoteIP == "::1" || remoteIP == "localhost"
+
+	if !isLocalhost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "API key endpoint only accessible from localhost",
+		})
+		return
+	}
+
+	apiKey := os.Getenv("AGENT_API_KEY")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"api_key": apiKey,
+	})
+}
+
 // handleDebugInterface serves the full debug UI (development mode only)
 func handleDebugInterface(w http.ResponseWriter, r *http.Request) {
 	// Check if web interface file exists (development mode)
@@ -3196,6 +3226,7 @@ func authMiddleware(next http.Handler) http.Handler {
 		// Whitelist certain endpoints that don't require auth
 		whitelistedPaths := []string{
 			"/health",
+			"/debug/api-key", // localhost-only, has its own protection
 		}
 		for _, path := range whitelistedPaths {
 			if r.URL.Path == path {
@@ -3652,6 +3683,7 @@ func main() {
 
 	// Serve web interface (development only)
 	mux.HandleFunc("/debug", handleDebugInterface)
+	mux.HandleFunc("/debug/api-key", handleDebugApiKey)
 	mux.HandleFunc("/", handleWebInterface)
 
 	// Get port from environment or use default
