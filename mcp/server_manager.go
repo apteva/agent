@@ -31,6 +31,7 @@ type ExternalMCPTool struct {
 	ServerName        string                 `json:"server_name"`
 	ServerDisplayName string                 `json:"server_display_name"` // From MCP server's ServerInfo.Name
 	Name              string                 `json:"name"`
+	Title             string                 `json:"title"`     // Human-readable title (e.g., "Add email for auth user")
 	FullName          string                 `json:"full_name"` // "server__tool"
 	Description       string                 `json:"description"`
 	InputSchema       map[string]interface{} `json:"inputSchema"`
@@ -140,13 +141,22 @@ func (m *ExternalServerManager) AddStdioServer(cfg StdioMCPServerConfig) error {
 func (m *ExternalServerManager) addToolsFromServer(serverName, displayName string, tools []MCPToolDefinition) {
 	for _, tool := range tools {
 		fullName := MakeExternalToolName(serverName, tool.Name)
+		// Use Title, DisplayName, or empty (will fall back to description later)
+		title := tool.Title
+		if title == "" {
+			title = tool.DisplayName
+		}
 		m.tools[fullName] = ExternalMCPTool{
 			ServerName:        serverName,
 			ServerDisplayName: displayName,
 			Name:              tool.Name,
+			Title:             title,
 			FullName:          fullName,
 			Description:       tool.Description,
 			InputSchema:       tool.InputSchema,
+		}
+		if title != "" {
+			log.Printf("🔧 Tool [%s]: %s", tool.Name, title)
 		}
 	}
 	log.Printf("🔧 MCP External [%s] (%s): Loaded %d tools", serverName, displayName, len(tools))
@@ -280,10 +290,15 @@ func (m *ExternalServerManager) RefreshServer(name string) error {
 
 	for _, tool := range tools {
 		fullName := MakeExternalToolName(name, tool.Name)
+		title := tool.Title
+		if title == "" {
+			title = tool.DisplayName
+		}
 		m.tools[fullName] = ExternalMCPTool{
 			ServerName:        name,
 			ServerDisplayName: displayName,
 			Name:              tool.Name,
+			Title:             title,
 			FullName:          fullName,
 			Description:       tool.Description,
 			InputSchema:       tool.InputSchema,

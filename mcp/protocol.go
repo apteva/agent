@@ -112,6 +112,8 @@ type ToolsListResult struct {
 // MCPToolDefinition represents a tool in standard MCP format
 type MCPToolDefinition struct {
 	Name        string                 `json:"name"`
+	Title       string                 `json:"title,omitempty"`       // Human-readable title (e.g., "Add email for auth user")
+	DisplayName string                 `json:"displayName,omitempty"` // Alternative display name field
 	Description string                 `json:"description,omitempty"`
 	InputSchema map[string]interface{} `json:"inputSchema"`
 }

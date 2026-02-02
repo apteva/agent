@@ -497,8 +497,13 @@ func GetToolDisplayName(toolName string) string {
 	if IsExternalTool(toolName) {
 		externalTool := GetExternalServerManager().GetTool(toolName)
 		if externalTool != nil {
-			// Use description if available (much nicer than programmatic name)
-			toolDisplay := getShortDescription(externalTool.Description)
+			// Priority: Title > Description > Title-cased name
+			var toolDisplay string
+			if externalTool.Title != "" {
+				toolDisplay = externalTool.Title
+			} else if externalTool.Description != "" {
+				toolDisplay = getShortDescription(externalTool.Description)
+			}
 			if toolDisplay == "" {
 				// Fall back to title-cased name
 				toolDisplay = toTitleCase(externalTool.Name)
