@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/apteva/agent/config"
 )
 
 // StandardMCPClient connects to standard MCP servers using Streamable HTTP transport
@@ -149,7 +151,7 @@ func (c *StandardMCPClient) Initialize() error {
 		Capabilities:    ClientCapabilities{},
 		ClientInfo: ClientInfo{
 			Name:    "apteva-agent",
-			Version: "1.33.29",
+			Version: config.GetVersion(),
 		},
 	}
 

@@ -372,7 +372,8 @@ func GetConfig() *Config {
 	return globalConfig
 }
 
-func getVersion() string {
+// GetVersion returns the agent version from VERSION file
+func GetVersion() string {
 	data, err := os.ReadFile("VERSION")
 	if err != nil {
 		return "1.0.0" // fallback
@@ -502,7 +503,7 @@ func (c *Config) loadDefaults() {
 			CleanupOrphans: true,                  // Remove orphaned files
 			AllowedTypes:   []string{"image", "document", "audio"}, // Store images, documents, and audio
 		},
-		Version: getVersion(),
+		Version: GetVersion(),
 	}
 }
 

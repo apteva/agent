@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/apteva/agent/config"
 )
 
 // StdioMCPClient connects to MCP servers using stdio transport (stdin/stdout)
@@ -270,7 +272,7 @@ func (c *StdioMCPClient) Initialize() error {
 		},
 		ClientInfo: ClientInfo{
 			Name:    "apteva-agent",
-			Version: "1.0.0",
+			Version: config.GetVersion(),
 		},
 	}
 
