@@ -185,9 +185,25 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 					}
 				}
 				processedMsg.Content = blocks
+			} else if contentSlice, ok := msg.Content.([]interface{}); ok {
+				// Handle raw JSON content (from DB or previous API response)
+				for _, item := range contentSlice {
+					if blockMap, ok := item.(map[string]interface{}); ok {
+						if blockMap["type"] == "tool_use" {
+							// Ensure input field exists for tool_use blocks
+							if _, hasInput := blockMap["input"]; !hasInput {
+								blockMap["input"] = map[string]interface{}{}
+								if name, _ := blockMap["name"].(string); name != "" {
+									log.Printf("⚠️  Fixed missing input for tool_use block (raw JSON): %s", name)
+								}
+							}
+						}
+					}
+				}
+				processedMsg.Content = contentSlice
 			} else {
-				// DEBUG: Content is not []stream.ContentBlock, log what it actually is
-				log.Printf("⚠️  DEBUG: Message role=%s has content type %T (not []ContentBlock)", msg.Role, msg.Content)
+				// DEBUG: Content is not []stream.ContentBlock or []interface{}, log what it actually is
+				log.Printf("⚠️  DEBUG: Message role=%s has content type %T (not []ContentBlock or []interface{})", msg.Role, msg.Content)
 			}
 			filteredMessages = append(filteredMessages, processedMsg)
 		}
