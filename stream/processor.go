@@ -43,7 +43,7 @@ type ContentBlock struct {
 	// Tool fields
 	ID               string                 `json:"id,omitempty"`               // for tool_use
 	Name             string                 `json:"name,omitempty"`             // for tool_use
-	Input            map[string]interface{} `json:"input,omitempty"`            // for tool_use
+	Input            map[string]interface{} `json:"input"`                       // for tool_use - NO omitempty, Anthropic requires this field
 	ThoughtSignature string                 `json:"thought_signature,omitempty"` // for tool_use (Gemini 3 requires this)
 	ToolUseID        string                 `json:"tool_use_id,omitempty"`      // for tool_result
 	Content          interface{}            `json:"content,omitempty"`          // for tool_result (can be string or object)
