@@ -497,22 +497,13 @@ func GetToolDisplayName(toolName string) string {
 	if IsExternalTool(toolName) {
 		externalTool := GetExternalServerManager().GetTool(toolName)
 		if externalTool != nil {
-			// Priority: Title > Description > Title-cased name
-			var toolDisplay string
+			// Priority: Title > Cleaned tool name
+			// Don't use description (too long) or server name prefix (clutters UI)
 			if externalTool.Title != "" {
-				toolDisplay = externalTool.Title
-			} else if externalTool.Description != "" {
-				toolDisplay = getShortDescription(externalTool.Description)
+				return externalTool.Title
 			}
-			if toolDisplay == "" {
-				// Fall back to title-cased name
-				toolDisplay = toTitleCase(externalTool.Name)
-			}
-			// Optionally prefix with server display name
-			if externalTool.ServerDisplayName != "" && externalTool.ServerDisplayName != externalTool.ServerName {
-				return externalTool.ServerDisplayName + ": " + toolDisplay
-			}
-			return toolDisplay
+			// Clean up tool name: GITHUB_LIST_REPOSITORIES -> "List Repositories"
+			return cleanToolName(externalTool.Name)
 		}
 	}
 
@@ -561,41 +552,45 @@ func toTitleCase(s string) string {
 
 // getShortDescription extracts a short display name from a tool description
 // Returns first sentence or truncated string (max 50 chars)
-func getShortDescription(desc string) string {
-	if desc == "" {
+// cleanToolName converts ugly tool names to readable format
+// GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER -> "List Repositories"
+// SLACK_SEND_MESSAGE -> "Send Message"
+func cleanToolName(name string) string {
+	if name == "" {
 		return ""
 	}
 
-	// Find first sentence (period, question mark, or newline)
-	for i, c := range desc {
-		if c == '.' || c == '?' || c == '\n' {
-			if i > 0 && i <= 60 {
-				return desc[:i]
-			}
+	// Remove common prefixes (GITHUB_, SLACK_, etc.)
+	prefixes := []string{
+		"GITHUB_", "SLACK_", "GMAIL_", "GOOGLE_", "DISCORD_",
+		"NOTION_", "JIRA_", "TRELLO_", "ASANA_", "LINEAR_",
+		"TWITTER_", "FACEBOOK_", "INSTAGRAM_", "LINKEDIN_",
+		"DROPBOX_", "ONEDRIVE_", "DRIVE_", "SHEETS_", "DOCS_",
+		"CALENDAR_", "ZOOM_", "TEAMS_", "HUBSPOT_", "SALESFORCE_",
+	}
+
+	cleanName := name
+	for _, prefix := range prefixes {
+		if len(cleanName) > len(prefix) && cleanName[:len(prefix)] == prefix {
+			cleanName = cleanName[len(prefix):]
 			break
 		}
-		// Cap at 50 chars
-		if i >= 50 {
-			// Find last space before 50 chars
-			for j := i; j > 30; j-- {
-				if desc[j] == ' ' {
-					return desc[:j] + "..."
-				}
-			}
-			return desc[:50] + "..."
+	}
+
+	// Also remove common suffixes that add noise
+	suffixes := []string{
+		"_FOR_THE_AUTHENTICATED_USER",
+		"_FOR_AUTHENTICATED_USER",
+		"_FOR_A_USER",
+		"_FOR_USER",
+	}
+	for _, suffix := range suffixes {
+		if len(cleanName) > len(suffix) && cleanName[len(cleanName)-len(suffix):] == suffix {
+			cleanName = cleanName[:len(cleanName)-len(suffix)]
+			break
 		}
 	}
 
-	// Description is short enough, use as-is
-	if len(desc) <= 60 {
-		return desc
-	}
-
-	// Truncate at word boundary
-	for i := 50; i > 30; i-- {
-		if desc[i] == ' ' {
-			return desc[:i] + "..."
-		}
-	}
-	return desc[:50] + "..."
+	// Convert to title case
+	return toTitleCase(cleanName)
 }
