@@ -43,11 +43,34 @@ type ContentBlock struct {
 	// Tool fields
 	ID               string                 `json:"id,omitempty"`               // for tool_use
 	Name             string                 `json:"name,omitempty"`             // for tool_use
-	Input            map[string]interface{} `json:"input"`                       // for tool_use - NO omitempty, Anthropic requires this field
+	Input            map[string]interface{} `json:"-"`                          // for tool_use - custom marshaling, see MarshalJSON
 	ThoughtSignature string                 `json:"thought_signature,omitempty"` // for tool_use (Gemini 3 requires this)
 	ToolUseID        string                 `json:"tool_use_id,omitempty"`      // for tool_result
 	Content          interface{}            `json:"content,omitempty"`          // for tool_result (can be string or object)
 	IsError          bool                   `json:"is_error,omitempty"`         // for tool_result
+}
+
+// MarshalJSON implements custom JSON marshaling for ContentBlock
+// This ensures the 'input' field is only included for tool_use blocks (Anthropic requires it)
+func (c ContentBlock) MarshalJSON() ([]byte, error) {
+	type Alias ContentBlock
+	aux := struct {
+		Alias
+		Input map[string]interface{} `json:"input,omitempty"`
+	}{
+		Alias: Alias(c),
+	}
+
+	// Only include input field for tool_use blocks
+	if c.Type == "tool_use" {
+		if c.Input == nil {
+			aux.Input = map[string]interface{}{}
+		} else {
+			aux.Input = c.Input
+		}
+	}
+
+	return json.Marshal(aux)
 }
 
 type ContentSource struct {
