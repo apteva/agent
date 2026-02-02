@@ -213,6 +213,7 @@ func (m *ExternalServerManager) GetTools() []ExternalMCPTool {
 }
 
 // GetTool returns a specific tool by full name (server:tool)
+// Also handles reverse lookup for sanitized names from Claude
 func (m *ExternalServerManager) GetTool(fullName string) *ExternalMCPTool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -220,6 +221,15 @@ func (m *ExternalServerManager) GetTool(fullName string) *ExternalMCPTool {
 	if tool, exists := m.tools[fullName]; exists {
 		return &tool
 	}
+
+	// Try reverse lookup: Claude may have received a sanitized name
+	// Look for a tool whose sanitized name matches the requested name
+	for originalName, tool := range m.tools {
+		if sanitizeToolName(originalName) == fullName {
+			return &tool
+		}
+	}
+
 	return nil
 }
 
