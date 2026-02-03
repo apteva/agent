@@ -15,6 +15,7 @@ import (
 
 var globalDB *sql.DB
 var discoveryCallback func(enabled bool, group string) error
+var discoveryRunningCallback func() bool
 var memoryCallback func(enabled bool) error
 var filesystemCallback func(enabled bool) error
 var telemetryCallback func(enabled bool) error
@@ -27,6 +28,11 @@ func SetDatabase(db *sql.DB) {
 // SetDiscoveryCallback sets the callback function for discovery service updates
 func SetDiscoveryCallback(callback func(enabled bool, group string) error) {
 	discoveryCallback = callback
+}
+
+// SetDiscoveryRunningCallback sets the callback function to check if discovery is running
+func SetDiscoveryRunningCallback(callback func() bool) {
+	discoveryRunningCallback = callback
 }
 
 // SetMemoryCallback sets the callback function for memory manager updates
@@ -918,6 +924,23 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				log.Printf("⚠️  No discovery callback registered")
+			}
+		} else if currentConfig.Agents != nil && currentConfig.Agents.Enabled && currentConfig.Agents.Group != "" {
+			// Even if config didn't change, ensure discovery is running if it should be
+			// This handles the case where config was already set but discovery never started
+			isRunning := false
+			if discoveryRunningCallback != nil {
+				isRunning = discoveryRunningCallback()
+			}
+			if !isRunning {
+				log.Printf("🔄 Discovery should be running but isn't, starting it (enabled=%v, group=%s)", currentConfig.Agents.Enabled, currentConfig.Agents.Group)
+				if discoveryCallback != nil {
+					if err := discoveryCallback(currentConfig.Agents.Enabled, currentConfig.Agents.Group); err != nil {
+						log.Printf("⚠️  Failed to start discovery service: %v", err)
+					} else {
+						log.Printf("✅ Discovery service started successfully")
+					}
+				}
 			}
 		}
 

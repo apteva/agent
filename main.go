@@ -1909,8 +1909,13 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Get available agents for system prompt injection (if enabled)
 	var availableAgents []config.AgentInfo
-	if config.IsAgentInjectionEnabled(agentConfig.Agents) && discoveryService != nil && discoveryService.IsRunning() {
+	injectionEnabled := config.IsAgentInjectionEnabled(agentConfig.Agents)
+	discoveryRunning := discoveryService != nil && discoveryService.IsRunning()
+	if injectionEnabled && discoveryRunning {
 		availableAgents = discoveryService.GetAgents()
+		log.Printf("🤝 Agent injection: %d agents available for prompt", len(availableAgents))
+	} else {
+		log.Printf("🤝 Agent injection skipped: enabled=%v, discovery_running=%v", injectionEnabled, discoveryRunning)
 	}
 
 	// Combine compaction summary with request system context
@@ -2858,6 +2863,11 @@ func GetDiscoveryService() discovery.DiscoveryService {
 	return discoveryService
 }
 
+// IsDiscoveryRunning returns true if the discovery service is currently running
+func IsDiscoveryRunning() bool {
+	return discoveryService != nil && discoveryService.IsRunning()
+}
+
 // UpdateMemoryManager dynamically enables or disables the memory manager
 func UpdateMemoryManager(enabled bool) error {
 	cfg := config.GetConfig()
@@ -3590,6 +3600,7 @@ func main() {
 
 	// Set callbacks for dynamic enable/disable of services
 	handlerConfig.SetDiscoveryCallback(UpdateDiscoveryService)
+	handlerConfig.SetDiscoveryRunningCallback(IsDiscoveryRunning)
 	handlerConfig.SetMemoryCallback(UpdateMemoryManager)
 	handlerConfig.SetFilesystemCallback(UpdateFileSystem)
 	handlerConfig.SetTelemetryCallback(UpdateTelemetry)
