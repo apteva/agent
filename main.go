@@ -3215,8 +3215,11 @@ func authMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Check API key from header
+		// Check API key from header (X-API-Key or X-Agent-Key for agent-to-agent calls)
 		providedKey := r.Header.Get("X-API-Key")
+		if providedKey == "" {
+			providedKey = r.Header.Get("X-Agent-Key") // For agent-to-agent calls
+		}
 		if providedKey == "" {
 			// Also check query parameter for WebSocket/SSE connections
 			providedKey = r.URL.Query().Get("api_key")
