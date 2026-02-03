@@ -286,7 +286,7 @@ func (d *FileDiscovery) GetAgents() []config.AgentInfo {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	log.Printf("🔍 DEBUG GetAgents called: registry has %d agents, running=%v", len(d.registry), d.running)
+	log.Printf("🔍 DEBUG GetAgents called: pointer=%p, registry has %d agents, running=%v, agentID=%s", d, len(d.registry), d.running, d.agentID)
 
 	agents := make([]config.AgentInfo, 0, len(d.registry))
 	for id, agent := range d.registry {

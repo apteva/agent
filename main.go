@@ -1913,8 +1913,8 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	discoveryRunning := discoveryService != nil && discoveryService.IsRunning()
 
 	// DEBUG: Log all the conditions
-	log.Printf("🤝 DEBUG injection check: injectionEnabled=%v, discoveryService=%v, discoveryRunning=%v",
-		injectionEnabled, discoveryService != nil, discoveryRunning)
+	log.Printf("🤝 DEBUG injection check: injectionEnabled=%v, discoveryService=%p, discoveryRunning=%v",
+		injectionEnabled, discoveryService, discoveryRunning)
 	if agentConfig.Agents != nil {
 		log.Printf("🤝 DEBUG agents config: enabled=%v, mode=%s, group=%s, inject_into_prompt=%v",
 			agentConfig.Agents.Enabled, agentConfig.Agents.Mode, agentConfig.Agents.Group, agentConfig.Agents.InjectIntoPrompt)
