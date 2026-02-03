@@ -97,9 +97,9 @@ func (m *Manager) GetByCategory(category string) []config.Skill {
 	return result
 }
 
-// MatchTriggers matches user input against skill triggers using word boundaries
-// Returns skills whose triggers match the input
-func (m *Manager) MatchTriggers(input string) []config.Skill {
+// MatchSkills matches user input against skill name and description
+// Returns skills that are relevant to the input
+func (m *Manager) MatchSkills(input string) []config.Skill {
 	if !m.enabled {
 		return nil
 	}
@@ -111,12 +111,24 @@ func (m *Manager) MatchTriggers(input string) []config.Skill {
 	var matched []config.Skill
 
 	for _, skill := range m.skills {
-		for _, trigger := range skill.Triggers {
-			// Use word boundary matching to avoid partial matches
-			pattern := `\b` + regexp.QuoteMeta(strings.ToLower(trigger)) + `\b`
-			if ok, _ := regexp.MatchString(pattern, input); ok {
+		// Check if skill name appears in input (word boundary)
+		namePattern := `\b` + regexp.QuoteMeta(strings.ToLower(skill.Name)) + `\b`
+		if ok, _ := regexp.MatchString(namePattern, input); ok {
+			matched = append(matched, skill)
+			continue
+		}
+
+		// Check if any significant word from description appears in input
+		descWords := strings.Fields(strings.ToLower(skill.Description))
+		for _, word := range descWords {
+			// Skip short common words
+			if len(word) < 4 {
+				continue
+			}
+			wordPattern := `\b` + regexp.QuoteMeta(word) + `\b`
+			if ok, _ := regexp.MatchString(wordPattern, input); ok {
 				matched = append(matched, skill)
-				break // Only add skill once even if multiple triggers match
+				break
 			}
 		}
 	}

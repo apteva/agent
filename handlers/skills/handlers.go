@@ -295,7 +295,7 @@ func HandleSkillsMatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	manager := skills.GetManager()
-	matched := manager.MatchTriggers(req.Input)
+	matched := manager.MatchSkills(req.Input)
 
 	// Extract names for response
 	var matchedNames []string

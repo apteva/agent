@@ -21,11 +21,9 @@ async function loadSkillsData() {
 
             // Update stats
             const enabledCount = skillsData.filter(s => s.enabled).length;
-            const triggersCount = skillsData.reduce((sum, s) => sum + (s.triggers?.length || 0), 0);
 
             document.getElementById('skillsCount').textContent = skillsData.length;
             document.getElementById('skillsEnabledCount').textContent = enabledCount;
-            document.getElementById('skillsTriggersCount').textContent = triggersCount;
 
             renderSkillsList();
         }
@@ -64,11 +62,6 @@ function renderSkillsList() {
                         }
                     </div>
                     <p class="text-sm text-slate-600 dark:text-slate-300 mb-2">${escapeHtml(skill.description)}</p>
-                    ${skill.triggers && skill.triggers.length > 0 ? `
-                        <div class="flex flex-wrap gap-1 mb-2">
-                            ${skill.triggers.map(t => `<span class="text-xs px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">${escapeHtml(t)}</span>`).join('')}
-                        </div>
-                    ` : ''}
                     ${skill.tools && skill.tools.length > 0 ? `
                         <div class="flex flex-wrap gap-1">
                             <span class="text-xs text-slate-500">Tools:</span>
@@ -124,7 +117,6 @@ function showAddSkillModal() {
     document.getElementById('skillDescription').value = '';
     document.getElementById('skillIcon').value = '';
     document.getElementById('skillCategory').value = '';
-    document.getElementById('skillTriggers').value = '';
     document.getElementById('skillTools').value = '';
     document.getElementById('skillInstructions').value = '';
     document.getElementById('skillEnabled').checked = true;
@@ -157,7 +149,6 @@ function editSkill(name) {
     document.getElementById('skillDescription').value = skill.description || '';
     document.getElementById('skillIcon').value = skill.icon || '';
     document.getElementById('skillCategory').value = skill.category || '';
-    document.getElementById('skillTriggers').value = (skill.triggers || []).join(', ');
     document.getElementById('skillTools').value = (skill.tools || []).join(', ');
     document.getElementById('skillInstructions').value = skill.instructions || '';
     document.getElementById('skillEnabled').checked = skill.enabled !== false;
@@ -187,7 +178,6 @@ async function saveSkill() {
         instructions,
         icon: document.getElementById('skillIcon').value.trim(),
         category: document.getElementById('skillCategory').value.trim(),
-        triggers: document.getElementById('skillTriggers').value.split(',').map(t => t.trim()).filter(t => t),
         tools: document.getElementById('skillTools').value.split(',').map(t => t.trim()).filter(t => t),
         enabled: document.getElementById('skillEnabled').checked
     };
@@ -231,7 +221,7 @@ async function deleteSkill(name) {
 }
 
 // Test trigger matching
-async function testSkillTriggers() {
+async function testSkillMatching() {
     const input = document.getElementById('skillsTestInput').value.trim();
     if (!input) {
         showToast('Enter a test message', 'error');

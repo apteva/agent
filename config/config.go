@@ -143,7 +143,7 @@ type ExternalMCPServer struct {
 	Enabled bool              `json:"enabled"`           // Whether to connect to this server
 }
 
-// Skill represents a skill definition with instructions and triggers
+// Skill represents a skill definition with instructions
 type Skill struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description"`
@@ -151,8 +151,7 @@ type Skill struct {
 	Icon         string   `json:"icon,omitempty"`
 	Category     string   `json:"category,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
-	Tools        []string `json:"tools,omitempty"`    // MCP/builtin tools this skill needs
-	Triggers     []string `json:"triggers,omitempty"` // Auto-activation phrases
+	Tools        []string `json:"tools,omitempty"` // MCP/builtin tools this skill needs
 	Enabled      bool     `json:"enabled"`
 }
 

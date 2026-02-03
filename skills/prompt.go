@@ -32,12 +32,6 @@ func (m *Manager) BuildMetadataPrompt() string {
 
 		// Description
 		sb.WriteString(skill.Description)
-
-		// Triggers (helps LLM understand when to activate)
-		if len(skill.Triggers) > 0 {
-			sb.WriteString(fmt.Sprintf(" (triggers: %s)", strings.Join(skill.Triggers, ", ")))
-		}
-
 		sb.WriteString("\n")
 	}
 
