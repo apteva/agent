@@ -96,7 +96,11 @@ func (d *FileDiscovery) Start() error {
 		return nil
 	}
 
-	// Start continuous discovery in background
+	// Run initial discovery IMMEDIATELY so agents are available right away
+	// This prevents race conditions where chat requests come in before discovery runs
+	d.discoverPeers()
+
+	// Start continuous discovery in background for periodic updates
 	go d.continuousDiscovery()
 
 	return nil
@@ -143,8 +147,8 @@ func (d *FileDiscovery) unregisterSelf() error {
 func (d *FileDiscovery) continuousDiscovery() {
 	log.Printf("🔍 File: continuous discovery loop started")
 
-	// Initial discovery
-	d.discoverPeers()
+	// Note: Initial discovery is now done in Start() before this goroutine starts
+	// This ensures agents are available immediately when Start() returns
 
 	// Get configurable refresh interval (default: 5s for file-based, faster than mDNS)
 	refreshInterval := 5 * time.Second
