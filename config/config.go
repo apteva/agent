@@ -143,10 +143,23 @@ type ExternalMCPServer struct {
 	Enabled bool              `json:"enabled"`           // Whether to connect to this server
 }
 
-// SkillsConfig configures skill-based instructions that reference MCP tools
+// Skill represents a skill definition with instructions and triggers
+type Skill struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Instructions string   `json:"instructions"`
+	Icon         string   `json:"icon,omitempty"`
+	Category     string   `json:"category,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	Tools        []string `json:"tools,omitempty"`    // MCP/builtin tools this skill needs
+	Triggers     []string `json:"triggers,omitempty"` // Auto-activation phrases
+	Enabled      bool     `json:"enabled"`
+}
+
+// SkillsConfig configures skill-based instructions
 type SkillsConfig struct {
-	Enabled bool     `json:"enabled"`
-	Names   []string `json:"names,omitempty"` // Skills to enable: ["slack-workflows", "jira-management"]
+	Enabled     bool    `json:"enabled"`
+	Definitions []Skill `json:"definitions,omitempty"` // Inline skill definitions
 }
 
 // MCPResourceConfig configures MCP resource syncing to memory
@@ -436,8 +449,8 @@ func (c *Config) loadDefaults() {
 			},
 		},
 		Skills: &SkillsConfig{
-			Enabled: false,        // Disabled by default
-			Names:   []string{},   // Skills to enable
+			Enabled:     false,     // Disabled by default
+			Definitions: []Skill{}, // Inline skill definitions
 		},
 		Scheduler: &SchedulerConfig{
 			Enabled:  false,

@@ -127,21 +127,15 @@ func (t *ConfigSetTool) Execute(params map[string]interface{}) (interface{}, err
 		}
 	}
 
-	// Update skills
-	if skillsRaw, ok := params["skills"].([]interface{}); ok {
-		var skillNames []string
-		for _, s := range skillsRaw {
-			if skillName, ok := s.(string); ok {
-				skillNames = append(skillNames, skillName)
-			}
-		}
+	// Update skills enabled state
+	if skillsEnabled, ok := params["skills_enabled"].(bool); ok {
 		if agentConfig.Skills == nil {
-			agentConfig.Skills = &config.SkillsConfig{Enabled: true}
+			agentConfig.Skills = &config.SkillsConfig{Enabled: skillsEnabled, Definitions: []config.Skill{}}
+		} else {
+			agentConfig.Skills.Enabled = skillsEnabled
 		}
-		agentConfig.Skills.Names = skillNames
-		agentConfig.Skills.Enabled = len(skillNames) > 0
 		updated = true
-		log.Printf("🎯 Config: Updated skills: %v", skillNames)
+		log.Printf("🎯 Config: Updated skills.enabled: %v", skillsEnabled)
 	}
 
 	// Update setup mode
@@ -177,18 +171,23 @@ func (t *ConfigSetTool) Execute(params map[string]interface{}) (interface{}, err
 	}
 	var skillNames []string
 	if agentConfig.Skills != nil && agentConfig.Skills.Enabled {
-		skillNames = agentConfig.Skills.Names
+		for _, skill := range agentConfig.Skills.Definitions {
+			if skill.Enabled {
+				skillNames = append(skillNames, skill.Name)
+			}
+		}
 	}
 	return map[string]interface{}{
 		"success": true,
 		"message": "Configuration updated successfully",
 		"config": map[string]interface{}{
-			"system_prompt": agentConfig.LLM.SystemPrompt,
-			"tools":         agentConfig.LLM.Tools,
-			"builtin_tools": len(agentConfig.LLM.BuiltinTools),
-			"mcp_tools":     mcpToolsCount,
-			"skills":        skillNames,
-			"setup_mode":    agentConfig.SetupMode,
+			"system_prompt":  agentConfig.LLM.SystemPrompt,
+			"tools":          agentConfig.LLM.Tools,
+			"builtin_tools":  len(agentConfig.LLM.BuiltinTools),
+			"mcp_tools":      mcpToolsCount,
+			"skills":         skillNames,
+			"skills_enabled": agentConfig.Skills != nil && agentConfig.Skills.Enabled,
+			"setup_mode":     agentConfig.SetupMode,
 		},
 	}, nil
 }
@@ -413,9 +412,17 @@ func GetSetupModeSystemPromptPrefix(cfg *config.AgentConfig) string {
 		configSummary["mcp_tools"] = cfg.MCP.Tools
 	}
 	if cfg.Skills != nil && cfg.Skills.Enabled {
-		configSummary["skills"] = cfg.Skills.Names
+		var skillNames []string
+		for _, skill := range cfg.Skills.Definitions {
+			if skill.Enabled {
+				skillNames = append(skillNames, skill.Name)
+			}
+		}
+		configSummary["skills"] = skillNames
+		configSummary["skills_enabled"] = true
 	} else {
 		configSummary["skills"] = []string{}
+		configSummary["skills_enabled"] = false
 	}
 
 	configJSON, _ := json.MarshalIndent(configSummary, "", "  ")

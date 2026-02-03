@@ -26,9 +26,11 @@ import (
 	"github.com/apteva/agent/handlers/memories"
 	handlerMcp "github.com/apteva/agent/handlers/mcp"
 	"github.com/apteva/agent/handlers/observability"
+	handlerSkills "github.com/apteva/agent/handlers/skills"
 	"github.com/apteva/agent/handlers/tasks"
 	"github.com/apteva/agent/handlers/threads"
 	"github.com/apteva/agent/mcp"
+	"github.com/apteva/agent/skills"
 	"github.com/apteva/agent/memory"
 	"github.com/apteva/agent/operator"
 	"github.com/apteva/agent/pdf"
@@ -1936,22 +1938,20 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		log.Printf("🔧 Setup mode: Injected config into system prompt")
 	}
 
-	// Inject skills instructions if enabled (for non-Claude providers, inject into system prompt)
-	// For Claude, we could use native skills API in the future
-	if agentConfig.Skills != nil && agentConfig.Skills.Enabled && len(agentConfig.Skills.Names) > 0 {
-		enabledSkills := mcp.GetEnabledSkills(agentConfig.Skills)
-		if len(enabledSkills) > 0 {
-			skillsSection := mcp.BuildSkillsPromptSection(enabledSkills)
-			switch existing := systemContext.(type) {
-			case string:
-				systemContext = existing + skillsSection
-			case nil:
-				systemContext = skillsSection
-			default:
-				systemContext = skillsSection
-			}
-			log.Printf("🎯 Skills: Injected %d skills into system prompt: %v", len(enabledSkills), agentConfig.Skills.Names)
+	// Inject skills metadata if enabled (lightweight - just skill names and descriptions)
+	// Full instructions are loaded on-demand when a skill is triggered
+	skillsManager := skills.GetManager()
+	if skillsManager.IsEnabled() && skillsManager.Count() > 0 {
+		skillsSection := skillsManager.BuildMetadataPrompt()
+		switch existing := systemContext.(type) {
+		case string:
+			systemContext = existing + skillsSection
+		case nil:
+			systemContext = skillsSection
+		default:
+			systemContext = skillsSection
 		}
+		log.Printf("🎯 Skills: Injected %d skills into system prompt", skillsManager.Count())
 	}
 
 	// Add system prompt with current context, MCP credentials, task management config, request system context, and available agents
@@ -3519,6 +3519,12 @@ func main() {
 	// Initialize tool loader for on-demand tool loading
 	tools.InitToolLoader(cfg.GetLLMConfig().ToolLoading)
 
+	// Initialize skills manager from config
+	if agentConfig.Skills != nil && agentConfig.Skills.Enabled {
+		skills.GetManager().Initialize(agentConfig.Skills)
+		log.Printf("🎯 Skills: Initialized %d skills", skills.GetManager().Count())
+	}
+
 	// Initialize MCP in background (non-blocking to allow API to start quickly)
 	if agentConfig.MCP != nil && agentConfig.MCP.Enabled {
 		go func() {
@@ -3549,18 +3555,8 @@ func main() {
 					}
 				}
 
-				// Load skills if configured
-				if mcpCfg.Skills != nil && mcpCfg.Skills.Enabled && len(mcpCfg.Skills.Names) > 0 {
-					skills, err := mcp.LoadSkills(mcpCfg.MCP, mcpCfg.Skills)
-					if err != nil {
-						log.Printf("⚠️  Skills: Failed to load: %v", err)
-					} else if len(skills) > 0 {
-						log.Printf("🎯 Skills: Loaded %d skills", len(skills))
-						for _, s := range skills {
-							log.Printf("   - %s (%d tools)", s.Name, len(s.Tools))
-						}
-					}
-				}
+				// Note: Skills are now loaded from config at startup, not from MCP server
+				// See skills.GetManager().Initialize() earlier in main()
 			}
 		}()
 	}
@@ -3640,6 +3636,7 @@ func main() {
 		return resourceSyncer
 	})
 	handlerMcp.RegisterRoutes(mux)
+	handlerSkills.RegisterRoutes(mux)
 	memories.RegisterRoutes(mux, func() *memory.MemoryManager { return memoryManager })
 	observability.RegisterRoutes(mux, db)
 

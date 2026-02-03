@@ -73,6 +73,9 @@
                 <button onclick="switchTab(event, 'mcp')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
                     <span>🔌</span> MCP
                 </button>
+                <button onclick="switchTab(event, 'skills')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <span>🎯</span> Skills
+                </button>
 
                 <div class="border-t border-slate-700 my-3"></div>
 
@@ -848,6 +851,136 @@
                                 </button>
                                 <div id="webhookTestResult" class="text-sm"></div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Skills Tab -->
+                <div id="skills" class="tab-pane hidden">
+                    <!-- Skills Status -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Skills</h3>
+                                <p class="text-sm text-slate-500">Config-based skill definitions with trigger matching</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="skillsEnabledToggle" onchange="toggleSkillsEnabled()" class="w-4 h-4 rounded">
+                                    <span class="text-sm text-slate-600 dark:text-slate-300">Enabled</span>
+                                </label>
+                                <button onclick="showAddSkillModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm">
+                                    + Add Skill
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-5">
+                            <div class="grid grid-cols-3 gap-4 text-sm mb-4">
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="skillsCount">-</div>
+                                    <div class="text-slate-500">Total Skills</div>
+                                </div>
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="skillsEnabledCount">-</div>
+                                    <div class="text-slate-500">Enabled</div>
+                                </div>
+                                <div class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg text-center">
+                                    <div class="text-2xl font-bold text-slate-800 dark:text-slate-100" id="skillsTriggersCount">-</div>
+                                    <div class="text-slate-500">Triggers</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Skills List -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Skill Definitions</h3>
+                        </div>
+                        <div class="p-5">
+                            <div id="skillsList" class="space-y-3">
+                                <span class="text-slate-400">Loading skills...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Test Trigger Matching -->
+                    <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Test Trigger Matching</h3>
+                        </div>
+                        <div class="p-5">
+                            <div class="flex gap-3 mb-4">
+                                <input type="text" id="skillsTestInput" placeholder="Enter test message..."
+                                    class="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100">
+                                <button onclick="testSkillTriggers()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+                                    Test
+                                </button>
+                            </div>
+                            <div id="skillsTestResult" class="text-sm text-slate-600 dark:text-slate-300">
+                                Enter a message to test which skills would be triggered
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add/Edit Skill Modal -->
+                <div id="skillModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+                    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto m-4">
+                        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                            <h3 id="skillModalTitle" class="font-semibold text-lg">Add Skill</h3>
+                            <button onclick="hideSkillModal()" class="text-slate-400 hover:text-slate-600">&times;</button>
+                        </div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name *</label>
+                                <input type="text" id="skillName" placeholder="e.g., email-assistant"
+                                    class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description *</label>
+                                <input type="text" id="skillDescription" placeholder="Brief description of what this skill does"
+                                    class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Icon</label>
+                                    <input type="text" id="skillIcon" placeholder="e.g., 📧"
+                                        class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
+                                    <input type="text" id="skillCategory" placeholder="e.g., communication"
+                                        class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Triggers (comma-separated)</label>
+                                <input type="text" id="skillTriggers" placeholder="e.g., send email, compose email, draft email"
+                                    class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tools (comma-separated)</label>
+                                <input type="text" id="skillTools" placeholder="e.g., send-email, list-contacts"
+                                    class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Instructions * (Markdown)</label>
+                                <textarea id="skillInstructions" rows="8" placeholder="## How to use this skill&#10;&#10;1. Step one&#10;2. Step two"
+                                    class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 font-mono text-sm"></textarea>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="skillEnabled" checked class="w-4 h-4 rounded">
+                                <label class="text-sm text-slate-700 dark:text-slate-300">Enabled</label>
+                            </div>
+                        </div>
+                        <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+                            <button onclick="hideSkillModal()" class="px-4 py-2 text-slate-600 hover:text-slate-800 dark:text-slate-300">
+                                Cancel
+                            </button>
+                            <button onclick="saveSkill()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+                                Save Skill
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -2150,6 +2283,7 @@
     <script src="/web/js/tabs/events.js"></script>
     <script src="/web/js/tabs/tracing.js"></script>
     <script src="/web/js/tabs/usage.js"></script>
+    <script src="/web/js/tabs/skills.js"></script>
 
     <script>
         // Initialize on page load

@@ -3,7 +3,6 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -151,37 +150,19 @@ func (cache *SkillsCache) UpdateSkills(skills []Skill) {
 }
 
 // LoadSkills loads skills from MCP server and updates cache
+// DEPRECATED: Use the skills package for config-based skills instead
 func LoadSkills(cfg *config.MCPConfig, skillsCfg *config.SkillsConfig) ([]Skill, error) {
-	if cfg == nil || !cfg.Enabled {
-		return nil, fmt.Errorf("MCP not enabled")
-	}
-
-	if skillsCfg == nil || !skillsCfg.Enabled || len(skillsCfg.Names) == 0 {
-		return []Skill{}, nil
-	}
-
-	client := NewMCPClient(cfg)
-	cache := GetSkillsCache()
-
-	skills, err := client.FetchSkills(skillsCfg.Names)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch skills: %w", err)
-	}
-
-	cache.UpdateSkills(skills)
-	log.Printf("🎯 Skills: Loaded %d skills: %v", len(skills), skillsCfg.Names)
-
-	return skills, nil
+	// Skills are now defined in config, not fetched from MCP server
+	// This function is kept for backward compatibility
+	return []Skill{}, nil
 }
 
 // GetEnabledSkills returns the currently enabled skills from cache
+// DEPRECATED: Use the skills package for config-based skills instead
 func GetEnabledSkills(skillsCfg *config.SkillsConfig) []Skill {
-	if skillsCfg == nil || !skillsCfg.Enabled || len(skillsCfg.Names) == 0 {
-		return []Skill{}
-	}
-
-	cache := GetSkillsCache()
-	return cache.GetSkills(skillsCfg.Names)
+	// Skills are now defined in config, not fetched from MCP server
+	// This function is kept for backward compatibility
+	return []Skill{}
 }
 
 // GetSkillTools returns all MCP tools referenced by enabled skills
