@@ -89,6 +89,7 @@ func (d *FileDiscovery) Start() error {
 	d.running = true
 	log.Printf("🔍 File discovery started (path: %s)", d.registryPath)
 	log.Printf("   This agent: %s (%s) at %s", d.agentName, d.agentID, d.agentURL)
+	log.Printf("🔍 DEBUG: FileDiscovery instance pointer=%p", d)
 
 	// In worker mode, only register (no discovery of other agents)
 	if d.cfg.IsWorkerMode() {
@@ -233,13 +234,16 @@ func (d *FileDiscovery) discoverPeers() {
 
 	// Update registry
 	d.mu.Lock()
+	oldCount := len(d.registry)
 	d.registry = discovered
+	newCount := len(d.registry)
 	d.mu.Unlock()
 
-	log.Printf("🔍 File discovery: found %d agents", len(discovered))
+	log.Printf("🔍 File discovery: found %d agents (registry: %d -> %d)", len(discovered), oldCount, newCount)
 	for _, agent := range discovered {
 		log.Printf("   - %s (%s) at %s", agent.Name, agent.ID, agent.URL)
 	}
+	log.Printf("🔍 DEBUG: registry pointer=%p, running=%v, agentID=%s", d, d.running, d.agentID)
 }
 
 // isProcessAlive checks if a process with the given PID is still running
@@ -282,10 +286,15 @@ func (d *FileDiscovery) GetAgents() []config.AgentInfo {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
+	log.Printf("🔍 DEBUG GetAgents called: registry has %d agents, running=%v", len(d.registry), d.running)
+
 	agents := make([]config.AgentInfo, 0, len(d.registry))
-	for _, agent := range d.registry {
+	for id, agent := range d.registry {
+		log.Printf("🔍 DEBUG GetAgents returning: %s (%s) at %s", agent.Name, id, agent.URL)
 		agents = append(agents, *agent)
 	}
+
+	log.Printf("🔍 DEBUG GetAgents returning %d agents total", len(agents))
 	return agents
 }
 

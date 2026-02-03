@@ -1911,9 +1911,24 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	var availableAgents []config.AgentInfo
 	injectionEnabled := config.IsAgentInjectionEnabled(agentConfig.Agents)
 	discoveryRunning := discoveryService != nil && discoveryService.IsRunning()
+
+	// DEBUG: Log all the conditions
+	log.Printf("🤝 DEBUG injection check: injectionEnabled=%v, discoveryService=%v, discoveryRunning=%v",
+		injectionEnabled, discoveryService != nil, discoveryRunning)
+	if agentConfig.Agents != nil {
+		log.Printf("🤝 DEBUG agents config: enabled=%v, mode=%s, group=%s, inject_into_prompt=%v",
+			agentConfig.Agents.Enabled, agentConfig.Agents.Mode, agentConfig.Agents.Group, agentConfig.Agents.InjectIntoPrompt)
+	} else {
+		log.Printf("🤝 DEBUG agents config is NIL")
+	}
+
 	if injectionEnabled && discoveryRunning {
+		log.Printf("🤝 DEBUG: calling discoveryService.GetAgents()...")
 		availableAgents = discoveryService.GetAgents()
 		log.Printf("🤝 Agent injection: %d agents available for prompt", len(availableAgents))
+		for _, agent := range availableAgents {
+			log.Printf("🤝 DEBUG: injecting agent %s (%s) at %s", agent.Name, agent.ID, agent.URL)
+		}
 	} else {
 		log.Printf("🤝 Agent injection skipped: enabled=%v, discovery_running=%v", injectionEnabled, discoveryRunning)
 	}
@@ -2672,11 +2687,13 @@ func initAgentCommunication() {
 		if err != nil {
 			log.Printf("Failed to create discovery service: %v", err)
 		} else if discoveryService != nil {
+			log.Printf("🔍 DEBUG: discoveryService created, pointer=%p", discoveryService)
 			// Start discovery
 			if err := discoveryService.Start(); err != nil {
 				log.Printf("Failed to start discovery service: %v", err)
 			} else {
 				log.Printf("Discovery service started successfully")
+				log.Printf("🔍 DEBUG: discoveryService after start, pointer=%p, running=%v", discoveryService, discoveryService.IsRunning())
 			}
 		}
 	}
