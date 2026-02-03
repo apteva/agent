@@ -55,6 +55,9 @@ func (d *SSDPDiscovery) Start() error {
 		return fmt.Errorf("discovery already running")
 	}
 
+	// Recreate stopCh in case Stop() was called before (closed channel would cause immediate exit)
+	d.stopCh = make(chan struct{})
+
 	// Create metadata for SSDP location header
 	metadata := AgentMetadata{
 		ID:   d.agentID,
@@ -113,6 +116,8 @@ func (d *SSDPDiscovery) announceLoop() {
 
 // continuousDiscovery runs periodic SSDP searches to discover peers
 func (d *SSDPDiscovery) continuousDiscovery() {
+	log.Printf("🔍 SSDP: continuous discovery loop started")
+
 	// Initial discovery (immediate)
 	d.discoverPeers()
 
@@ -128,15 +133,21 @@ func (d *SSDPDiscovery) continuousDiscovery() {
 		}
 	}
 
+	log.Printf("🔍 SSDP: periodic discovery every %s", refreshInterval)
+
 	// Periodic re-discovery to catch new agents and remove stale ones
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
 
+	tickCount := 0
 	for {
 		select {
 		case <-ticker.C:
+			tickCount++
+			log.Printf("🔍 SSDP: periodic discovery tick #%d", tickCount)
 			d.discoverPeers()
 		case <-d.stopCh:
+			log.Printf("🔍 SSDP: continuous discovery loop stopped")
 			return
 		}
 	}

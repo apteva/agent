@@ -296,7 +296,10 @@ async function loadConfig() {
         const agents = currentConfig.agents || {};
         document.getElementById('agentsMode').value = agents.mode || 'coordinator';
         document.getElementById('agentsGroup').value = agents.group || '';
+        document.getElementById('agentsDiscoveryMethod').value = agents.discovery_method || 'file';
+        document.getElementById('agentsFileRegistryPath').value = agents.file_registry_path || '/tmp/apteva-agents';
         updateAgentsModeStatus(agents.mode || 'coordinator');
+        updateDiscoveryMethodUI();
 
         // Load Telemetry settings
         document.getElementById('toggleTelemetry').checked = currentConfig.telemetry?.enabled || false;
@@ -542,12 +545,15 @@ async function saveFeatureConfig(feature) {
 
         case 'agents':
             const agentsMode = document.getElementById('agentsMode').value;
+            const discoveryMethod = document.getElementById('agentsDiscoveryMethod').value;
             updates = {
                 agents: {
                     ...currentConfig?.agents,
                     enabled: document.getElementById('toggleAgents').checked,
                     mode: agentsMode,
-                    group: document.getElementById('agentsGroup').value || undefined
+                    group: document.getElementById('agentsGroup').value || undefined,
+                    discovery_method: discoveryMethod || 'file',
+                    file_registry_path: discoveryMethod === 'file' ? (document.getElementById('agentsFileRegistryPath').value || undefined) : undefined
                 }
             };
             updateAgentsModeStatus(agentsMode);
@@ -719,6 +725,20 @@ function updateAgentsModeStatus(mode) {
     } else {
         iconEl.textContent = '🎯';
         statusEl.textContent = 'Mode: Coordinator (discovers & calls other agents)';
+    }
+}
+
+// Helper function to show/hide discovery method specific settings
+function updateDiscoveryMethodUI() {
+    const method = document.getElementById('agentsDiscoveryMethod')?.value || 'file';
+    const fileSettings = document.getElementById('agentsFileSettings');
+    const mdnsSettings = document.getElementById('agentsMdnsSettings');
+
+    if (fileSettings) {
+        fileSettings.classList.toggle('hidden', method !== 'file');
+    }
+    if (mdnsSettings) {
+        mdnsSettings.classList.toggle('hidden', method !== 'mdns' && method !== 'ssdp');
     }
 }
 

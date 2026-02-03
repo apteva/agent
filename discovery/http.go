@@ -55,6 +55,9 @@ func (d *HTTPDiscovery) Start() error {
 		return fmt.Errorf("discovery already running")
 	}
 
+	// Recreate stopCh in case Stop() was called before (closed channel would cause immediate exit)
+	d.stopCh = make(chan struct{})
+
 	d.running = true
 	log.Printf("🔍 HTTP discovery started for group '%s'", d.group)
 	log.Printf("   This agent: %s (%s) at %s", d.agentName, d.agentID, d.agentURL)
@@ -67,6 +70,8 @@ func (d *HTTPDiscovery) Start() error {
 
 // continuousDiscovery polls known agents to check if they're alive
 func (d *HTTPDiscovery) continuousDiscovery() {
+	log.Printf("🔍 HTTP: continuous discovery loop started")
+
 	// Initial discovery
 	d.discoverPeers()
 
@@ -78,15 +83,21 @@ func (d *HTTPDiscovery) continuousDiscovery() {
 		}
 	}
 
+	log.Printf("🔍 HTTP: periodic discovery every %s", refreshInterval)
+
 	// Periodic re-discovery
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
 
+	tickCount := 0
 	for {
 		select {
 		case <-ticker.C:
+			tickCount++
+			log.Printf("🔍 HTTP: periodic discovery tick #%d", tickCount)
 			d.discoverPeers()
 		case <-d.stopCh:
+			log.Printf("🔍 HTTP: continuous discovery loop stopped")
 			return
 		}
 	}

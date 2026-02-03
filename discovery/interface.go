@@ -1,6 +1,8 @@
 package discovery
 
 import (
+	"log"
+
 	"github.com/apteva/agent/config"
 )
 
@@ -25,18 +27,44 @@ func NewDiscoveryService(cfg *config.AgentsConfig, agentID, agentName, agentURL 
 		return nil, nil
 	}
 
-	// Determine discovery method based on config
-	if cfg.GossipSeed != "" {
-		// Gossip mode: GossipSeed is set
-		return NewGossipDiscovery(cfg, agentID, agentName, agentURL)
-	} else if cfg.Group != "" {
-		// mDNS mode: Group is set but no GossipSeed
-		return NewMDNSDiscovery(cfg, agentID, agentName, agentURL, features)
-	} else if len(cfg.AvailableAgents) > 0 {
-		// Manual mode: Available agents explicitly configured (legacy)
-		return NewManualDiscovery(cfg)
+	// Determine discovery method
+	method := cfg.DiscoveryMethod
+
+	// If no explicit method, determine based on config
+	if method == "" {
+		if cfg.GossipSeed != "" {
+			// Gossip seed explicitly configured
+			method = "gossip"
+		} else if len(cfg.AvailableAgents) > 0 {
+			// Manual agents list configured
+			method = "manual"
+		} else {
+			// Default to file-based discovery (most reliable, works on localhost)
+			method = "file"
+		}
 	}
 
-	// No discovery method configured
-	return nil, nil
+	log.Printf("🔍 Discovery method: %s", method)
+
+	switch method {
+	case "file":
+		return NewFileDiscovery(cfg, agentID, agentName, agentURL, features)
+	case "mdns":
+		if cfg.Group == "" {
+			cfg.Group = "default" // Ensure group is set for mDNS
+		}
+		return NewMDNSDiscovery(cfg, agentID, agentName, agentURL, features)
+	case "ssdp":
+		if cfg.Group == "" {
+			cfg.Group = "default"
+		}
+		return NewSSDPDiscovery(cfg, agentID, agentName, agentURL)
+	case "gossip":
+		return NewGossipDiscovery(cfg, agentID, agentName, agentURL)
+	case "manual":
+		return NewManualDiscovery(cfg)
+	default:
+		log.Printf("⚠️  Unknown discovery method '%s', falling back to file-based", method)
+		return NewFileDiscovery(cfg, agentID, agentName, agentURL, features)
+	}
 }

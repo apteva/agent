@@ -139,6 +139,9 @@ func (d *MDNSDiscovery) Start() error {
 		return fmt.Errorf("discovery already running")
 	}
 
+	// Recreate stopCh in case Stop() was called before (closed channel would cause immediate exit)
+	d.stopCh = make(chan struct{})
+
 	// Create metadata for TXT records
 	metadata := AgentMetadata{
 		ID:       d.agentID,
@@ -263,6 +266,8 @@ func splitURL(url string) []string {
 
 // continuousDiscovery runs periodic mDNS lookups to discover peers
 func (d *MDNSDiscovery) continuousDiscovery(serviceType string) {
+	log.Printf("🔍 mDNS: continuous discovery loop started for service type %s", serviceType)
+
 	// Initial discovery (immediate)
 	d.discoverPeers(serviceType)
 
@@ -278,15 +283,21 @@ func (d *MDNSDiscovery) continuousDiscovery(serviceType string) {
 		}
 	}
 
+	log.Printf("🔍 mDNS: periodic discovery every %s", refreshInterval)
+
 	// Periodic re-discovery to catch new agents and remove stale ones
 	ticker := time.NewTicker(refreshInterval)
 	defer ticker.Stop()
 
+	tickCount := 0
 	for {
 		select {
 		case <-ticker.C:
+			tickCount++
+			log.Printf("🔍 mDNS: periodic discovery tick #%d", tickCount)
 			d.discoverPeers(serviceType)
 		case <-d.stopCh:
+			log.Printf("🔍 mDNS: continuous discovery loop stopped")
 			return
 		}
 	}

@@ -265,11 +265,13 @@ type FileSystemConfig struct {
 
 type AgentsConfig struct {
 	Enabled          bool              `json:"enabled"`
-	Mode             string            `json:"mode,omitempty"`             // "coordinator" | "worker" (default: "coordinator")
-	Group            string            `json:"group,omitempty"`            // Discovery group name (e.g., "production", "staging")
-	GossipSeed       string            `json:"gossip_seed,omitempty"`      // Gossip seed address (triggers gossip mode)
-	GossipPort       int               `json:"gossip_port,omitempty"`      // Gossip port (default: 7946)
-	AvailableAgents  []AgentInfo       `json:"available_agents,omitempty"` // Manual mode (legacy/fallback)
+	Mode             string            `json:"mode,omitempty"`               // "coordinator" | "worker" (default: "coordinator")
+	Group            string            `json:"group,omitempty"`              // Discovery group name (e.g., "production", "staging")
+	DiscoveryMethod  string            `json:"discovery_method,omitempty"`   // "file" | "mdns" | "ssdp" | "manual" (default: "file")
+	FileRegistryPath string            `json:"file_registry_path,omitempty"` // Path for file-based discovery (default: "/tmp/apteva-agents")
+	GossipSeed       string            `json:"gossip_seed,omitempty"`        // Gossip seed address (triggers gossip mode)
+	GossipPort       int               `json:"gossip_port,omitempty"`        // Gossip port (default: 7946)
+	AvailableAgents  []AgentInfo       `json:"available_agents,omitempty"`   // Manual mode (legacy/fallback)
 	Settings         AgentCommSettings `json:"settings"`
 	InjectIntoPrompt *bool             `json:"inject_into_prompt,omitempty"` // Inject discovered agents into system prompt (default: true)
 	RefreshInterval  string            `json:"refresh_interval,omitempty"`   // Discovery refresh interval (default: "10s")
