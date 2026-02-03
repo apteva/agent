@@ -74,19 +74,24 @@ func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentURL str
 
 // Start begins file-based discovery
 func (d *FileDiscovery) Start() error {
+	d.mu.Lock()
 	if d.running {
+		d.mu.Unlock()
 		return fmt.Errorf("discovery already running")
 	}
 
 	// Recreate stopCh in case Stop() was called before
 	d.stopCh = make(chan struct{})
+	d.running = true
+	d.mu.Unlock()
 
 	// Register ourselves
 	if err := d.registerSelf(); err != nil {
+		d.mu.Lock()
+		d.running = false
+		d.mu.Unlock()
 		return fmt.Errorf("failed to register self: %w", err)
 	}
-
-	d.running = true
 	log.Printf("🔍 File discovery started (path: %s)", d.registryPath)
 	log.Printf("   This agent: %s (%s) at %s", d.agentName, d.agentID, d.agentURL)
 	log.Printf("🔍 DEBUG: FileDiscovery instance pointer=%p", d)
@@ -243,7 +248,7 @@ func (d *FileDiscovery) discoverPeers() {
 	for _, agent := range discovered {
 		log.Printf("   - %s (%s) at %s", agent.Name, agent.ID, agent.URL)
 	}
-	log.Printf("🔍 DEBUG: registry pointer=%p, running=%v, agentID=%s", d, d.running, d.agentID)
+	log.Printf("🔍 DEBUG: registry pointer=%p, agentID=%s", d, d.agentID)
 }
 
 // isProcessAlive checks if a process with the given PID is still running
@@ -265,12 +270,15 @@ func (d *FileDiscovery) isProcessAlive(pid int) bool {
 
 // Stop stops file-based discovery and unregisters this agent
 func (d *FileDiscovery) Stop() error {
+	d.mu.Lock()
 	if !d.running {
+		d.mu.Unlock()
 		return nil
 	}
+	d.running = false
+	d.mu.Unlock()
 
 	close(d.stopCh)
-	d.running = false
 
 	// Unregister self
 	if err := d.unregisterSelf(); err != nil {
@@ -300,5 +308,7 @@ func (d *FileDiscovery) GetAgents() []config.AgentInfo {
 
 // IsRunning returns whether discovery is active
 func (d *FileDiscovery) IsRunning() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	return d.running
 }
