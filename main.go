@@ -3206,6 +3206,7 @@ func authMiddleware(next http.Handler) http.Handler {
 			"/health",
 			"/debug", // debug UI page
 			"/",      // main UI page
+			"/chat",  // TODO: implement proper auth for agent-to-agent calls
 		}
 		whitelistedPrefixes := []string{
 			"/web/", // static assets (JS, CSS)
