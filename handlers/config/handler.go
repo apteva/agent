@@ -10,6 +10,7 @@ import (
 	appConfig "github.com/apteva/agent/config"
 	"github.com/apteva/agent/mcp"
 	"github.com/apteva/agent/scheduler"
+	"github.com/apteva/agent/skills"
 )
 
 var globalDB *sql.DB
@@ -763,6 +764,58 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Skills config
+		if skillsConfig, ok := updateConfig["skills"].(map[string]interface{}); ok {
+			if currentConfig.Skills == nil {
+				currentConfig.Skills = &appConfig.SkillsConfig{}
+			}
+			if enabled, ok := skillsConfig["enabled"].(bool); ok {
+				currentConfig.Skills.Enabled = enabled
+			}
+			if definitions, ok := skillsConfig["definitions"].([]interface{}); ok {
+				var skills []appConfig.Skill
+				for _, def := range definitions {
+					if defMap, ok := def.(map[string]interface{}); ok {
+						skill := appConfig.Skill{}
+						if name, ok := defMap["name"].(string); ok {
+							skill.Name = name
+						}
+						if desc, ok := defMap["description"].(string); ok {
+							skill.Description = desc
+						}
+						if instr, ok := defMap["instructions"].(string); ok {
+							skill.Instructions = instr
+						}
+						if icon, ok := defMap["icon"].(string); ok {
+							skill.Icon = icon
+						}
+						if cat, ok := defMap["category"].(string); ok {
+							skill.Category = cat
+						}
+						if enabled, ok := defMap["enabled"].(bool); ok {
+							skill.Enabled = enabled
+						}
+						if tags, ok := defMap["tags"].([]interface{}); ok {
+							for _, t := range tags {
+								if str, ok := t.(string); ok {
+									skill.Tags = append(skill.Tags, str)
+								}
+							}
+						}
+						if tools, ok := defMap["tools"].([]interface{}); ok {
+							for _, t := range tools {
+								if str, ok := t.(string); ok {
+									skill.Tools = append(skill.Tools, str)
+								}
+							}
+						}
+						skills = append(skills, skill)
+					}
+				}
+				currentConfig.Skills.Definitions = skills
+			}
+		}
+
 		// Realtime config
 		if realtimeConfig, ok := updateConfig["realtime"].(map[string]interface{}); ok {
 			if currentConfig.Realtime == nil {
@@ -845,6 +898,12 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			if err := telemetryCallback(currentConfig.Telemetry.Enabled); err != nil {
 				log.Printf("⚠️  Failed to update telemetry: %v", err)
 			}
+		}
+
+		// Reinitialize skills manager if skills config was updated
+		if currentConfig.Skills != nil {
+			skills.GetManager().Initialize(currentConfig.Skills)
+			log.Printf("🎯 Skills manager reinitialized: %d skills", skills.GetManager().Count())
 		}
 
 		// Dynamically update discovery service if agents config changed (AFTER cfg.Update so new config is visible)
