@@ -2,6 +2,7 @@ package skills
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/apteva/agent/config"
@@ -313,16 +314,21 @@ func HandleSkillsMatch(w http.ResponseWriter, r *http.Request) {
 // HandleSkillsEnable - POST /skills/status
 // Enables or disables the skills system
 func HandleSkillsEnable(w http.ResponseWriter, r *http.Request) {
+	log.Printf("🎯 Skills: HandleSkillsEnable called")
+
 	var req struct {
 		Enabled bool `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("❌ Skills: Failed to decode request: %v", err)
 		sendJSON(w, http.StatusBadRequest, map[string]interface{}{
 			"success": false,
 			"error":   "Invalid JSON: " + err.Error(),
 		})
 		return
 	}
+
+	log.Printf("🎯 Skills: Setting enabled to %v", req.Enabled)
 
 	// Get current config
 	globalCfg := config.GetConfig()
@@ -339,12 +345,15 @@ func HandleSkillsEnable(w http.ResponseWriter, r *http.Request) {
 
 	// Save config
 	if err := globalCfg.Update(cfg); err != nil {
+		log.Printf("❌ Skills: Failed to save config: %v", err)
 		sendJSON(w, http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
 			"error":   "Failed to save config: " + err.Error(),
 		})
 		return
 	}
+
+	log.Printf("✅ Skills: Config saved, enabled=%v", req.Enabled)
 
 	// Reinitialize skills manager
 	skills.GetManager().Initialize(cfg.Skills)
