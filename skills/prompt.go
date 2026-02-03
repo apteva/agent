@@ -7,9 +7,8 @@ import (
 	"github.com/apteva/agent/config"
 )
 
-// BuildMetadataPrompt builds the system prompt section with skill metadata only
-// This is injected at startup to let the LLM know what skills are available
-func (m *Manager) BuildMetadataPrompt() string {
+// BuildAllSkillsPrompt builds the system prompt section with ALL skills and their full instructions
+func (m *Manager) BuildAllSkillsPrompt() string {
 	if !m.enabled || len(m.skills) == 0 {
 		return ""
 	}
@@ -18,20 +17,22 @@ func (m *Manager) BuildMetadataPrompt() string {
 	defer m.mu.RUnlock()
 
 	var sb strings.Builder
-	sb.WriteString("\n\n## Available Skills\n\n")
-	sb.WriteString("The following skills are available. When a user's request matches a skill, ")
-	sb.WriteString("use the skill's instructions to guide your response.\n\n")
+	sb.WriteString("\n\n## Skills\n\n")
+	sb.WriteString("Follow these skill instructions when relevant to the user's request:\n")
 
 	for _, skill := range m.skills {
-		// Icon and name
+		// Skill header
 		if skill.Icon != "" {
-			sb.WriteString(fmt.Sprintf("- %s **%s**: ", skill.Icon, skill.Name))
+			sb.WriteString(fmt.Sprintf("\n### %s %s\n", skill.Icon, skill.Name))
 		} else {
-			sb.WriteString(fmt.Sprintf("- **%s**: ", skill.Name))
+			sb.WriteString(fmt.Sprintf("\n### %s\n", skill.Name))
 		}
 
 		// Description
-		sb.WriteString(skill.Description)
+		sb.WriteString(fmt.Sprintf("*%s*\n\n", skill.Description))
+
+		// Full instructions
+		sb.WriteString(skill.Instructions)
 		sb.WriteString("\n")
 	}
 

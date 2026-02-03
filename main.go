@@ -1938,11 +1938,10 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		log.Printf("🔧 Setup mode: Injected config into system prompt")
 	}
 
-	// Inject skills metadata if enabled (lightweight - just skill names and descriptions)
-	// Full instructions are loaded on-demand when a skill is triggered
+	// Inject all skills with full instructions if enabled
 	skillsManager := skills.GetManager()
 	if skillsManager.IsEnabled() && skillsManager.Count() > 0 {
-		skillsSection := skillsManager.BuildMetadataPrompt()
+		skillsSection := skillsManager.BuildAllSkillsPrompt()
 		switch existing := systemContext.(type) {
 		case string:
 			systemContext = existing + skillsSection

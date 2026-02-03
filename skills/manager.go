@@ -1,7 +1,6 @@
 package skills
 
 import (
-	"regexp"
 	"strings"
 	"sync"
 
@@ -107,28 +106,25 @@ func (m *Manager) MatchSkills(input string) []config.Skill {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	input = strings.ToLower(input)
+	inputLower := strings.ToLower(input)
+	inputWords := strings.Fields(inputLower)
 	var matched []config.Skill
 
+SkillLoop:
 	for _, skill := range m.skills {
-		// Check if skill name appears in input (word boundary)
-		namePattern := `\b` + regexp.QuoteMeta(strings.ToLower(skill.Name)) + `\b`
-		if ok, _ := regexp.MatchString(namePattern, input); ok {
-			matched = append(matched, skill)
-			continue
-		}
+		nameLower := strings.ToLower(skill.Name)
+		descLower := strings.ToLower(skill.Description)
+		searchText := nameLower + " " + descLower
 
-		// Check if any significant word from description appears in input
-		descWords := strings.Fields(strings.ToLower(skill.Description))
-		for _, word := range descWords {
-			// Skip short common words
-			if len(word) < 4 {
-				continue
+		// Check each input word against name and description
+		for _, word := range inputWords {
+			if len(word) < 3 {
+				continue // Skip very short words
 			}
-			wordPattern := `\b` + regexp.QuoteMeta(word) + `\b`
-			if ok, _ := regexp.MatchString(wordPattern, input); ok {
+			// Substring match - "color" matches "colors", "colorful", etc.
+			if strings.Contains(searchText, word) {
 				matched = append(matched, skill)
-				break
+				continue SkillLoop
 			}
 		}
 	}
