@@ -17,11 +17,6 @@ func sendJSON(w http.ResponseWriter, status int, data interface{}) {
 
 // HandleSkillsStatus - GET /skills/status
 func HandleSkillsStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	manager := skills.GetManager()
 	cfg := config.GetConfig().Get()
 
@@ -315,14 +310,9 @@ func HandleSkillsMatch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleSkillsEnable - POST /skills/enable
+// HandleSkillsEnable - POST /skills/status
 // Enables or disables the skills system
 func HandleSkillsEnable(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var req struct {
 		Enabled bool `json:"enabled"`
 	}

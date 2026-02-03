@@ -12,9 +12,9 @@ async function initSkillsTab() {
 async function loadSkillsData() {
     try {
         const response = await makeRequest('/skills');
-        if (response.status === 200) {
-            skillsData = response.skills || [];
-            const enabled = response.enabled || false;
+        if (response.status === 200 && response.data) {
+            skillsData = response.data.skills || [];
+            const enabled = response.data.enabled || false;
 
             // Update toggle
             document.getElementById('skillsEnabledToggle').checked = enabled;
@@ -191,12 +191,12 @@ async function saveSkill() {
         const method = editingSkillName ? 'PUT' : 'POST';
         const response = await makeRequest('/skills', method, skill);
 
-        if (response.success) {
+        if (response.data && response.data.success) {
             showToast(`Skill ${editingSkillName ? 'updated' : 'created'} successfully`, 'success');
             hideSkillModal();
             await loadSkillsData();
         } else {
-            showToast(response.error || 'Failed to save skill', 'error');
+            showToast(response.data?.error || 'Failed to save skill', 'error');
         }
     } catch (e) {
         console.error('Failed to save skill:', e);
@@ -213,11 +213,11 @@ async function deleteSkill(name) {
     try {
         const response = await makeRequest(`/skills?name=${encodeURIComponent(name)}`, 'DELETE');
 
-        if (response.success) {
+        if (response.data && response.data.success) {
             showToast('Skill deleted', 'success');
             await loadSkillsData();
         } else {
-            showToast(response.error || 'Failed to delete skill', 'error');
+            showToast(response.data?.error || 'Failed to delete skill', 'error');
         }
     } catch (e) {
         console.error('Failed to delete skill:', e);
@@ -238,8 +238,8 @@ async function testSkillTriggers() {
 
         const resultDiv = document.getElementById('skillsTestResult');
 
-        if (response.success) {
-            const matched = response.matched || [];
+        if (response.data && response.data.success) {
+            const matched = response.data.matched || [];
             if (matched.length === 0) {
                 resultDiv.innerHTML = `<span class="text-slate-500">No skills matched for: "${escapeHtml(input)}"</span>`;
             } else {
@@ -258,7 +258,7 @@ async function testSkillTriggers() {
                 `;
             }
         } else {
-            resultDiv.innerHTML = `<span class="text-red-500">Error: ${escapeHtml(response.error || 'Unknown error')}</span>`;
+            resultDiv.innerHTML = `<span class="text-red-500">Error: ${escapeHtml(response.data?.error || 'Unknown error')}</span>`;
         }
     } catch (e) {
         console.error('Failed to test triggers:', e);
