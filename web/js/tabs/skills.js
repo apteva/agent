@@ -97,9 +97,14 @@ function renderSkillsList() {
 async function toggleSkillsEnabled() {
     const enabled = document.getElementById('skillsEnabledToggle').checked;
     try {
+        console.log('Toggling skills enabled:', enabled);
         const response = await makeRequest('/skills/status', 'POST', { enabled });
-        if (response.status === 200) {
+        console.log('Toggle response:', response);
+        if (response.status === 200 && response.data?.success) {
             showToast(`Skills ${enabled ? 'enabled' : 'disabled'}`, 'success');
+        } else {
+            showToast(response.data?.error || 'Failed to toggle skills', 'error');
+            document.getElementById('skillsEnabledToggle').checked = !enabled;
         }
     } catch (e) {
         console.error('Failed to toggle skills:', e);
