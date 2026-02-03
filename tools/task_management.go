@@ -727,6 +727,10 @@ Execute now.`,
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
+	// Add API key for internal auth
+	if apiKey := os.Getenv("AGENT_API_KEY"); apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
 
 	client := &http.Client{Timeout: 10 * time.Minute} // Long timeout for task execution
 	resp, err := client.Do(req)
@@ -1117,7 +1121,23 @@ Execute now.`,
 	chatURL := fmt.Sprintf("http://localhost:%s/chat", port)
 
 	log.Printf("Calling chat endpoint for task %s with thread %s (%s) at %s", taskID, threadID, mode, chatURL)
-	resp, err := http.Post(chatURL, "application/json", bytes.NewReader(requestBody))
+	req, err := http.NewRequest("POST", chatURL, bytes.NewReader(requestBody))
+	if err != nil {
+		log.Printf("Failed to create request for task %s: %v", taskID, err)
+		updateTaskFailed(taskID, fmt.Sprintf("Failed to create request: %v", err))
+		if sync {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		return nil
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// Add API key for internal auth
+	if apiKey := os.Getenv("AGENT_API_KEY"); apiKey != "" {
+		req.Header.Set("X-API-Key", apiKey)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Failed to call chat endpoint for task %s: %v", taskID, err)
 		updateTaskFailed(taskID, fmt.Sprintf("Failed to call chat endpoint: %v", err))

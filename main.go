@@ -1011,11 +1011,20 @@ func handleWebhookReceive(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Make internal request to chat endpoint
-		resp, err := http.Post(
-			fmt.Sprintf("http://localhost:%s/chat", port),
-			"application/json",
-			bytes.NewBuffer(chatBody),
-		)
+		chatURL := fmt.Sprintf("http://localhost:%s/chat", port)
+		req, err := http.NewRequest("POST", chatURL, bytes.NewBuffer(chatBody))
+		if err != nil {
+			log.Printf("⚠️ Webhook processing failed to create request: %v", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		// Add API key for internal auth
+		if apiKey := os.Getenv("AGENT_API_KEY"); apiKey != "" {
+			req.Header.Set("X-API-Key", apiKey)
+		}
+
+		client := &http.Client{Timeout: 5 * time.Minute}
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("⚠️ Webhook processing failed: %v", err)
 			return

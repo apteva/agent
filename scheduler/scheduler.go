@@ -409,7 +409,19 @@ Begin now.`
 		chatURL := fmt.Sprintf("http://localhost:%s/chat", port)
 
 		log.Printf("Scheduler: Calling agent at %s for thread %s", chatURL, threadID)
-		resp, err := http.Post(chatURL, "application/json", bytes.NewReader(requestBody))
+		req, err := http.NewRequest("POST", chatURL, bytes.NewReader(requestBody))
+		if err != nil {
+			log.Printf("Scheduler: Failed to create request: %v", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		// Add API key for internal auth
+		if apiKey := os.Getenv("AGENT_API_KEY"); apiKey != "" {
+			req.Header.Set("X-API-Key", apiKey)
+		}
+
+		client := &http.Client{Timeout: 5 * time.Minute}
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Scheduler: Failed to call agent: %v", err)
 			return
