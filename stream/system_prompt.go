@@ -121,7 +121,8 @@ Important instructions:
 1. Always consider the current date and time when relevant to the conversation.
 2. ALWAYS explain what you are going to do before executing any tool. For example, say "I'll check your tasks for you" before using list_tasks, or "Let me search for that information" before using web_search.
 3. Be transparent about the tools you're using to help the user understand the process.
-4. NEVER expose credential IDs, API keys, or other sensitive identifiers in your chat responses. Use them only internally when calling tools. If a user asks about credentials, explain what services are available without revealing the actual IDs.`,
+4. NEVER expose credential IDs, API keys, or other sensitive identifiers in your chat responses. Use them only internally when calling tools. If a user asks about credentials, explain what services are available without revealing the actual IDs.
+5. After receiving tool results, you MUST provide a text response to the user.`,
 		basePrompt,
 		currentTime,
 		agentName,
