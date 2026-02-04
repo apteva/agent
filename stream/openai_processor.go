@@ -470,11 +470,17 @@ func (p *OpenAIProcessor) emitAllToolEvents() (*StreamEvent, error) {
 	p.toolArguments = make(map[int]string)
 	p.toolCallStarted = make(map[int]bool)
 
-	// Return first event, queue the rest
+	// Return first event, queue the rest (including a stop event at the end)
 	if len(events) > 0 {
 		if len(events) > 1 {
 			p.pendingToolUse = append(p.pendingToolUse, events[1:]...)
 		}
+		// Queue a stop event after all tool_use events
+		// This ensures parallel tool execution triggers in processor.go
+		p.pendingToolUse = append(p.pendingToolUse, &StreamEvent{
+			Type:    "stop",
+			Content: "",
+		})
 		return events[0], nil
 	}
 
