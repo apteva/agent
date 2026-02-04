@@ -568,6 +568,15 @@ Execute now.`, message)
 		AddCallContextHeaders(req, callCtx, c.selfAgentID)
 	}
 
+	// Add cancellation headers for propagation (same as non-streaming)
+	if c.currentRequestID != "" {
+		req.Header.Set(HeaderRequestID, c.currentRequestID)
+		if c.selfAgentURL != "" {
+			cancelCallback := fmt.Sprintf("%s/requests/%s/cancel", c.selfAgentURL, c.currentRequestID)
+			req.Header.Set(HeaderCancelCallback, cancelCallback)
+		}
+	}
+
 	callback(tools.NewProgressEvent("Agent responding...", 0.2))
 
 	// Make request

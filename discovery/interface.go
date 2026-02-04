@@ -22,7 +22,7 @@ type DiscoveryService interface {
 }
 
 // NewDiscoveryService creates the appropriate discovery service based on config
-func NewDiscoveryService(cfg *config.AgentsConfig, agentID, agentName, agentURL string, features map[string]bool) (DiscoveryService, error) {
+func NewDiscoveryService(cfg *config.AgentsConfig, agentID, agentName, agentDescription, agentURL string, features map[string]bool) (DiscoveryService, error) {
 	if cfg == nil || !cfg.Enabled {
 		return nil, nil
 	}
@@ -48,7 +48,7 @@ func NewDiscoveryService(cfg *config.AgentsConfig, agentID, agentName, agentURL 
 
 	switch method {
 	case "file":
-		return NewFileDiscovery(cfg, agentID, agentName, agentURL, features)
+		return NewFileDiscovery(cfg, agentID, agentName, agentDescription, agentURL, features)
 	case "mdns":
 		if cfg.Group == "" {
 			cfg.Group = "default" // Ensure group is set for mDNS
@@ -65,6 +65,6 @@ func NewDiscoveryService(cfg *config.AgentsConfig, agentID, agentName, agentURL 
 		return NewManualDiscovery(cfg)
 	default:
 		log.Printf("⚠️  Unknown discovery method '%s', falling back to file-based", method)
-		return NewFileDiscovery(cfg, agentID, agentName, agentURL, features)
+		return NewFileDiscovery(cfg, agentID, agentName, agentDescription, agentURL, features)
 	}
 }

@@ -16,6 +16,7 @@ const (
 	HeaderOriginAgent = "X-Agent-Origin"       // Original requesting agent
 	HeaderCallID      = "X-Agent-Call-ID"      // Unique ID for this call tree
 	HeaderTTL         = "X-Agent-TTL"          // Time-to-live in seconds
+	HeaderStartTime   = "X-Agent-Start-Time"   // Unix timestamp (nanoseconds) when call chain started
 )
 
 // CallContext holds the context of a call chain
@@ -315,9 +316,18 @@ func ExtractCallContext(r *http.Request) *CallContext {
 	// Extract call ID
 	ctx.CallID = r.Header.Get(HeaderCallID)
 
-	// Extract start time from TTL header (approximate)
-	// In practice, start time should be passed or calculated differently
-	ctx.StartTime = time.Now()
+	// Extract start time from header (propagated from origin)
+	// If not present, this is the start of a new call chain
+	if startTimeHeader := r.Header.Get(HeaderStartTime); startTimeHeader != "" {
+		var startNanos int64
+		if _, err := fmt.Sscanf(startTimeHeader, "%d", &startNanos); err == nil {
+			ctx.StartTime = time.Unix(0, startNanos)
+		} else {
+			ctx.StartTime = time.Now()
+		}
+	} else {
+		ctx.StartTime = time.Now()
+	}
 
 	return ctx
 }
@@ -344,5 +354,12 @@ func AddCallContextHeaders(req *http.Request, ctx *CallContext, currentAgentID s
 		req.Header.Set(HeaderCallID, ctx.CallID)
 	} else {
 		req.Header.Set(HeaderCallID, fmt.Sprintf("%s-%d", currentAgentID, time.Now().UnixNano()))
+	}
+
+	// Propagate start time (preserve original start time for TTL calculation)
+	if !ctx.StartTime.IsZero() {
+		req.Header.Set(HeaderStartTime, fmt.Sprintf("%d", ctx.StartTime.UnixNano()))
+	} else {
+		req.Header.Set(HeaderStartTime, fmt.Sprintf("%d", time.Now().UnixNano()))
 	}
 }

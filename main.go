@@ -2680,6 +2680,7 @@ func initAgentCommunication() {
 			agentConfig.Agents,
 			agentConfig.ID,
 			agentConfig.Name,
+			agentConfig.Description,
 			agentURL,
 			features,
 		)
@@ -2820,6 +2821,7 @@ func UpdateDiscoveryService(enabled bool, group string) error {
 				agentConfig.Agents,
 				agentConfig.ID,
 				agentConfig.Name,
+				agentConfig.Description,
 				agentURL,
 				features,
 			)

@@ -27,7 +27,7 @@ func TestFileDiscovery_GetAgentsReturnsDiscoveredAgents(t *testing.T) {
 	}
 
 	// Create the discovery service for "coordinator"
-	coordDiscovery, err := NewFileDiscovery(cfg, "coordinator-id", "Coordinator", "http://localhost:4106", nil)
+	coordDiscovery, err := NewFileDiscovery(cfg, "coordinator-id", "Coordinator", "A coordinator agent", "http://localhost:4106", nil)
 	if err != nil {
 		t.Fatalf("Failed to create coordinator discovery: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestFileDiscovery_SameInstanceUsedForDiscoveryAndGetAgents(t *testing.T) {
 		FileRegistryPath: tmpDir,
 	}
 
-	discovery, err := NewFileDiscovery(cfg, "test-agent", "Test Agent", "http://localhost:4000", nil)
+	discovery, err := NewFileDiscovery(cfg, "test-agent", "Test Agent", "A test agent", "http://localhost:4000", nil)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestFileDiscovery_WorkerModeDoesNotDiscover(t *testing.T) {
 		FileRegistryPath: tmpDir,
 	}
 
-	workerDiscovery, err := NewFileDiscovery(cfg, "worker-id", "Worker", "http://localhost:4105", nil)
+	workerDiscovery, err := NewFileDiscovery(cfg, "worker-id", "Worker", "A worker agent", "http://localhost:4105", nil)
 	if err != nil {
 		t.Fatalf("Failed to create worker discovery: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestFileDiscovery_GroupFiltering(t *testing.T) {
 		FileRegistryPath: tmpDir,
 	}
 
-	discovery, err := NewFileDiscovery(cfg, "agent-a", "Agent A", "http://localhost:4000", nil)
+	discovery, err := NewFileDiscovery(cfg, "agent-a", "Agent A", "Agent A description", "http://localhost:4000", nil)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestFileDiscovery_ConcurrentAccessDuringDiscovery(t *testing.T) {
 		RefreshInterval:  "100ms", // Fast refresh for testing
 	}
 
-	discovery, err := NewFileDiscovery(cfg, "test-agent", "Test Agent", "http://localhost:4000", nil)
+	discovery, err := NewFileDiscovery(cfg, "test-agent", "Test Agent", "A test agent", "http://localhost:4000", nil)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestFileDiscovery_ViaInterface(t *testing.T) {
 
 	// Create via interface (like main.go does)
 	var discoveryService DiscoveryService
-	discoveryService, err = NewDiscoveryService(cfg, "interface-agent", "Interface Agent", "http://localhost:4000", nil)
+	discoveryService, err = NewDiscoveryService(cfg, "interface-agent", "Interface Agent", "An interface test agent", "http://localhost:4000", nil)
 	if err != nil {
 		t.Fatalf("Failed to create discovery service: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestFileDiscovery_InitialDiscoveryRunsBeforeStartReturns(t *testing.T) {
 		FileRegistryPath: tmpDir,
 	}
 
-	discovery, err := NewFileDiscovery(cfg, "new-agent", "New Agent", "http://localhost:4000", nil)
+	discovery, err := NewFileDiscovery(cfg, "new-agent", "New Agent", "A new agent", "http://localhost:4000", nil)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}

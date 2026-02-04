@@ -19,13 +19,14 @@ const DefaultRegistryPath = "/tmp/apteva-agents"
 // FileDiscovery implements agent discovery using filesystem
 // This is the most reliable method for localhost/same-machine scenarios
 type FileDiscovery struct {
-	cfg          *config.AgentsConfig
-	agentID      string
-	agentName    string
-	agentURL     string
-	group        string
-	features     map[string]bool
-	capabilities []string
+	cfg              *config.AgentsConfig
+	agentID          string
+	agentName        string
+	agentDescription string
+	agentURL         string
+	group            string
+	features         map[string]bool
+	capabilities     []string
 
 	registryPath string
 	registry     map[string]*config.AgentInfo
@@ -38,6 +39,7 @@ type FileDiscovery struct {
 type FileAgentEntry struct {
 	ID           string          `json:"id"`
 	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
 	URL          string          `json:"url"`
 	Group        string          `json:"group"`
 	Features     map[string]bool `json:"features,omitempty"`
@@ -47,7 +49,7 @@ type FileAgentEntry struct {
 }
 
 // NewFileDiscovery creates a new file-based discovery service
-func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentURL string, features map[string]bool) (*FileDiscovery, error) {
+func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentDescription, agentURL string, features map[string]bool) (*FileDiscovery, error) {
 	// Use configured path or default
 	registryPath := DefaultRegistryPath
 	if cfg.FileRegistryPath != "" {
@@ -60,15 +62,16 @@ func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentURL str
 	}
 
 	return &FileDiscovery{
-		cfg:          cfg,
-		agentID:      agentID,
-		agentName:    agentName,
-		agentURL:     agentURL,
-		group:        cfg.Group,
-		features:     features,
-		registryPath: registryPath,
-		registry:     make(map[string]*config.AgentInfo),
-		stopCh:       make(chan struct{}),
+		cfg:              cfg,
+		agentID:          agentID,
+		agentName:        agentName,
+		agentDescription: agentDescription,
+		agentURL:         agentURL,
+		group:            cfg.Group,
+		features:         features,
+		registryPath:     registryPath,
+		registry:         make(map[string]*config.AgentInfo),
+		stopCh:           make(chan struct{}),
 	}, nil
 }
 
@@ -117,6 +120,7 @@ func (d *FileDiscovery) registerSelf() error {
 	entry := FileAgentEntry{
 		ID:           d.agentID,
 		Name:         d.agentName,
+		Description:  d.agentDescription,
 		URL:          d.agentURL,
 		Group:        d.group,
 		Features:     d.features,
@@ -228,6 +232,7 @@ func (d *FileDiscovery) discoverPeers() {
 		agent := &config.AgentInfo{
 			ID:           entry.ID,
 			Name:         entry.Name,
+			Description:  entry.Description,
 			URL:          entry.URL,
 			Features:     entry.Features,
 			Capabilities: entry.Capabilities,
