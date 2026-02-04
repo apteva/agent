@@ -14,9 +14,10 @@ import (
 
 // ToolCall represents a single tool invocation
 type ToolCall struct {
-	ID    string                 `json:"id"`
-	Name  string                 `json:"name"`
-	Input map[string]interface{} `json:"input"`
+	ID               string                 `json:"id"`
+	Name             string                 `json:"name"`
+	Input            map[string]interface{} `json:"input"`
+	ThoughtSignature string                 `json:"thought_signature,omitempty"` // For Gemini 3
 }
 
 // ToolResult represents the result of a tool execution
@@ -207,4 +208,149 @@ func GetMaxConcurrent() int {
 	}
 
 	return llmConfig.ParallelTools.MaxConcurrent
+}
+
+// ExecuteCustomToolsParallel executes multiple custom tools in parallel
+// Returns results in the same order as input toolCalls
+func ExecuteCustomToolsParallel(toolCalls []ToolCall, threadID, taskID string) []ToolResult {
+	if len(toolCalls) == 0 {
+		return []ToolResult{}
+	}
+
+	// If only one tool, no need for parallel overhead
+	if len(toolCalls) == 1 {
+		return []ToolResult{executeCustomToolSync(toolCalls[0], threadID, taskID)}
+	}
+
+	maxConcurrent := GetMaxConcurrent()
+	results := make([]ToolResult, len(toolCalls))
+	var wg sync.WaitGroup
+
+	// Create a semaphore to limit concurrency
+	sem := make(chan struct{}, maxConcurrent)
+
+	log.Printf("🔀 Executing %d custom tools in parallel (max concurrent: %d)", len(toolCalls), maxConcurrent)
+	batchStart := time.Now()
+
+	for i, tc := range toolCalls {
+		wg.Add(1)
+
+		go func(idx int, call ToolCall) {
+			defer wg.Done()
+
+			// Acquire semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			results[idx] = executeCustomToolSync(call, threadID, taskID)
+		}(i, tc)
+	}
+
+	wg.Wait()
+
+	// Calculate max duration (parallel time)
+	maxDuration := time.Duration(0)
+	for _, result := range results {
+		if result.Duration > maxDuration {
+			maxDuration = result.Duration
+		}
+	}
+
+	log.Printf("✅ Parallel custom tool execution complete: %d tools in %v (max single: %v)",
+		len(toolCalls), time.Since(batchStart), maxDuration)
+
+	return results
+}
+
+// executeCustomToolSync executes a single custom tool synchronously
+func executeCustomToolSync(tc ToolCall, threadID, taskID string) ToolResult {
+	startTime := time.Now()
+	eventBus := events.GetEventBus()
+
+	// Publish tool invocation event
+	toolEvent := events.NewEvent(events.CategoryTool, events.TypeToolInvocation, events.LevelInfo).
+		WithThread(threadID).
+		WithData("tool_name", tc.Name).
+		WithData("tool_id", tc.ID).
+		WithData("input", tc.Input).
+		WithData("parallel", true)
+	eventBus.Publish(toolEvent)
+
+	// Get tool
+	tool, err := tools.GetTool(tc.Name)
+	if err != nil {
+		log.Printf("❌ Error getting tool %s: %v", tc.Name, err)
+
+		// Publish error event
+		errorEvent := events.NewEvent(events.CategoryTool, events.TypeToolError, events.LevelError).
+			WithThread(threadID).
+			WithData("tool_name", tc.Name).
+			WithData("tool_id", tc.ID).
+			WithError(err).
+			WithDuration(startTime)
+		eventBus.Publish(errorEvent)
+
+		return ToolResult{
+			ID:       tc.ID,
+			Name:     tc.Name,
+			Content:  fmt.Sprintf("Error: %s", err.Error()),
+			Input:    tc.Input,
+			Error:    err,
+			Duration: time.Since(startTime),
+		}
+	}
+
+	// Execute tool (non-streaming for parallel execution)
+	// Note: We use Execute() not ExecuteStreaming() for parallel calls
+	// because interleaving multiple streams is complex and not needed for most cases
+	result, execErr := tool.Execute(tc.Input)
+	duration := time.Since(startTime)
+
+	if execErr != nil {
+		log.Printf("❌ Error executing tool %s: %v", tc.Name, execErr)
+
+		// Publish error event
+		errorEvent := events.NewEvent(events.CategoryTool, events.TypeToolError, events.LevelError).
+			WithThread(threadID).
+			WithData("tool_name", tc.Name).
+			WithData("tool_id", tc.ID).
+			WithError(execErr).
+			WithDuration(startTime)
+		eventBus.Publish(errorEvent)
+
+		return ToolResult{
+			ID:       tc.ID,
+			Name:     tc.Name,
+			Content:  fmt.Sprintf("Error: %s", execErr.Error()),
+			Input:    tc.Input,
+			Error:    execErr,
+			Duration: duration,
+		}
+	}
+
+	// Success - convert result to JSON string
+	resultJSON, _ := json.Marshal(result)
+	resultStr := string(resultJSON)
+
+	log.Printf("✅ Tool %s completed in %v (parallel)", tc.Name, duration)
+
+	// Publish result event
+	resultEvent := events.NewEvent(events.CategoryTool, events.TypeToolResult, events.LevelInfo).
+		WithThread(threadID).
+		WithData("tool_name", tc.Name).
+		WithData("tool_id", tc.ID).
+		WithData("result", sanitizeForEvent(result)).
+		WithDuration(startTime).
+		WithData("parallel", true)
+	eventBus.Publish(resultEvent)
+
+	return ToolResult{
+		ID:            tc.ID,
+		Name:          tc.Name,
+		Content:       resultStr,
+		ContentBlocks: result,
+		Input:         tc.Input,
+		Error:         nil,
+		Duration:      duration,
+	}
 }

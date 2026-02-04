@@ -698,6 +698,9 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	// Track token usage
 	var usageInputTokens, usageOutputTokens int
 
+	// Pending custom tools for parallel execution
+	var pendingCustomTools []ToolCall
+
 	// Send start event and thread_id immediately for all providers
 	// This ensures the client gets the thread_id before any content
 	if !threadIDSent {
@@ -1153,167 +1156,16 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					flusher.Flush()
 
 				} else if isCustomTool(event.ToolName) {
-					// Execute custom tool locally (with streaming support)
-					tool, err := tools.GetTool(event.ToolName)
-					var toolResultContent string
-					var isError bool
-					eventBus := events.GetEventBus()
-
-					// Create flat span for tool execution
-					trace := events.GetCurrentTrace()
-					var toolSpan *events.Span
-					if trace != nil {
-						toolSpan = trace.StartSpan(fmt.Sprintf("tool_%s", event.ToolName), events.SpanKindTool).
-							WithThreadID(threadID).
-							WithTaskID(taskID).
-							WithAttribute("tool_name", event.ToolName).
-							WithAttribute("tool_id", event.ToolID).
-							WithAttribute("tool_type", "custom")
-					}
-
-					// Publish tool invocation event
-					toolStartTime := time.Now()
-					toolEvent := events.NewEvent(events.CategoryTool, events.TypeToolInvocation, events.LevelInfo).
-						WithThread(threadID).
-						WithData("tool_name", event.ToolName).
-						WithData("tool_id", event.ToolID).
-						WithData("input", event.ToolInput)
-					eventBus.Publish(toolEvent)
-
-					if err != nil {
-						log.Printf("Error getting tool %s: %v", event.ToolName, err)
-						toolResultContent = fmt.Sprintf("Error: %s", err.Error())
-						isError = true
-
-						// End span with error
-						if toolSpan != nil {
-							toolSpan.RecordError(err).End()
-						}
-
-						// Publish tool error event
-						errorEvent := events.NewEvent(events.CategoryTool, events.TypeToolError, events.LevelError).
-							WithThread(threadID).
-							WithData("tool_name", event.ToolName).
-							WithError(err).
-							WithDuration(toolStartTime)
-						eventBus.Publish(errorEvent)
-					} else {
-						// Check if tool supports streaming
-						var result interface{}
-						var execErr error
-
-						if tools.IsStreamingTool(tool) {
-							// Execute with streaming - send events to client as they happen
-							log.Printf("🔄 Executing streaming tool: %s", event.ToolName)
-
-							streamCallback := func(streamEvent tools.ToolStreamEvent) {
-								// Stream event to client immediately
-								streamEventData := map[string]interface{}{
-									"type":      "tool_stream",
-									"tool_id":   event.ToolID,
-									"tool_name": event.ToolName,
-									"event":     streamEvent.Type,
-									"content":   streamEvent.Content,
-									"timestamp": streamEvent.Timestamp,
-								}
-								if streamEvent.Progress != nil {
-									streamEventData["progress"] = *streamEvent.Progress
-								}
-								if streamEvent.Data != nil {
-									streamEventData["data"] = streamEvent.Data
-								}
-
-								eventJSON, _ := json.Marshal(streamEventData)
-								fmt.Fprintf(w, "data: %s\n\n", eventJSON)
-								flusher.Flush()
-							}
-
-							result, execErr = tools.ExecuteWithStreaming(tool, event.ToolInput, streamCallback)
-						} else {
-							// Execute tool normally (non-streaming)
-							result, execErr = tool.Execute(event.ToolInput)
-						}
-
-						if execErr != nil {
-							log.Printf("Error executing tool %s: %v", event.ToolName, execErr)
-							toolResultContent = fmt.Sprintf("Error: %s", execErr.Error())
-							isError = true
-
-							// End span with error
-							if toolSpan != nil {
-								toolSpan.RecordError(execErr).End()
-							}
-
-							// Publish tool error event
-							errorEvent := events.NewEvent(events.CategoryTool, events.TypeToolError, events.LevelError).
-								WithThread(threadID).
-								WithData("tool_name", event.ToolName).
-								WithError(execErr).
-								WithDuration(toolStartTime)
-							eventBus.Publish(errorEvent)
-						} else {
-							// Extract images from tool result if filesystem is enabled
-							processedResult := result
-							if fileProcessor != nil && fileProcessor.IsEnabled() {
-								extracted, fileIDs, extractErr := fileProcessor.ExtractImagesFromToolResult(result, threadID, event.ToolName)
-								if extractErr != nil {
-									log.Printf("⚠️  Failed to extract images from custom tool result: %v", extractErr)
-								} else if len(fileIDs) > 0 {
-									processedResult = extracted
-									log.Printf("📁 Extracted %d images from custom tool %s result", len(fileIDs), event.ToolName)
-								}
-							}
-
-							// Convert result to JSON string
-							resultJSON, _ := json.Marshal(processedResult)
-							toolResultContent = string(resultJSON)
-							isError = false
-
-							// End span successfully
-							if toolSpan != nil {
-								toolSpan.WithAttribute("result_size", len(toolResultContent)).End()
-							}
-
-							// Publish successful tool result event (sanitized)
-							resultEvent := events.NewEvent(events.CategoryTool, events.TypeToolResult, events.LevelInfo).
-								WithThread(threadID).
-								WithData("tool_name", event.ToolName).
-								WithData("tool_id", event.ToolID).
-								WithData("result", sanitizeForEvent(result)).
-								WithData("success", true).
-								WithDuration(toolStartTime)
-							eventBus.Publish(resultEvent)
-						}
-					}
-
-					// Save tool result message as clean JSON object (not array)
-					toolResultBlock := map[string]interface{}{
-						"type":        "tool_result",
-						"tool_use_id": event.ToolID,
-						"content":     toolResultContent,
-						"is_error":    isError,
-					}
-					// Wrap in array for proper format
-					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving tool result message: %v", err)
-					}
-
-					// Create tool result for conversation continuation
-					toolResult := StreamEvent{
-						Type:             "tool_result",
-						ToolID:           event.ToolID,
-						ToolName:         event.ToolName,
-						ToolInput:        event.ToolInput,
-						Content:          toolResultContent,
-						ThoughtSignature: event.ThoughtSignature, // Preserve for Gemini 3
-					}
-					toolResults = append(toolResults, toolResult)
-
-					// Output tool result
-					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
-						event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
-					flusher.Flush()
+					// Add custom tool to pending list for parallel execution
+					// Tools will be executed in parallel when we hit the stop event
+					pendingCustomTools = append(pendingCustomTools, ToolCall{
+						ID:               event.ToolID,
+						Name:             event.ToolName,
+						Input:            event.ToolInput,
+						ThoughtSignature: event.ThoughtSignature,
+					})
+					log.Printf("🔀 Queued custom tool for parallel execution: %s (id=%s), pending=%d",
+						event.ToolName, event.ToolID, len(pendingCustomTools))
 				} else {
 					// Server tool - execution handled by provider, just wait for result
 					// No local execution needed!
@@ -1416,6 +1268,58 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				flusher.Flush()
 			}
 
+			// Execute pending custom tools in parallel before breaking on stop
+			if event.Type == "stop" && len(pendingCustomTools) > 0 {
+				log.Printf("🔀 Executing %d pending custom tools in parallel before stop", len(pendingCustomTools))
+
+				// Execute all pending tools in parallel
+				parallelResults := ExecuteCustomToolsParallel(pendingCustomTools, threadID, taskID)
+
+				// Process each result: save to DB, stream to client, add to toolResults
+				for _, result := range parallelResults {
+					// Save tool result message
+					toolResultBlock := map[string]interface{}{
+						"type":        "tool_result",
+						"tool_use_id": result.ID,
+						"content":     result.Content,
+						"is_error":    result.Error != nil,
+					}
+					toolResultArray := []interface{}{toolResultBlock}
+					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+						log.Printf("Error saving parallel tool result message: %v", err)
+					}
+
+					// Find the original tool call for thought signature
+					var thoughtSig string
+					for _, tc := range pendingCustomTools {
+						if tc.ID == result.ID {
+							thoughtSig = tc.ThoughtSignature
+							break
+						}
+					}
+
+					// Create tool result for conversation continuation
+					toolResult := StreamEvent{
+						Type:             "tool_result",
+						ToolID:           result.ID,
+						ToolName:         result.Name,
+						ToolInput:        result.Input,
+						Content:          result.Content,
+						ThoughtSignature: thoughtSig,
+					}
+					toolResults = append(toolResults, toolResult)
+
+					// Stream tool result to client
+					isError := result.Error != nil
+					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"is_error\":%t,\"timestamp\":%d}\n\n",
+						result.ID, escapeJSON(result.Content), isError, time.Now().UnixMilli())
+					flusher.Flush()
+				}
+
+				// Clear pending tools
+				pendingCustomTools = nil
+			}
+
 			// Check if this was a stop event to break after processing
 			if event.Type == "stop" {
 				break
@@ -1429,6 +1333,8 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	}
 
 	// Drain any remaining pending tool_use events from the processor (for parallel tool calls)
+	// Collect custom tools for parallel execution
+	var drainedCustomTools []ToolCall
 	if checker, ok := processor.(PendingEventChecker); ok {
 		for checker.HasPendingEvents() {
 			event, err := processor.ProcessLine("")
@@ -1462,69 +1368,150 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					event.ToolName, escapeJSON(displayName), event.ToolID, time.Now().UnixMilli())
 				flusher.Flush()
 
-				// Execute tool (simplified - MCP, custom, and builtin tools)
-				var toolResultContent string
+				// Handle tool execution based on type
 				if event.ToolName == "$web_search" {
 					// Moonshot built-in $web_search: echo arguments back
 					log.Printf("🌐 Moonshot $web_search (drain): echoing arguments back")
 					inputJSON, _ := json.Marshal(event.ToolInput)
-					toolResultContent = string(inputJSON)
+					toolResultContent := string(inputJSON)
+
+					// Save and stream result immediately
+					toolResultBlock := map[string]interface{}{
+						"type":        "tool_result",
+						"tool_use_id": event.ToolID,
+						"content":     toolResultContent,
+					}
+					toolResultArray := []interface{}{toolResultBlock}
+					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+						log.Printf("Error saving tool result message: %v", err)
+					}
+					toolResult := StreamEvent{
+						Type:             "tool_result",
+						ToolID:           event.ToolID,
+						ToolName:         event.ToolName,
+						ToolInput:        event.ToolInput,
+						Content:          toolResultContent,
+						ThoughtSignature: event.ThoughtSignature,
+					}
+					toolResults = append(toolResults, toolResult)
+					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+						event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
+					flusher.Flush()
 				} else if isMCPTool(event.ToolName) {
 					cfg := config.GetConfig()
 					mcpCfg := cfg.Get().MCP
 					result, err := mcp.ExecuteTool(event.ToolName, event.ToolInput, mcpCfg, threadID)
+					var toolResultContent string
 					if err != nil {
 						toolResultContent = fmt.Sprintf("Error: %v", err)
 					} else {
-						// Convert result to JSON string
 						resultJSON, _ := json.Marshal(result)
 						toolResultContent = string(resultJSON)
 					}
-				} else if isCustomTool(event.ToolName) {
-					tool, err := tools.GetTool(event.ToolName)
-					if err != nil {
-						toolResultContent = fmt.Sprintf("Error: %v", err)
-					} else {
-						result, execErr := tool.Execute(event.ToolInput)
-						if execErr != nil {
-							toolResultContent = fmt.Sprintf("Error: %v", execErr)
-						} else {
-							// Convert result to JSON string
-							resultJSON, _ := json.Marshal(result)
-							toolResultContent = string(resultJSON)
-						}
+
+					// Save and stream result immediately
+					toolResultBlock := map[string]interface{}{
+						"type":        "tool_result",
+						"tool_use_id": event.ToolID,
+						"content":     toolResultContent,
 					}
+					toolResultArray := []interface{}{toolResultBlock}
+					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+						log.Printf("Error saving tool result message: %v", err)
+					}
+					toolResult := StreamEvent{
+						Type:             "tool_result",
+						ToolID:           event.ToolID,
+						ToolName:         event.ToolName,
+						ToolInput:        event.ToolInput,
+						Content:          toolResultContent,
+						ThoughtSignature: event.ThoughtSignature,
+					}
+					toolResults = append(toolResults, toolResult)
+					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+						event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
+					flusher.Flush()
+				} else if isCustomTool(event.ToolName) {
+					// Queue custom tools for parallel execution
+					drainedCustomTools = append(drainedCustomTools, ToolCall{
+						ID:               event.ToolID,
+						Name:             event.ToolName,
+						Input:            event.ToolInput,
+						ThoughtSignature: event.ThoughtSignature,
+					})
+					log.Printf("🔀 Queued drained custom tool for parallel execution: %s (id=%s)", event.ToolName, event.ToolID)
 				} else {
-					toolResultContent = fmt.Sprintf("Error: Unknown tool type for %s", event.ToolName)
+					toolResultContent := fmt.Sprintf("Error: Unknown tool type for %s", event.ToolName)
+					toolResultBlock := map[string]interface{}{
+						"type":        "tool_result",
+						"tool_use_id": event.ToolID,
+						"content":     toolResultContent,
+					}
+					toolResultArray := []interface{}{toolResultBlock}
+					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+						log.Printf("Error saving tool result message: %v", err)
+					}
+					toolResult := StreamEvent{
+						Type:             "tool_result",
+						ToolID:           event.ToolID,
+						ToolName:         event.ToolName,
+						ToolInput:        event.ToolInput,
+						Content:          toolResultContent,
+						ThoughtSignature: event.ThoughtSignature,
+					}
+					toolResults = append(toolResults, toolResult)
+					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+						event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
+					flusher.Flush()
 				}
-
-				// Save tool result
-				toolResultBlock := map[string]interface{}{
-					"type":        "tool_result",
-					"tool_use_id": event.ToolID,
-					"content":     toolResultContent,
-				}
-				toolResultArray := []interface{}{toolResultBlock}
-				if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-					log.Printf("Error saving tool result message: %v", err)
-				}
-
-				// Create tool result for conversation continuation
-				toolResult := StreamEvent{
-					Type:             "tool_result",
-					ToolID:           event.ToolID,
-					ToolName:         event.ToolName,
-					ToolInput:        event.ToolInput,
-					Content:          toolResultContent,
-					ThoughtSignature: event.ThoughtSignature, // Preserve for Gemini 3
-				}
-				toolResults = append(toolResults, toolResult)
-
-				// Stream tool result
-				fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
-					event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
-				flusher.Flush()
 			}
+		}
+	}
+
+	// Execute drained custom tools in parallel
+	if len(drainedCustomTools) > 0 {
+		log.Printf("🔀 Executing %d drained custom tools in parallel", len(drainedCustomTools))
+
+		parallelResults := ExecuteCustomToolsParallel(drainedCustomTools, threadID, taskID)
+
+		for _, result := range parallelResults {
+			// Save tool result message
+			toolResultBlock := map[string]interface{}{
+				"type":        "tool_result",
+				"tool_use_id": result.ID,
+				"content":     result.Content,
+				"is_error":    result.Error != nil,
+			}
+			toolResultArray := []interface{}{toolResultBlock}
+			if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+				log.Printf("Error saving parallel tool result message: %v", err)
+			}
+
+			// Find the original tool call for thought signature
+			var thoughtSig string
+			for _, tc := range drainedCustomTools {
+				if tc.ID == result.ID {
+					thoughtSig = tc.ThoughtSignature
+					break
+				}
+			}
+
+			// Create tool result for conversation continuation
+			toolResult := StreamEvent{
+				Type:             "tool_result",
+				ToolID:           result.ID,
+				ToolName:         result.Name,
+				ToolInput:        result.Input,
+				Content:          result.Content,
+				ThoughtSignature: thoughtSig,
+			}
+			toolResults = append(toolResults, toolResult)
+
+			// Stream tool result to client
+			isError := result.Error != nil
+			fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"is_error\":%t,\"timestamp\":%d}\n\n",
+				result.ID, escapeJSON(result.Content), isError, time.Now().UnixMilli())
+			flusher.Flush()
 		}
 	}
 
