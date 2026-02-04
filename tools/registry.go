@@ -40,6 +40,181 @@ func SanitizeToolName(name string) string {
 	return string(sanitized)
 }
 
+// SanitizeSchemaForAnthropic removes or transforms schema constructs not supported by Anthropic
+// Anthropic doesn't support oneOf, allOf, or anyOf at the top level of input_schema
+func SanitizeSchemaForAnthropic(schema map[string]interface{}) map[string]interface{} {
+	if schema == nil {
+		return map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		}
+	}
+
+	// Deep copy to avoid modifying the original
+	result := deepCopyMap(schema)
+
+	// Handle oneOf at top level - use the first option
+	if oneOf, ok := result["oneOf"].([]interface{}); ok && len(oneOf) > 0 {
+		log.Printf("⚠️  Schema sanitizer: replacing top-level oneOf with first option")
+		if firstOption, ok := oneOf[0].(map[string]interface{}); ok {
+			// Replace with the first option
+			delete(result, "oneOf")
+			for k, v := range firstOption {
+				result[k] = v
+			}
+		}
+	}
+
+	// Handle anyOf at top level - use the first option
+	if anyOf, ok := result["anyOf"].([]interface{}); ok && len(anyOf) > 0 {
+		log.Printf("⚠️  Schema sanitizer: replacing top-level anyOf with first option")
+		if firstOption, ok := anyOf[0].(map[string]interface{}); ok {
+			delete(result, "anyOf")
+			for k, v := range firstOption {
+				result[k] = v
+			}
+		}
+	}
+
+	// Handle allOf at top level - merge all options
+	if allOf, ok := result["allOf"].([]interface{}); ok && len(allOf) > 0 {
+		log.Printf("⚠️  Schema sanitizer: merging top-level allOf into single schema")
+		delete(result, "allOf")
+		mergedProps := make(map[string]interface{})
+		var mergedRequired []string
+
+		for _, item := range allOf {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				// Merge properties
+				if props, ok := itemMap["properties"].(map[string]interface{}); ok {
+					for k, v := range props {
+						mergedProps[k] = v
+					}
+				}
+				// Merge required
+				if req, ok := itemMap["required"].([]interface{}); ok {
+					for _, r := range req {
+						if rs, ok := r.(string); ok {
+							mergedRequired = append(mergedRequired, rs)
+						}
+					}
+				}
+			}
+		}
+
+		result["type"] = "object"
+		if len(mergedProps) > 0 {
+			result["properties"] = mergedProps
+		}
+		if len(mergedRequired) > 0 {
+			result["required"] = mergedRequired
+		}
+	}
+
+	// Recursively sanitize nested properties
+	if props, ok := result["properties"].(map[string]interface{}); ok {
+		for key, value := range props {
+			if propSchema, ok := value.(map[string]interface{}); ok {
+				props[key] = sanitizeNestedSchema(propSchema)
+			}
+		}
+	}
+
+	// Ensure type is set
+	if _, hasType := result["type"]; !hasType {
+		result["type"] = "object"
+	}
+
+	return result
+}
+
+// sanitizeNestedSchema handles oneOf/anyOf/allOf in nested properties
+func sanitizeNestedSchema(schema map[string]interface{}) map[string]interface{} {
+	result := deepCopyMap(schema)
+
+	// Handle oneOf in nested schema - use first option
+	if oneOf, ok := result["oneOf"].([]interface{}); ok && len(oneOf) > 0 {
+		if firstOption, ok := oneOf[0].(map[string]interface{}); ok {
+			delete(result, "oneOf")
+			for k, v := range firstOption {
+				result[k] = v
+			}
+		}
+	}
+
+	// Handle anyOf in nested schema - use first option
+	if anyOf, ok := result["anyOf"].([]interface{}); ok && len(anyOf) > 0 {
+		if firstOption, ok := anyOf[0].(map[string]interface{}); ok {
+			delete(result, "anyOf")
+			for k, v := range firstOption {
+				result[k] = v
+			}
+		}
+	}
+
+	// Handle allOf in nested schema - merge
+	if allOf, ok := result["allOf"].([]interface{}); ok && len(allOf) > 0 {
+		delete(result, "allOf")
+		for _, item := range allOf {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				for k, v := range itemMap {
+					if k != "allOf" && k != "oneOf" && k != "anyOf" {
+						result[k] = v
+					}
+				}
+			}
+		}
+	}
+
+	// Recursively handle nested properties
+	if props, ok := result["properties"].(map[string]interface{}); ok {
+		for key, value := range props {
+			if propSchema, ok := value.(map[string]interface{}); ok {
+				props[key] = sanitizeNestedSchema(propSchema)
+			}
+		}
+	}
+
+	// Handle items in arrays
+	if items, ok := result["items"].(map[string]interface{}); ok {
+		result["items"] = sanitizeNestedSchema(items)
+	}
+
+	return result
+}
+
+// deepCopyMap creates a deep copy of a map
+func deepCopyMap(m map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			result[k] = deepCopyMap(val)
+		case []interface{}:
+			result[k] = deepCopySlice(val)
+		default:
+			result[k] = v
+		}
+	}
+	return result
+}
+
+// deepCopySlice creates a deep copy of a slice
+func deepCopySlice(s []interface{}) []interface{} {
+	result := make([]interface{}, len(s))
+	for i, v := range s {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			result[i] = deepCopyMap(val)
+		case []interface{}:
+			result[i] = deepCopySlice(val)
+		default:
+			result[i] = v
+		}
+	}
+	return result
+}
+
 type Tool interface {
 	Name() string
 	DisplayName() string // Human-readable name like "Create Task"
