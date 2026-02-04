@@ -435,3 +435,104 @@ func TestFileDiscovery_InitialDiscoveryRunsBeforeStartReturns(t *testing.T) {
 		t.Errorf("Expected 'pre-existing' agent, got '%s'", agents[0].ID)
 	}
 }
+
+func TestFileDiscovery_MCPServersAnnounced(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "apteva-agents-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &config.AgentsConfig{
+		Enabled:          true,
+		Mode:             "coordinator",
+		Group:            "test-group",
+		FileRegistryPath: tmpDir,
+	}
+
+	// Create discovery with MCP servers
+	mcpServers := []string{"brevo", "notion", "github"}
+	discovery, err := NewFileDiscovery(cfg, "mcp-agent", "MCP Agent", "Agent with MCP servers", "http://localhost:4000", nil, mcpServers)
+	if err != nil {
+		t.Fatalf("Failed to create discovery: %v", err)
+	}
+
+	if err := discovery.Start(); err != nil {
+		t.Fatalf("Failed to start discovery: %v", err)
+	}
+	defer discovery.Stop()
+
+	// Verify the registration file contains MCP servers
+	regFile := filepath.Join(tmpDir, "mcp-agent.json")
+	data, err := os.ReadFile(regFile)
+	if err != nil {
+		t.Fatalf("Failed to read registration file: %v", err)
+	}
+
+	var entry FileAgentEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		t.Fatalf("Failed to parse registration file: %v", err)
+	}
+
+	if len(entry.MCPServers) != 3 {
+		t.Errorf("Expected 3 MCP servers in registration, got %d", len(entry.MCPServers))
+	}
+
+	// Check specific servers
+	expectedServers := map[string]bool{"brevo": true, "notion": true, "github": true}
+	for _, server := range entry.MCPServers {
+		if !expectedServers[server] {
+			t.Errorf("Unexpected MCP server: %s", server)
+		}
+	}
+
+	// Now test that another coordinator can discover the MCP servers
+	// Create a peer agent file with MCP servers
+	peerEntry := FileAgentEntry{
+		ID:         "peer-with-mcp",
+		Name:       "Peer MCP Agent",
+		URL:        "http://localhost:4001",
+		Group:      "test-group",
+		MCPServers: []string{"slack", "jira"},
+		PID:        os.Getpid(),
+		StartedAt:  time.Now(),
+	}
+	peerData, _ := json.MarshalIndent(peerEntry, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "peer-with-mcp.json"), peerData, 0644); err != nil {
+		t.Fatalf("Failed to write peer file: %v", err)
+	}
+
+	// Trigger discovery
+	discovery.discoverPeers()
+
+	// Get agents and verify MCP servers are included
+	agents := discovery.GetAgents()
+	if len(agents) != 1 {
+		t.Fatalf("Expected 1 agent, got %d", len(agents))
+	}
+
+	if len(agents[0].MCPServers) != 2 {
+		t.Errorf("Expected 2 MCP servers on discovered agent, got %d", len(agents[0].MCPServers))
+	}
+
+	// Verify the servers
+	foundSlack := false
+	foundJira := false
+	for _, server := range agents[0].MCPServers {
+		if server == "slack" {
+			foundSlack = true
+		}
+		if server == "jira" {
+			foundJira = true
+		}
+	}
+
+	if !foundSlack {
+		t.Error("Expected to find 'slack' MCP server")
+	}
+	if !foundJira {
+		t.Error("Expected to find 'jira' MCP server")
+	}
+
+	t.Logf("✅ MCP servers correctly announced and discovered: %v", agents[0].MCPServers)
+}
