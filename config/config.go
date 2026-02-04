@@ -294,6 +294,7 @@ type AgentInfo struct {
 	URL          string          `json:"url"`
 	APIKey       string          `json:"api_key,omitempty"`
 	Capabilities []string        `json:"capabilities"`
+	MCPServers   []string        `json:"mcp_servers,omitempty"`
 	Tags         []string        `json:"tags"`
 	Enabled      bool            `json:"enabled"`
 	Timeout      string          `json:"timeout"`

@@ -27,6 +27,7 @@ type FileDiscovery struct {
 	group            string
 	features         map[string]bool
 	capabilities     []string
+	mcpServers       []string
 
 	registryPath string
 	registry     map[string]*config.AgentInfo
@@ -44,12 +45,13 @@ type FileAgentEntry struct {
 	Group        string          `json:"group"`
 	Features     map[string]bool `json:"features,omitempty"`
 	Capabilities []string        `json:"capabilities,omitempty"`
+	MCPServers   []string        `json:"mcp_servers,omitempty"`
 	PID          int             `json:"pid"`
 	StartedAt    time.Time       `json:"started_at"`
 }
 
 // NewFileDiscovery creates a new file-based discovery service
-func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentDescription, agentURL string, features map[string]bool) (*FileDiscovery, error) {
+func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentDescription, agentURL string, features map[string]bool, mcpServers []string) (*FileDiscovery, error) {
 	// Use configured path or default
 	registryPath := DefaultRegistryPath
 	if cfg.FileRegistryPath != "" {
@@ -69,6 +71,7 @@ func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentDescrip
 		agentURL:         agentURL,
 		group:            cfg.Group,
 		features:         features,
+		mcpServers:       mcpServers,
 		registryPath:     registryPath,
 		registry:         make(map[string]*config.AgentInfo),
 		stopCh:           make(chan struct{}),
@@ -125,6 +128,7 @@ func (d *FileDiscovery) registerSelf() error {
 		Group:        d.group,
 		Features:     d.features,
 		Capabilities: d.capabilities,
+		MCPServers:   d.mcpServers,
 		PID:          os.Getpid(),
 		StartedAt:    time.Now(),
 	}
@@ -236,6 +240,7 @@ func (d *FileDiscovery) discoverPeers() {
 			URL:          entry.URL,
 			Features:     entry.Features,
 			Capabilities: entry.Capabilities,
+			MCPServers:   entry.MCPServers,
 			Enabled:      true,
 			Timeout:      d.cfg.Settings.DefaultTimeout,
 		}

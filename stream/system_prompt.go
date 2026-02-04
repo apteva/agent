@@ -70,6 +70,10 @@ func BuildAgentDiscoveryContext(agents []config.AgentInfo) string {
 		if len(agent.Capabilities) > 0 {
 			context.WriteString(fmt.Sprintf("  Capabilities: %s\n", strings.Join(agent.Capabilities, ", ")))
 		}
+		// Add MCP servers if present
+		if len(agent.MCPServers) > 0 {
+			context.WriteString(fmt.Sprintf("  MCP Servers: %s\n", strings.Join(agent.MCPServers, ", ")))
+		}
 		// Add features if present
 		if len(agent.Features) > 0 {
 			var enabledFeatures []string

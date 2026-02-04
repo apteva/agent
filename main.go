@@ -2674,6 +2674,16 @@ func initAgentCommunication() {
 		// Build features map for discovery announcement
 		features := config.BuildFeatures(&agentConfig)
 
+		// Get MCP server names for discovery announcement
+		var mcpServerNames []string
+		if agentConfig.MCP != nil && agentConfig.MCP.Enabled {
+			for _, server := range agentConfig.MCP.Servers {
+				if server.Name != "" {
+					mcpServerNames = append(mcpServerNames, server.Name)
+				}
+			}
+		}
+
 		// Create discovery service
 		var err error
 		discoveryService, err = discovery.NewDiscoveryService(
@@ -2683,6 +2693,7 @@ func initAgentCommunication() {
 			agentConfig.Description,
 			agentURL,
 			features,
+			mcpServerNames,
 		)
 
 		if err != nil {
@@ -2816,6 +2827,17 @@ func UpdateDiscoveryService(enabled bool, group string) error {
 			log.Printf("🔧 Creating new discovery service...")
 			agentURL := getAgentURL()
 			features := config.BuildFeatures(&agentConfig)
+
+			// Get MCP server names for discovery announcement
+			var mcpServerNames []string
+			if agentConfig.MCP != nil && agentConfig.MCP.Enabled {
+				for _, server := range agentConfig.MCP.Servers {
+					if server.Name != "" {
+						mcpServerNames = append(mcpServerNames, server.Name)
+					}
+				}
+			}
+
 			var err error
 			discoveryService, err = discovery.NewDiscoveryService(
 				agentConfig.Agents,
@@ -2824,6 +2846,7 @@ func UpdateDiscoveryService(enabled bool, group string) error {
 				agentConfig.Description,
 				agentURL,
 				features,
+				mcpServerNames,
 			)
 			if err != nil {
 				log.Printf("❌ Failed to create discovery service: %v", err)
