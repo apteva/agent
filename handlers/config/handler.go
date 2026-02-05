@@ -19,6 +19,7 @@ var discoveryRunningCallback func() bool
 var memoryCallback func(enabled bool) error
 var filesystemCallback func(enabled bool) error
 var telemetryCallback func(enabled bool) error
+var tasksCallback func(enabled bool) error
 
 // SetDatabase sets the global database for scheduler operations
 func SetDatabase(db *sql.DB) {
@@ -48,6 +49,11 @@ func SetFilesystemCallback(callback func(enabled bool) error) {
 // SetTelemetryCallback sets the callback function for telemetry updates
 func SetTelemetryCallback(callback func(enabled bool) error) {
 	telemetryCallback = callback
+}
+
+// SetTasksCallback sets the callback function for tasks updates
+func SetTasksCallback(callback func(enabled bool) error) {
+	tasksCallback = callback
 }
 
 // HandleConfig handles GET and POST requests for agent configuration
@@ -477,11 +483,13 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Tasks config
+		tasksConfigChanged := false
 		if tasksConfig, ok := updateConfig["tasks"].(map[string]interface{}); ok {
 			if currentConfig.Tasks == nil {
 				currentConfig.Tasks = &appConfig.TasksConfig{}
 			}
 			if enabled, ok := tasksConfig["enabled"].(bool); ok {
+				tasksConfigChanged = true
 				currentConfig.Tasks.Enabled = enabled
 			}
 			if allowScheduling, ok := tasksConfig["allow_scheduling"].(bool); ok {
@@ -495,6 +503,13 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			if autoExecute, ok := tasksConfig["auto_execute"].(bool); ok {
 				currentConfig.Tasks.AutoExecute = autoExecute
+			}
+		}
+
+		// Register/unregister task tools if tasks enabled state changed
+		if tasksConfigChanged && tasksCallback != nil {
+			if err := tasksCallback(currentConfig.Tasks.Enabled); err != nil {
+				log.Printf("Warning: Failed to update tasks: %v", err)
 			}
 		}
 

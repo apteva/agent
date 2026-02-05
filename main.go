@@ -3123,6 +3123,20 @@ func UpdateTelemetry(enabled bool) error {
 	return nil
 }
 
+// UpdateTasks is the callback for dynamic tasks config changes
+func UpdateTasks(enabled bool) error {
+	if enabled {
+		// Register task tools if not already registered
+		tools.RegisterTaskTools()
+		log.Printf("📋 Task tools enabled dynamically")
+	} else {
+		// Note: We don't unregister tools as they may be in use
+		// Just log that tasks are disabled
+		log.Printf("📋 Tasks disabled (tools remain registered)")
+	}
+	return nil
+}
+
 // ANSI color codes for terminal output
 const (
 	colorReset  = "\033[0m"
@@ -3646,6 +3660,7 @@ func main() {
 	handlerConfig.SetMemoryCallback(UpdateMemoryManager)
 	handlerConfig.SetFilesystemCallback(UpdateFileSystem)
 	handlerConfig.SetTelemetryCallback(UpdateTelemetry)
+	handlerConfig.SetTasksCallback(UpdateTasks)
 
 	mux := http.NewServeMux()
 
