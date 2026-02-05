@@ -1,8 +1,11 @@
 package memory
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -35,6 +38,8 @@ func (te *TextExtractor) Extract(data []byte, mimeType string) (*ExtractResult, 
 		return te.extractCSV(data)
 	case "text/html":
 		return te.extractHTML(data)
+	case "application/pdf":
+		return te.extractPDF(data)
 	default:
 		return nil, fmt.Errorf("unsupported MIME type: %s", mimeType)
 	}
@@ -48,6 +53,7 @@ func (te *TextExtractor) CanExtract(mimeType string) bool {
 		"application/json",
 		"text/csv",
 		"text/html",
+		"application/pdf",
 	}
 	for _, s := range supported {
 		if mimeType == s {
@@ -210,6 +216,213 @@ func (te *TextExtractor) extractHTML(data []byte) (*ExtractResult, error) {
 		Title:    title,
 		Metadata: make(map[string]interface{}),
 	}, nil
+}
+
+// extractPDF handles PDF files using a simple built-in extractor
+// This works for basic text-based PDFs with FlateDecode compression
+// It will NOT work for: scanned PDFs, custom fonts, encrypted PDFs
+func (te *TextExtractor) extractPDF(data []byte) (*ExtractResult, error) {
+	text, err := extractPDFText(data)
+	if err != nil {
+		return nil, fmt.Errorf("PDF extraction failed: %w", err)
+	}
+
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("no text content found in PDF (may be scanned/image-based)")
+	}
+
+	// Try to extract title from first non-empty line
+	title := ""
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if len(line) > 0 && len(line) < 100 {
+			title = line
+			break
+		}
+	}
+
+	return &ExtractResult{
+		Content:  normalizeWhitespace(text),
+		Title:    title,
+		Metadata: map[string]interface{}{"format": "pdf"},
+	}, nil
+}
+
+// extractPDFText extracts text from a PDF file
+// Simple implementation that handles basic PDFs with FlateDecode streams
+func extractPDFText(data []byte) (string, error) {
+	// Find all stream objects and extract text
+	var allText strings.Builder
+
+	// Find stream...endstream blocks
+	streamRegex := regexp.MustCompile(`(?s)stream\r?\n(.+?)\r?\nendstream`)
+	matches := streamRegex.FindAllSubmatch(data, -1)
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		streamData := match[1]
+
+		// Try to decompress (most PDFs use FlateDecode/zlib)
+		decompressed, err := decompressStream(streamData)
+		if err != nil {
+			// If decompression fails, try using raw data (uncompressed stream)
+			decompressed = streamData
+		}
+
+		// Extract text from the content stream
+		text := extractTextFromContentStream(decompressed)
+		if text != "" {
+			allText.WriteString(text)
+			allText.WriteString("\n")
+		}
+	}
+
+	return allText.String(), nil
+}
+
+// decompressStream attempts to decompress a PDF stream using zlib
+func decompressStream(data []byte) ([]byte, error) {
+	reader, err := zlib.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	decompressed, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	return decompressed, nil
+}
+
+// extractTextFromContentStream parses PDF content stream operators to extract text
+func extractTextFromContentStream(data []byte) string {
+	var text strings.Builder
+	content := string(data)
+
+	// Extract text from Tj operator: (Hello World) Tj or <48656c6c6f> Tj
+	tjRegex := regexp.MustCompile(`\(([^)]*)\)\s*Tj`)
+	for _, match := range tjRegex.FindAllStringSubmatch(content, -1) {
+		if len(match) > 1 {
+			text.WriteString(decodePDFString(match[1]))
+		}
+	}
+	// Hex string version
+	tjHexRegex := regexp.MustCompile(`<([0-9A-Fa-f]+)>\s*Tj`)
+	for _, match := range tjHexRegex.FindAllStringSubmatch(content, -1) {
+		if len(match) > 1 {
+			text.WriteString(decodeHexString(match[1]))
+		}
+	}
+
+	// Extract text from TJ operator with smart spacing for word boundaries
+	tjArrayRegex := regexp.MustCompile(`\[([^\]]+)\]\s*TJ`)
+	for _, match := range tjArrayRegex.FindAllStringSubmatch(content, -1) {
+		if len(match) > 1 {
+			text.WriteString(parseTJArray(match[1]))
+		}
+	}
+
+	// Extract text from ' operator (same as Tj but moves to next line): (text) '
+	quoteRegex := regexp.MustCompile(`\(([^)]*)\)\s*'`)
+	for _, match := range quoteRegex.FindAllStringSubmatch(content, -1) {
+		if len(match) > 1 {
+			text.WriteString(decodePDFString(match[1]))
+			text.WriteString("\n")
+		}
+	}
+
+	// Extract text from " operator: aw ac (text) "
+	dquoteRegex := regexp.MustCompile(`[\d.-]+\s+[\d.-]+\s+\(([^)]*)\)\s*"`)
+	for _, match := range dquoteRegex.FindAllStringSubmatch(content, -1) {
+		if len(match) > 1 {
+			text.WriteString(decodePDFString(match[1]))
+			text.WriteString("\n")
+		}
+	}
+
+	return text.String()
+}
+
+// parseTJArray parses a TJ array like [(Hello)-264(World)] and returns text with proper spacing
+// Negative numbers with abs > 100 typically indicate word spaces
+func parseTJArray(array string) string {
+	var result strings.Builder
+
+	// Match elements: strings (text), <hex>, or numbers
+	elementRegex := regexp.MustCompile(`\(([^)]*)\)|<([0-9A-Fa-f]+)>|(-?[\d.]+)`)
+	matches := elementRegex.FindAllStringSubmatch(array, -1)
+
+	for _, match := range matches {
+		if match[1] != "" {
+			// Literal string
+			result.WriteString(decodePDFString(match[1]))
+		} else if match[2] != "" {
+			// Hex string
+			result.WriteString(decodeHexString(match[2]))
+		} else if match[3] != "" {
+			// Number - negative values with large magnitude indicate spaces
+			var num float64
+			fmt.Sscanf(match[3], "%f", &num)
+			// Threshold: if adjustment is less than -100, add a space
+			// (negative means moving right in PDF coordinates = space between words)
+			if num < -100 {
+				result.WriteString(" ")
+			}
+		}
+	}
+
+	return result.String()
+}
+
+// decodeHexString converts PDF hex string like "48656c6c6f" to "Hello"
+func decodeHexString(hex string) string {
+	// Remove any whitespace
+	hex = strings.ReplaceAll(hex, " ", "")
+	hex = strings.ReplaceAll(hex, "\n", "")
+	hex = strings.ReplaceAll(hex, "\r", "")
+
+	// Pad with 0 if odd length
+	if len(hex)%2 != 0 {
+		hex += "0"
+	}
+
+	var result strings.Builder
+	for i := 0; i < len(hex); i += 2 {
+		var b byte
+		fmt.Sscanf(hex[i:i+2], "%02x", &b)
+		if b > 0 {
+			result.WriteByte(b)
+		}
+	}
+	return result.String()
+}
+
+// decodePDFString decodes escape sequences in PDF strings
+func decodePDFString(s string) string {
+	// Handle common PDF escape sequences
+	s = strings.ReplaceAll(s, "\\n", "\n")
+	s = strings.ReplaceAll(s, "\\r", "\r")
+	s = strings.ReplaceAll(s, "\\t", "\t")
+	s = strings.ReplaceAll(s, "\\(", "(")
+	s = strings.ReplaceAll(s, "\\)", ")")
+	s = strings.ReplaceAll(s, "\\\\", "\\")
+
+	// Handle octal escapes like \000 to \377
+	octalRegex := regexp.MustCompile(`\\([0-7]{1,3})`)
+	s = octalRegex.ReplaceAllStringFunc(s, func(match string) string {
+		var val int
+		fmt.Sscanf(match, "\\%o", &val)
+		if val > 0 && val < 256 {
+			return string(rune(val))
+		}
+		return match
+	})
+
+	return s
 }
 
 // Helper functions

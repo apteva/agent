@@ -210,16 +210,22 @@ func GetMaxConcurrent() int {
 	return llmConfig.ParallelTools.MaxConcurrent
 }
 
+// ToolStreamCallback is a callback for streaming tool output to the client
+type ToolStreamCallback func(toolID string, event tools.ToolStreamEvent)
+
 // ExecuteCustomToolsParallel executes multiple custom tools in parallel
 // Returns results in the same order as input toolCalls
+// For streaming support, use ExecuteCustomToolsWithStreaming instead
 func ExecuteCustomToolsParallel(toolCalls []ToolCall, threadID, taskID string) []ToolResult {
+	return ExecuteCustomToolsWithStreaming(toolCalls, threadID, taskID, nil)
+}
+
+// ExecuteCustomToolsWithStreaming executes custom tools with optional streaming support
+// When streamCallback is provided, streaming tools will stream their output even in parallel
+// The tool_id in each stream event allows the client to distinguish which tool the output is from
+func ExecuteCustomToolsWithStreaming(toolCalls []ToolCall, threadID, taskID string, streamCallback ToolStreamCallback) []ToolResult {
 	if len(toolCalls) == 0 {
 		return []ToolResult{}
-	}
-
-	// If only one tool, no need for parallel overhead
-	if len(toolCalls) == 1 {
-		return []ToolResult{executeCustomToolSync(toolCalls[0], threadID, taskID)}
 	}
 
 	maxConcurrent := GetMaxConcurrent()
@@ -242,7 +248,14 @@ func ExecuteCustomToolsParallel(toolCalls []ToolCall, threadID, taskID string) [
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			results[idx] = executeCustomToolSync(call, threadID, taskID)
+			// Check if tool supports streaming and we have a callback
+			tool, err := tools.GetTool(call.Name)
+			if err == nil && streamCallback != nil && tools.IsStreamingTool(tool) {
+				log.Printf("🔀 Tool %s supports streaming - using streaming execution", call.Name)
+				results[idx] = executeCustomToolWithStreaming(call, threadID, taskID, streamCallback)
+			} else {
+				results[idx] = executeCustomToolSync(call, threadID, taskID)
+			}
 		}(i, tc)
 	}
 
@@ -342,6 +355,94 @@ func executeCustomToolSync(tc ToolCall, threadID, taskID string) ToolResult {
 		WithData("result", sanitizeForEvent(result)).
 		WithDuration(startTime).
 		WithData("parallel", true)
+	eventBus.Publish(resultEvent)
+
+	return ToolResult{
+		ID:            tc.ID,
+		Name:          tc.Name,
+		Content:       resultStr,
+		ContentBlocks: result,
+		Input:         tc.Input,
+		Error:         nil,
+		Duration:      duration,
+	}
+}
+
+// executeCustomToolWithStreaming executes a single custom tool with streaming support
+func executeCustomToolWithStreaming(tc ToolCall, threadID, taskID string, streamCallback ToolStreamCallback) ToolResult {
+	startTime := time.Now()
+	eventBus := events.GetEventBus()
+
+	// Publish tool invocation event
+	toolEvent := events.NewEvent(events.CategoryTool, events.TypeToolInvocation, events.LevelInfo).
+		WithThread(threadID).
+		WithData("tool_name", tc.Name).
+		WithData("tool_id", tc.ID).
+		WithData("input", tc.Input).
+		WithData("streaming", true)
+	eventBus.Publish(toolEvent)
+
+	// Get tool
+	tool, err := tools.GetTool(tc.Name)
+	if err != nil {
+		log.Printf("❌ Error getting tool %s: %v", tc.Name, err)
+		return ToolResult{
+			ID:       tc.ID,
+			Name:     tc.Name,
+			Content:  fmt.Sprintf("Error: %s", err.Error()),
+			Input:    tc.Input,
+			Error:    err,
+			Duration: time.Since(startTime),
+		}
+	}
+
+	// Create callback wrapper that forwards to the stream callback
+	toolCallback := func(event tools.ToolStreamEvent) {
+		if streamCallback != nil {
+			streamCallback(tc.ID, event)
+		}
+	}
+
+	// Execute with streaming
+	result, execErr := tools.ExecuteWithStreaming(tool, tc.Input, toolCallback)
+	duration := time.Since(startTime)
+
+	if execErr != nil {
+		log.Printf("❌ Error executing streaming tool %s: %v", tc.Name, execErr)
+
+		// Publish error event
+		errorEvent := events.NewEvent(events.CategoryTool, events.TypeToolError, events.LevelError).
+			WithThread(threadID).
+			WithData("tool_name", tc.Name).
+			WithData("tool_id", tc.ID).
+			WithError(execErr).
+			WithDuration(startTime)
+		eventBus.Publish(errorEvent)
+
+		return ToolResult{
+			ID:       tc.ID,
+			Name:     tc.Name,
+			Content:  fmt.Sprintf("Error: %s", execErr.Error()),
+			Input:    tc.Input,
+			Error:    execErr,
+			Duration: duration,
+		}
+	}
+
+	// Success - convert result to JSON string
+	resultJSON, _ := json.Marshal(result)
+	resultStr := string(resultJSON)
+
+	log.Printf("✅ Streaming tool %s completed in %v", tc.Name, duration)
+
+	// Publish result event
+	resultEvent := events.NewEvent(events.CategoryTool, events.TypeToolResult, events.LevelInfo).
+		WithThread(threadID).
+		WithData("tool_name", tc.Name).
+		WithData("tool_id", tc.ID).
+		WithData("result", sanitizeForEvent(result)).
+		WithDuration(startTime).
+		WithData("streaming", true)
 	eventBus.Publish(resultEvent)
 
 	return ToolResult{

@@ -487,7 +487,7 @@ func (c *Config) loadDefaults() {
 			SkipQuestions:    true,           // Don't store questions
 			// File ingestion for RAG
 			AutoIngestFiles:    true, // Auto-chunk uploaded text files into memories
-			IngestTypes:        []string{"text/plain", "text/markdown", "application/json", "text/csv"},
+			IngestTypes:        []string{"text/plain", "text/markdown", "application/json", "text/csv", "application/pdf"},
 			ChunkSize:          1000,
 			ChunkOverlap:       200,
 			DocumentImportance: 0.5,
@@ -1006,10 +1006,10 @@ func GetMemoryDocumentImportance(memoryConfig *MemoryConfig) float64 {
 }
 
 // GetMemoryIngestTypes returns the MIME types to auto-ingest
-// Default: ["text/plain", "text/markdown", "application/json", "text/csv"]
+// Default: ["text/plain", "text/markdown", "application/json", "text/csv", "application/pdf"]
 func GetMemoryIngestTypes(memoryConfig *MemoryConfig) []string {
 	if memoryConfig == nil || len(memoryConfig.IngestTypes) == 0 {
-		return []string{"text/plain", "text/markdown", "application/json", "text/csv"}
+		return []string{"text/plain", "text/markdown", "application/json", "text/csv", "application/pdf"}
 	}
 	return memoryConfig.IngestTypes
 }

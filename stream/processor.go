@@ -1272,8 +1272,35 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 			if event.Type == "stop" && len(pendingCustomTools) > 0 {
 				log.Printf("🔀 Executing %d pending custom tools in parallel before stop", len(pendingCustomTools))
 
-				// Execute all pending tools in parallel
-				parallelResults := ExecuteCustomToolsParallel(pendingCustomTools, threadID, taskID)
+				// Create streaming callback for tool output
+				// All events use type "tool_stream" with an "event" field to distinguish sub-types
+				streamCallback := func(toolID string, streamEvent tools.ToolStreamEvent) {
+					// Stream tool output events to client
+					if streamEvent.Type == tools.ToolEventChunk || streamEvent.Type == tools.ToolEventOutput {
+						eventType := "chunk"
+						if streamEvent.Type == tools.ToolEventOutput {
+							eventType = "output"
+						}
+						fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"%s\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+							eventType, toolID, escapeJSON(streamEvent.Content), time.Now().UnixMilli())
+						flusher.Flush()
+					} else if streamEvent.Type == tools.ToolEventProgress {
+						progress := 0.0
+						if streamEvent.Progress != nil {
+							progress = *streamEvent.Progress
+						}
+						fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"progress\",\"tool_id\":\"%s\",\"content\":\"%s\",\"progress\":%.2f,\"timestamp\":%d}\n\n",
+							toolID, escapeJSON(streamEvent.Content), progress, time.Now().UnixMilli())
+						flusher.Flush()
+					} else if streamEvent.Type == tools.ToolEventLog {
+						fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"log\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+							toolID, escapeJSON(streamEvent.Content), time.Now().UnixMilli())
+						flusher.Flush()
+					}
+				}
+
+				// Execute with streaming support (for single streaming tool)
+				parallelResults := ExecuteCustomToolsWithStreaming(pendingCustomTools, threadID, taskID, streamCallback)
 
 				// Process each result: save to DB, stream to client, add to toolResults
 				for _, result := range parallelResults {
@@ -1472,7 +1499,33 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	if len(drainedCustomTools) > 0 {
 		log.Printf("🔀 Executing %d drained custom tools in parallel", len(drainedCustomTools))
 
-		parallelResults := ExecuteCustomToolsParallel(drainedCustomTools, threadID, taskID)
+		// Create streaming callback for drained tools
+		// All events use type "tool_stream" with an "event" field to distinguish sub-types
+		drainStreamCallback := func(toolID string, streamEvent tools.ToolStreamEvent) {
+			if streamEvent.Type == tools.ToolEventChunk || streamEvent.Type == tools.ToolEventOutput {
+				eventType := "chunk"
+				if streamEvent.Type == tools.ToolEventOutput {
+					eventType = "output"
+				}
+				fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"%s\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+					eventType, toolID, escapeJSON(streamEvent.Content), time.Now().UnixMilli())
+				flusher.Flush()
+			} else if streamEvent.Type == tools.ToolEventProgress {
+				progress := 0.0
+				if streamEvent.Progress != nil {
+					progress = *streamEvent.Progress
+				}
+				fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"progress\",\"tool_id\":\"%s\",\"content\":\"%s\",\"progress\":%.2f,\"timestamp\":%d}\n\n",
+					toolID, escapeJSON(streamEvent.Content), progress, time.Now().UnixMilli())
+				flusher.Flush()
+			} else if streamEvent.Type == tools.ToolEventLog {
+				fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"log\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+					toolID, escapeJSON(streamEvent.Content), time.Now().UnixMilli())
+				flusher.Flush()
+			}
+		}
+
+		parallelResults := ExecuteCustomToolsWithStreaming(drainedCustomTools, threadID, taskID, drainStreamCallback)
 
 		for _, result := range parallelResults {
 			// Save tool result message
