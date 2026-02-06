@@ -54,9 +54,10 @@ func (s *Summarizer) GenerateThreadSummary(threadID string, messages []Message) 
 	}
 	recent := messages[start:]
 
-	// Build a compact conversation snippet
+	// Build a numbered conversation snippet so the LLM can see ordering
 	var snippet strings.Builder
-	for _, msg := range recent {
+	totalMessages := len(messages)
+	for i, msg := range recent {
 		role := strings.ToUpper(msg.Role)
 		content := extractTextForSummary(msg)
 		if content != "" {
@@ -64,13 +65,17 @@ func (s *Summarizer) GenerateThreadSummary(threadID string, messages []Message) 
 			if len(content) > 500 {
 				content = content[:500] + "..."
 			}
-			snippet.WriteString(fmt.Sprintf("[%s]: %s\n", role, content))
+			msgNum := totalMessages - len(recent) + i + 1
+			snippet.WriteString(fmt.Sprintf("#%d [%s]: %s\n", msgNum, role, content))
 		}
 	}
+	snippet.WriteString(fmt.Sprintf("\n(Total messages: %d. Message #%d is the MOST RECENT.)\n", totalMessages, totalMessages))
 
-	prompt := fmt.Sprintf(`Given this conversation snippet, produce a JSON object with:
-- "title": A short title (3-6 words) for the thread topic
-- "activity": A brief description (2-5 words) of the specific action that just happened. Always mention WHAT was acted on, not just the outcome. Include the subject/object (e.g. "notification", "file", "task", "weather data").
+	prompt := fmt.Sprintf(`Given this conversation snippet (messages are numbered chronologically), produce a JSON object with:
+- "title": A short title (3-6 words) for the overall thread topic
+- "activity": A brief description (2-5 words) of what happened in the LAST/MOST RECENT exchange only. Ignore earlier messages — focus ONLY on the final user request and assistant response.
+
+IMPORTANT: The activity MUST describe the LATEST exchange (highest numbered messages). Earlier messages are just context for the title. Always mention WHAT was acted on, not just the outcome.
 
 Examples:
 {"title": "PR Review Auth Module", "activity": "Reviewed auth PR"}
