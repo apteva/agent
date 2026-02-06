@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -48,8 +49,13 @@ func NewBatchExecutor(maxConcurrent int) *BatchExecutor {
 	}
 }
 
-// ExecuteParallel executes multiple tool calls in parallel with a concurrency limit
+// ExecuteParallel executes multiple tool calls in parallel with a concurrency limit (no cancellation)
 func (be *BatchExecutor) ExecuteParallel(toolCalls []ToolCall) []ToolResult {
+	return be.ExecuteParallelWithContext(context.Background(), toolCalls)
+}
+
+// ExecuteParallelWithContext executes multiple tool calls in parallel with cancellation support
+func (be *BatchExecutor) ExecuteParallelWithContext(ctx context.Context, toolCalls []ToolCall) []ToolResult {
 	if len(toolCalls) == 0 {
 		return []ToolResult{}
 	}
@@ -68,9 +74,34 @@ func (be *BatchExecutor) ExecuteParallel(toolCalls []ToolCall) []ToolResult {
 		go func(idx int, tc ToolCall) {
 			defer wg.Done()
 
-			// Acquire semaphore
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			// Check for cancellation before acquiring semaphore
+			select {
+			case <-ctx.Done():
+				results[idx] = ToolResult{
+					ID:      tc.ID,
+					Name:    tc.Name,
+					Content: "Error: request cancelled",
+					Input:   tc.Input,
+					Error:   ctx.Err(),
+				}
+				return
+			default:
+			}
+
+			// Acquire semaphore (with cancellation)
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[idx] = ToolResult{
+					ID:      tc.ID,
+					Name:    tc.Name,
+					Content: "Error: request cancelled",
+					Input:   tc.Input,
+					Error:   ctx.Err(),
+				}
+				return
+			}
 
 			startTime := time.Now()
 
@@ -109,8 +140,8 @@ func (be *BatchExecutor) ExecuteParallel(toolCalls []ToolCall) []ToolResult {
 				return
 			}
 
-			// Execute tool
-			result, err := tool.Execute(tc.Input)
+			// Execute tool with context for cancellation
+			result, err := tools.ExecuteWithContext(ctx, tool, tc.Input)
 			duration := time.Since(startTime)
 
 			if err != nil {
@@ -165,7 +196,20 @@ func (be *BatchExecutor) ExecuteParallel(toolCalls []ToolCall) []ToolResult {
 		}(i, call)
 	}
 
-	wg.Wait()
+	// Wait with cancellation support
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All tools completed normally
+	case <-ctx.Done():
+		// Cancelled - wait briefly for goroutines to notice, then return what we have
+		log.Printf("🛑 Parallel tool execution cancelled, returning partial results")
+	}
 
 	// Calculate total time for batch
 	totalDuration := time.Duration(0)
@@ -220,10 +264,15 @@ func ExecuteCustomToolsParallel(toolCalls []ToolCall, threadID, taskID string) [
 	return ExecuteCustomToolsWithStreaming(toolCalls, threadID, taskID, nil)
 }
 
-// ExecuteCustomToolsWithStreaming executes custom tools with optional streaming support
+// ExecuteCustomToolsWithStreaming executes custom tools with optional streaming support (no cancellation)
+func ExecuteCustomToolsWithStreaming(toolCalls []ToolCall, threadID, taskID string, streamCallback ToolStreamCallback) []ToolResult {
+	return ExecuteCustomToolsWithContext(context.Background(), toolCalls, threadID, taskID, streamCallback)
+}
+
+// ExecuteCustomToolsWithContext executes custom tools with cancellation and optional streaming support
 // When streamCallback is provided, streaming tools will stream their output even in parallel
 // The tool_id in each stream event allows the client to distinguish which tool the output is from
-func ExecuteCustomToolsWithStreaming(toolCalls []ToolCall, threadID, taskID string, streamCallback ToolStreamCallback) []ToolResult {
+func ExecuteCustomToolsWithContext(ctx context.Context, toolCalls []ToolCall, threadID, taskID string, streamCallback ToolStreamCallback) []ToolResult {
 	if len(toolCalls) == 0 {
 		return []ToolResult{}
 	}
@@ -244,22 +293,59 @@ func ExecuteCustomToolsWithStreaming(toolCalls []ToolCall, threadID, taskID stri
 		go func(idx int, call ToolCall) {
 			defer wg.Done()
 
-			// Acquire semaphore
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			// Check for cancellation before acquiring semaphore
+			select {
+			case <-ctx.Done():
+				results[idx] = ToolResult{
+					ID:      call.ID,
+					Name:    call.Name,
+					Content: "Error: request cancelled",
+					Input:   call.Input,
+					Error:   ctx.Err(),
+				}
+				return
+			default:
+			}
+
+			// Acquire semaphore (with cancellation)
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[idx] = ToolResult{
+					ID:      call.ID,
+					Name:    call.Name,
+					Content: "Error: request cancelled",
+					Input:   call.Input,
+					Error:   ctx.Err(),
+				}
+				return
+			}
 
 			// Check if tool supports streaming and we have a callback
 			tool, err := tools.GetTool(call.Name)
 			if err == nil && streamCallback != nil && tools.IsStreamingTool(tool) {
 				log.Printf("🔀 Tool %s supports streaming - using streaming execution", call.Name)
-				results[idx] = executeCustomToolWithStreaming(call, threadID, taskID, streamCallback)
+				results[idx] = executeCustomToolWithStreamingCtx(ctx, call, threadID, taskID, streamCallback)
 			} else {
-				results[idx] = executeCustomToolSync(call, threadID, taskID)
+				results[idx] = executeCustomToolSyncCtx(ctx, call, threadID, taskID)
 			}
 		}(i, tc)
 	}
 
-	wg.Wait()
+	// Wait with cancellation support
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All tools completed normally
+	case <-ctx.Done():
+		log.Printf("🛑 Custom tool parallel execution cancelled, returning partial results")
+	}
 
 	// Calculate max duration (parallel time)
 	maxDuration := time.Duration(0)
@@ -275,8 +361,13 @@ func ExecuteCustomToolsWithStreaming(toolCalls []ToolCall, threadID, taskID stri
 	return results
 }
 
-// executeCustomToolSync executes a single custom tool synchronously
+// executeCustomToolSync executes a single custom tool synchronously (no cancellation)
 func executeCustomToolSync(tc ToolCall, threadID, taskID string) ToolResult {
+	return executeCustomToolSyncCtx(context.Background(), tc, threadID, taskID)
+}
+
+// executeCustomToolSyncCtx executes a single custom tool with cancellation support
+func executeCustomToolSyncCtx(ctx context.Context, tc ToolCall, threadID, taskID string) ToolResult {
 	startTime := time.Now()
 	eventBus := events.GetEventBus()
 
@@ -313,10 +404,8 @@ func executeCustomToolSync(tc ToolCall, threadID, taskID string) ToolResult {
 		}
 	}
 
-	// Execute tool (non-streaming for parallel execution)
-	// Note: We use Execute() not ExecuteStreaming() for parallel calls
-	// because interleaving multiple streams is complex and not needed for most cases
-	result, execErr := tool.Execute(tc.Input)
+	// Execute tool with context for cancellation
+	result, execErr := tools.ExecuteWithContext(ctx, tool, tc.Input)
 	duration := time.Since(startTime)
 
 	if execErr != nil {
@@ -368,8 +457,13 @@ func executeCustomToolSync(tc ToolCall, threadID, taskID string) ToolResult {
 	}
 }
 
-// executeCustomToolWithStreaming executes a single custom tool with streaming support
+// executeCustomToolWithStreaming executes a single custom tool with streaming support (no cancellation)
 func executeCustomToolWithStreaming(tc ToolCall, threadID, taskID string, streamCallback ToolStreamCallback) ToolResult {
+	return executeCustomToolWithStreamingCtx(context.Background(), tc, threadID, taskID, streamCallback)
+}
+
+// executeCustomToolWithStreamingCtx executes a single custom tool with streaming and cancellation support
+func executeCustomToolWithStreamingCtx(ctx context.Context, tc ToolCall, threadID, taskID string, streamCallback ToolStreamCallback) ToolResult {
 	startTime := time.Now()
 	eventBus := events.GetEventBus()
 
@@ -403,8 +497,8 @@ func executeCustomToolWithStreaming(tc ToolCall, threadID, taskID string, stream
 		}
 	}
 
-	// Execute with streaming
-	result, execErr := tools.ExecuteWithStreaming(tool, tc.Input, toolCallback)
+	// Execute with streaming and context for cancellation
+	result, execErr := tools.ExecuteWithStreamingContext(ctx, tool, tc.Input, toolCallback)
 	duration := time.Since(startTime)
 
 	if execErr != nil {

@@ -1509,7 +1509,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle thread management (threadID already extracted above for trace)
+	isNewThread := false
 	if threadID == "" {
+		isNewThread = true
 		// Create new thread with title based on first message text
 		title := messageText
 		if title == "" {
@@ -2379,6 +2381,62 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 				WithThread(threadID).
 				WithDuration(llmStartTime)
 			eventBus.Publish(responseCompleteEvent)
+		}
+
+		// Generate thread activity summary in background
+		anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+		if anthropicKey != "" {
+			summaryThreadID := threadID
+			summaryIsNew := isNewThread
+			// Get the summary model from config, fallback to compaction model, then default
+			summaryModel := "claude-haiku-4-5"
+			if agentConfig.Context != nil {
+				if agentConfig.Context.SummaryModel != "" {
+					summaryModel = agentConfig.Context.SummaryModel
+				} else if agentConfig.Context.Compaction != nil && agentConfig.Context.Compaction.Model != "" {
+					summaryModel = agentConfig.Context.Compaction.Model
+				}
+			}
+			go func() {
+				time.Sleep(2 * time.Second)
+				summarizer := stream.NewSummarizer(db, anthropicKey, summaryModel)
+				threadMessages, err := messageSaver.GetThreadMessages(summaryThreadID)
+				if err != nil {
+					log.Printf("Failed to get messages for summary: %v", err)
+					return
+				}
+				// Convert to stream.Message
+				streamMessages := make([]stream.Message, len(threadMessages))
+				for i, msg := range threadMessages {
+					streamMessages[i] = stream.Message{
+						Role:    msg.Role,
+						Content: msg.Content,
+					}
+				}
+				result, err := summarizer.GenerateThreadSummary(summaryThreadID, streamMessages)
+				if err != nil {
+					log.Printf("Failed to generate thread summary: %v", err)
+					return
+				}
+				var titlePtr *string
+				if summaryIsNew && result.Title != "" {
+					titlePtr = &result.Title
+				}
+				if err := messageSaver.UpdateThreadActivity(summaryThreadID, result.Activity, titlePtr); err != nil {
+					log.Printf("Failed to update thread activity: %v", err)
+				} else {
+					log.Printf("Updated thread %s activity: %s", summaryThreadID, result.Activity)
+
+					// Emit thread activity event for telemetry
+					activityEvent := events.NewEvent(events.CategoryChat, "thread_activity", events.LevelInfo).
+						WithThread(summaryThreadID).
+						WithData("activity", result.Activity)
+					if titlePtr != nil {
+						activityEvent.WithData("title", result.Title)
+					}
+					events.GetEventBus().Publish(activityEvent)
+				}
+			}()
 		}
 	}
 }

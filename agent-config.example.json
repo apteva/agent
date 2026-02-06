@@ -107,7 +107,7 @@
         "trigger_ratio": 0.7,
         "keep_recent": 20,
         "summary_max_tokens": 1500,
-        "model": "claude-haiku-4"
+        "model": "claude-haiku-4-5"
       }
     },
     "agents": {

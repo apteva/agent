@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,11 @@ func (e *MCPToolExecutor) ExecuteMCPTool(toolName string, params map[string]inte
 
 // ExecuteMCPToolWithConfig executes an MCP tool with the given parameters and config
 func (e *MCPToolExecutor) ExecuteMCPToolWithConfig(toolName string, params map[string]interface{}, cfg *config.MCPConfig, sessionID string) (interface{}, error) {
+	return e.ExecuteMCPToolWithContext(context.Background(), toolName, params, cfg, sessionID)
+}
+
+// ExecuteMCPToolWithContext executes an MCP tool with cancellation support
+func (e *MCPToolExecutor) ExecuteMCPToolWithContext(ctx context.Context, toolName string, params map[string]interface{}, cfg *config.MCPConfig, sessionID string) (interface{}, error) {
 	// Check if this is an external MCP tool (format: "server:tool")
 	if IsExternalTool(toolName) {
 		return e.executeExternalTool(toolName, params)
@@ -64,8 +70,8 @@ func (e *MCPToolExecutor) ExecuteMCPToolWithConfig(toolName string, params map[s
 	// Execute tool via MCP server using the /tools/call endpoint
 	url := fmt.Sprintf("%s/tools/call", e.client.config.BaseURL)
 
-	// Create request (no auto-retry - let caller handle retries via conversation loop)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	// Create request with context for cancellation support
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -130,11 +136,16 @@ func GetMCPExecutor(cfg *config.MCPConfig) *MCPToolExecutor {
 
 // ExecuteTool is a convenience function to execute an MCP tool
 func ExecuteTool(toolName string, params map[string]interface{}, cfg *config.MCPConfig, sessionID string) (interface{}, error) {
+	return ExecuteToolWithContext(context.Background(), toolName, params, cfg, sessionID)
+}
+
+// ExecuteToolWithContext executes an MCP tool with cancellation support
+func ExecuteToolWithContext(ctx context.Context, toolName string, params map[string]interface{}, cfg *config.MCPConfig, sessionID string) (interface{}, error) {
 	executor := GetMCPExecutor(cfg)
 	if executor == nil {
 		return nil, fmt.Errorf("MCP executor not available")
 	}
-	return executor.ExecuteMCPToolWithConfig(toolName, params, cfg, sessionID)
+	return executor.ExecuteMCPToolWithContext(ctx, toolName, params, cfg, sessionID)
 }
 
 // executeExternalTool executes a tool on an external standard MCP server

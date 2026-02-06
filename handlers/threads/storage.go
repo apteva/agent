@@ -198,6 +198,29 @@ func (d *DatabaseMessageSaver) GetThreadTaskID(threadID string) string {
 	return ""
 }
 
+// UpdateThreadActivity updates the activity (and optionally title) of a thread
+func (d *DatabaseMessageSaver) UpdateThreadActivity(threadID, activity string, title *string) error {
+	now := time.Now()
+	if title != nil {
+		_, err := d.db.Exec(
+			"UPDATE threads SET activity = ?, title = ?, updated_at = ? WHERE id = ?",
+			activity, *title, now, threadID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update thread activity and title: %w", err)
+		}
+	} else {
+		_, err := d.db.Exec(
+			"UPDATE threads SET activity = ?, updated_at = ? WHERE id = ?",
+			activity, now, threadID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update thread activity: %w", err)
+		}
+	}
+	return nil
+}
+
 // GetThreadMessages retrieves all messages for a thread
 func (d *DatabaseMessageSaver) GetThreadMessages(threadID string) ([]Message, error) {
 	dbQueryStart := time.Now()

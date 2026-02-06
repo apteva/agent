@@ -236,10 +236,11 @@ type OperatorConfig struct {
 }
 
 type ContextConfig struct {
-	MaxMessages int               `json:"max_messages"` // Keep last N messages (0 = unlimited) - fallback if max_tokens not set
-	MaxTokens   int               `json:"max_tokens"`   // Max estimated tokens to keep (0 = use max_messages instead)
-	KeepImages  int               `json:"keep_images"`  // Keep images only in last N messages (0 = keep all)
-	Compaction  *CompactionConfig `json:"compaction,omitempty"`
+	MaxMessages  int               `json:"max_messages"`            // Keep last N messages (0 = unlimited) - fallback if max_tokens not set
+	MaxTokens    int               `json:"max_tokens"`              // Max estimated tokens to keep (0 = use max_messages instead)
+	KeepImages   int               `json:"keep_images"`             // Keep images only in last N messages (0 = keep all)
+	Compaction   *CompactionConfig `json:"compaction,omitempty"`
+	SummaryModel string            `json:"summary_model,omitempty"` // Model for thread activity summaries (default: "claude-haiku-4-5")
 }
 
 type CompactionConfig struct {

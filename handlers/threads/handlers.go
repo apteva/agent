@@ -18,7 +18,7 @@ func HandleThreads(db *sql.DB) http.HandlerFunc {
 
 		// Query threads with message count using LEFT JOIN
 		query := `
-			SELECT t.id, t.title, t.created_at, t.updated_at, t.metadata,
+			SELECT t.id, t.title, t.activity, t.created_at, t.updated_at, t.metadata,
 			       COALESCE(COUNT(m.id), 0) as message_count
 			FROM threads t
 			LEFT JOIN messages m ON t.id = m.thread_id
@@ -37,7 +37,7 @@ func HandleThreads(db *sql.DB) http.HandlerFunc {
 		for rows.Next() {
 			var thread Thread
 			var metadataStr string
-			err := rows.Scan(&thread.ID, &thread.Title, &thread.CreatedAt, &thread.UpdatedAt, &metadataStr, &thread.MessageCount)
+			err := rows.Scan(&thread.ID, &thread.Title, &thread.Activity, &thread.CreatedAt, &thread.UpdatedAt, &metadataStr, &thread.MessageCount)
 			if err != nil {
 				log.Printf("Database scan error: %v", err)
 				http.Error(w, "Database scan error", http.StatusInternalServerError)

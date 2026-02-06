@@ -8,6 +8,7 @@ import (
 type Thread struct {
 	ID           string                 `json:"id"`
 	Title        *string                `json:"title"`
+	Activity     *string                `json:"activity"`
 	CreatedAt    time.Time              `json:"created_at"`
 	UpdatedAt    time.Time              `json:"updated_at"`
 	Metadata     map[string]interface{} `json:"metadata"`
@@ -33,4 +34,5 @@ type MessageSaver interface {
 	GetThreadTaskID(threadID string) string
 	UpdateThreadMetadata(threadID string, metadata map[string]interface{}) error
 	MergeThreadMetadata(threadID string, newMetadata map[string]interface{}) error
+	UpdateThreadActivity(threadID, activity string, title *string) error
 }

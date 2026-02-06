@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"context"
+	"fmt"
 	"time"
 )
 
@@ -110,4 +112,63 @@ func ExecuteWithStreaming(tool Tool, params map[string]interface{}, callback Str
 	}
 	// Fall back to regular execution
 	return tool.Execute(params)
+}
+
+// ExecuteWithContext executes a tool with cancellation support.
+// If the context is cancelled before execution starts, returns immediately.
+// The tool execution itself runs in a goroutine so cancellation can interrupt the wait.
+func ExecuteWithContext(ctx context.Context, tool Tool, params map[string]interface{}) (interface{}, error) {
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("cancelled before tool execution: %w", ctx.Err())
+	default:
+	}
+
+	type result struct {
+		value interface{}
+		err   error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, err := tool.Execute(params)
+		ch <- result{v, err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("cancelled during tool execution: %w", ctx.Err())
+	case r := <-ch:
+		return r.value, r.err
+	}
+}
+
+// ExecuteWithStreamingContext executes a streaming tool with cancellation support.
+func ExecuteWithStreamingContext(ctx context.Context, tool Tool, params map[string]interface{}, callback StreamCallback) (interface{}, error) {
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("cancelled before tool execution: %w", ctx.Err())
+	default:
+	}
+
+	type result struct {
+		value interface{}
+		err   error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		if streamingTool, ok := tool.(StreamingTool); ok && streamingTool.SupportsStreaming() {
+			v, err := streamingTool.ExecuteStreaming(params, callback)
+			ch <- result{v, err}
+		} else {
+			v, err := tool.Execute(params)
+			ch <- result{v, err}
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("cancelled during tool execution: %w", ctx.Err())
+	case r := <-ch:
+		return r.value, r.err
+	}
 }

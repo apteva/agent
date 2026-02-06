@@ -321,6 +321,16 @@ async function loadConfig() {
         document.getElementById('realtimeVadType').value = rt.vad_type || 'semantic_vad';
         document.getElementById('realtimeGoogleSearch').checked = rt.google_search || false;
 
+        // Load Context & Summarization settings
+        const ctx = currentConfig.context || {};
+        const compaction = ctx.compaction || {};
+        document.getElementById('contextMaxMessages').value = ctx.max_messages || '';
+        document.getElementById('contextMaxTokens').value = ctx.max_tokens || '';
+        document.getElementById('contextCompactionModel').value = compaction.model || '';
+        document.getElementById('contextSummaryModel').value = ctx.summary_model || '';
+        document.getElementById('contextCompactionEnabled').checked = compaction.enabled || false;
+        document.getElementById('contextKeepRecent').value = compaction.keep_recent || '';
+
         // Show raw config
         document.getElementById('configRaw').textContent = JSON.stringify(currentConfig, null, 2);
 
@@ -589,6 +599,23 @@ async function saveFeatureConfig(feature) {
                     gemini_voice: document.getElementById('realtimeGeminiVoice').value || 'Kore',
                     vad_type: document.getElementById('realtimeVadType').value || 'semantic_vad',
                     google_search: document.getElementById('realtimeGoogleSearch').checked
+                }
+            };
+            break;
+
+        case 'context':
+            updates = {
+                context: {
+                    ...currentConfig?.context,
+                    max_messages: parseInt(document.getElementById('contextMaxMessages').value) || undefined,
+                    max_tokens: parseInt(document.getElementById('contextMaxTokens').value) || undefined,
+                    summary_model: document.getElementById('contextSummaryModel').value || undefined,
+                    compaction: {
+                        ...currentConfig?.context?.compaction,
+                        enabled: document.getElementById('contextCompactionEnabled').checked,
+                        model: document.getElementById('contextCompactionModel').value || undefined,
+                        keep_recent: parseInt(document.getElementById('contextKeepRecent').value) || undefined
+                    }
                 }
             };
             break;

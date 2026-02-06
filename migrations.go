@@ -16,8 +16,8 @@ func runMigrations(db *sql.DB) {
 		{"tasks_add_source", "ALTER TABLE tasks ADD COLUMN source TEXT DEFAULT 'user'"},
 		{"tasks_add_delegator_id", "ALTER TABLE tasks ADD COLUMN delegator_id TEXT"},
 
-		// Add future migrations here:
-		// {"table_add_column", "ALTER TABLE x ADD COLUMN y TEXT"},
+		// Thread activity summary
+		{"threads_add_activity", "ALTER TABLE threads ADD COLUMN activity TEXT"},
 	}
 
 	for _, m := range migrations {

@@ -369,6 +369,15 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 
 		log.Printf("🔵 Iteration %d complete: %d tool results, assistant_message_length=%d", iteration, len(toolResults), len(assistantMessage))
 
+		// Check for cancellation after tool execution before starting next iteration
+		select {
+		case <-ctx.Done():
+			log.Printf("🛑 Cancelled after tool execution in iteration %d", iteration)
+			sendCancelledEvent(w, "request_cancelled")
+			return nil
+		default:
+		}
+
 		// If no tools were used, conversation is complete
 		if len(toolResults) == 0 {
 			log.Printf("✅ Conversation complete (no tool results)")
@@ -929,7 +938,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						WithData("input", event.ToolInput)
 					eventBus.Publish(toolEvent)
 
-					result, err := mcp.ExecuteTool(event.ToolName, event.ToolInput, mcpConfig, threadID)
+					result, err := mcp.ExecuteToolWithContext(ctx, event.ToolName, event.ToolInput, mcpConfig, threadID)
 					if err != nil {
 						log.Printf("Error executing MCP tool %s: %v", event.ToolName, err)
 						toolResultContent = fmt.Sprintf("Error: %s", err.Error())
@@ -1017,7 +1026,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					log.Printf("🖥️  COMPUTER TOOL - Executing: input=%s", string(inputJSON))
 
 					// Handle computer tool locally using operator module
-					result, err := operator.HandleComputerTool(event.ToolInput)
+					result, err := operator.HandleComputerToolWithContext(ctx, event.ToolInput)
 					var toolResultContent interface{} // Can be string or content blocks
 					var isError bool
 					eventBus := events.GetEventBus()
@@ -1300,7 +1309,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				}
 
 				// Execute with streaming support (for single streaming tool)
-				parallelResults := ExecuteCustomToolsWithStreaming(pendingCustomTools, threadID, taskID, streamCallback)
+				parallelResults := ExecuteCustomToolsWithContext(ctx, pendingCustomTools, threadID, taskID, streamCallback)
 
 				// Process each result: save to DB, stream to client, add to toolResults
 				for _, result := range parallelResults {
@@ -1357,6 +1366,14 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 		if processor.IsComplete(line) {
 			break
 		}
+	}
+
+	// Check for cancellation before draining pending events
+	select {
+	case <-ctx.Done():
+		log.Printf("🛑 Cancelled before drain phase")
+		return toolResults, assistantContent, usageInputTokens, usageOutputTokens, ctx.Err()
+	default:
 	}
 
 	// Drain any remaining pending tool_use events from the processor (for parallel tool calls)
@@ -1427,7 +1444,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				} else if isMCPTool(event.ToolName) {
 					cfg := config.GetConfig()
 					mcpCfg := cfg.Get().MCP
-					result, err := mcp.ExecuteTool(event.ToolName, event.ToolInput, mcpCfg, threadID)
+					result, err := mcp.ExecuteToolWithContext(ctx, event.ToolName, event.ToolInput, mcpCfg, threadID)
 					var toolResultContent string
 					if err != nil {
 						toolResultContent = fmt.Sprintf("Error: %v", err)
@@ -1525,7 +1542,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 			}
 		}
 
-		parallelResults := ExecuteCustomToolsWithStreaming(drainedCustomTools, threadID, taskID, drainStreamCallback)
+		parallelResults := ExecuteCustomToolsWithContext(ctx, drainedCustomTools, threadID, taskID, drainStreamCallback)
 
 		for _, result := range parallelResults {
 			// Save tool result message

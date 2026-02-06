@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -185,8 +186,13 @@ func GetOrCreateSession(agentID string, initialURL string) (string, error) {
 	return sessionID, err
 }
 
-// ExecuteVirtualCommand executes a command in a virtual browser session
+// ExecuteVirtualCommand executes a command in a virtual browser session (no cancellation)
 func ExecuteVirtualCommand(sessionID string, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
+	return ExecuteVirtualCommandWithContext(context.Background(), sessionID, cmdType, params)
+}
+
+// ExecuteVirtualCommandWithContext executes a command in a virtual browser session with cancellation support
+func ExecuteVirtualCommandWithContext(ctx context.Context, sessionID string, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
 	cfg := config.GetConfig()
 	operatorConfig := cfg.Get().Operator
 
@@ -208,7 +214,7 @@ func ExecuteVirtualCommand(sessionID string, cmdType string, params map[string]i
 
 	log.Printf("🔧 ExecuteVirtualCommand: POST %s with payload: %s", url, string(jsonData))
 
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(jsonData)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(jsonData)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create command request: %w", err)
 	}
@@ -281,8 +287,13 @@ func CleanupSession(agentID string) error {
 	return nil
 }
 
-// HandleComputerTool handles Claude's computer tool requests
+// HandleComputerTool handles Claude's computer tool requests (no cancellation)
 func HandleComputerTool(input map[string]interface{}) (map[string]interface{}, error) {
+	return HandleComputerToolWithContext(context.Background(), input)
+}
+
+// HandleComputerToolWithContext handles Claude's computer tool requests with cancellation support
+func HandleComputerToolWithContext(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 	cfg := config.GetConfig()
 	agentID := cfg.Get().ID
 
@@ -492,7 +503,7 @@ func HandleComputerTool(input map[string]interface{}) (map[string]interface{}, e
 				"y": int(y),
 			}
 
-			_, err := ExecuteVirtualCommand(sessionIDStr, "click", clickParams)
+			_, err := ExecuteVirtualCommandWithContext(ctx, sessionIDStr, "click", clickParams)
 			if err != nil {
 				return nil, fmt.Errorf("failed to click before typing: %w", err)
 			}
@@ -585,7 +596,7 @@ func HandleComputerTool(input map[string]interface{}) (map[string]interface{}, e
 	}
 
 	// Execute the command
-	result, err := ExecuteVirtualCommand(sessionIDStr, cmdType, params)
+	result, err := ExecuteVirtualCommandWithContext(ctx, sessionIDStr, cmdType, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute browser command: %w", err)
 	}

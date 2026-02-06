@@ -2,6 +2,7 @@
 
 let chatThreadId = null;
 let isChatStreaming = false;
+let chatRequestId = null; // Current request ID for cancellation
 let chatAttachedFiles = []; // Files attached to current message
 let rawChunksCount = 0;
 let rawChunksData = []; // Store full chunk data for copy/export
@@ -798,9 +799,15 @@ async function sendChatMessage(e) {
     chatAttachedFiles = [];
     updateChatFilePreview();
 
-    // Disable input
+    // Disable input, show stop button
     isChatStreaming = true;
+    chatRequestId = null;
     sendBtn.disabled = true;
+    sendBtn.classList.add('hidden');
+    const stopBtn = document.getElementById('chatStopBtn');
+    if (stopBtn) {
+        stopBtn.classList.remove('hidden');
+    }
 
     // Track current assistant message and content
     let assistantDiv = null;
@@ -841,6 +848,10 @@ async function sendChatMessage(e) {
                         case 'thread_id':
                             chatThreadId = data.thread_id;
                             document.getElementById('chatThreadId').textContent = chatThreadId.substring(0, 12) + '...';
+                            break;
+
+                        case 'request_id':
+                            chatRequestId = data.request_id;
                             break;
 
                         case 'start':
@@ -902,6 +913,15 @@ async function sendChatMessage(e) {
                             fullContent = '';
                             break;
 
+                        case 'request_cancelled':
+                            // Request was cancelled
+                            if (assistantDiv && fullContent) {
+                                updateChatStreamingMessage(assistantDiv, fullContent + '\n\n*[Cancelled]*');
+                            } else {
+                                addSystemMessage('Request cancelled');
+                            }
+                            break;
+
                         case 'error':
                             throw new Error(data.content || 'Unknown error');
                     }
@@ -927,8 +947,40 @@ async function sendChatMessage(e) {
         showToast('Chat error: ' + err.message, 'error');
     } finally {
         isChatStreaming = false;
+        chatRequestId = null;
         sendBtn.disabled = false;
+        sendBtn.classList.remove('hidden');
+        const stopBtnFinal = document.getElementById('chatStopBtn');
+        if (stopBtnFinal) {
+            stopBtnFinal.classList.add('hidden');
+        }
         input.focus();
+    }
+}
+
+async function stopChatRequest() {
+    if (!chatRequestId) {
+        showToast('No active request to stop', 'info');
+        return;
+    }
+
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (getApiKey()) headers['X-API-Key'] = getApiKey();
+        const response = await fetch(`/requests/${chatRequestId}/cancel`, {
+            method: 'POST',
+            headers
+        });
+
+        if (response.ok) {
+            showToast('Request cancelled', 'info');
+        } else {
+            const data = await response.json();
+            showToast(data.error || 'Failed to cancel', 'error');
+        }
+    } catch (err) {
+        console.error('Error cancelling request:', err);
+        showToast('Failed to cancel request', 'error');
     }
 }
 

@@ -46,7 +46,7 @@ func NewCompactor(cfg *config.CompactionConfig, maxTokens int, db *sql.DB, anthr
 		cfg.SummaryMaxTokens = 1500
 	}
 	if cfg.Model == "" {
-		cfg.Model = "claude-haiku-4"
+		cfg.Model = "claude-haiku-4-5"
 	}
 
 	return &Compactor{

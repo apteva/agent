@@ -127,22 +127,22 @@
             </header>
 
             <!-- Tab Content -->
-            <div class="flex-1 overflow-y-auto p-6">
+            <div class="flex-1 overflow-hidden p-6" id="tabContentWrapper">
                 <!-- Chat Tab -->
-                <div id="chat" class="tab-pane">
+                <div id="chat" class="tab-pane h-full overflow-hidden">
                     <div class="h-full flex gap-4">
                         <!-- Chat Panel (Left) -->
-                        <div class="flex-1 flex flex-col max-w-3xl">
+                        <div class="flex-1 flex flex-col max-w-3xl h-full min-h-0">
                             <!-- Chat Messages -->
-                            <div id="chatMessages" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden flex flex-col" style="min-height: 500px;">
+                            <div id="chatMessages" class="flex-1 min-h-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden flex flex-col">
                                 <div class="flex-1 overflow-y-auto p-4 space-y-4" id="chatMessagesContainer">
                                     <div class="text-center text-slate-400 py-12">
                                         <div class="text-4xl mb-3">💬</div>
                                         <p>Start a conversation with the agent</p>
                                     </div>
                                 </div>
-                                <!-- Input Area -->
-                                <div class="border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-700">
+                                <!-- Input Area (pinned to bottom) -->
+                                <div class="shrink-0 border-t border-slate-200 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-700">
                                     <!-- File Preview Area -->
                                     <div id="chatFilePreview" class="hidden flex flex-wrap gap-2 mb-3"></div>
                                     <form onsubmit="sendChatMessage(event)" class="flex gap-3">
@@ -178,11 +178,19 @@
                                         >
                                             Send
                                         </button>
+                                        <button
+                                            type="button"
+                                            id="chatStopBtn"
+                                            onclick="stopChatRequest()"
+                                            class="hidden px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                                        >
+                                            Stop
+                                        </button>
                                     </form>
                                 </div>
                             </div>
                             <!-- Chat Controls -->
-                            <div class="mt-4 flex justify-between items-center">
+                            <div class="shrink-0 mt-2 flex justify-between items-center">
                                 <div class="text-sm text-slate-500">
                                     Thread: <span id="chatThreadId" class="font-mono">New conversation</span>
                                 </div>
@@ -203,7 +211,7 @@
                             </div>
                         </div>
                         <!-- Raw Chunks Panel (Right) -->
-                        <div class="flex-1 flex flex-col" style="height: 580px;">
+                        <div class="flex-1 flex flex-col h-full min-h-0">
                             <div class="flex items-center justify-between mb-2">
                                 <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300">Raw SSE Chunks</h3>
                                 <div class="flex items-center gap-2">
@@ -279,7 +287,7 @@
                 </div>
 
                 <!-- Voice Tab -->
-                <div id="voice" class="tab-pane hidden">
+                <div id="voice" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Status</div>
@@ -363,7 +371,7 @@
                 </div>
 
                 <!-- Threads Tab -->
-                <div id="threads" class="tab-pane hidden">
+                <div id="threads" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Total Threads</div>
@@ -421,7 +429,7 @@
                 </div>
 
                 <!-- Tasks Tab -->
-                <div id="tasks" class="tab-pane hidden">
+                <div id="tasks" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-5 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Total Tasks</div>
@@ -472,7 +480,7 @@
                 </div>
 
                 <!-- Memories Tab -->
-                <div id="memories" class="tab-pane hidden">
+                <div id="memories" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-6 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Total</div>
@@ -541,7 +549,7 @@
                 </div>
 
                 <!-- Scheduler Tab -->
-                <div id="scheduler" class="tab-pane hidden">
+                <div id="scheduler" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Status</div>
@@ -595,7 +603,7 @@
                 </div>
 
                 <!-- Files Tab -->
-                <div id="files" class="tab-pane hidden">
+                <div id="files" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Total Files</div>
@@ -649,7 +657,7 @@
                 </div>
 
                 <!-- MCP Tab -->
-                <div id="mcp" class="tab-pane hidden">
+                <div id="mcp" class="tab-pane hidden h-full overflow-y-auto">
                     <!-- MCP Status -->
                     <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
@@ -758,7 +766,7 @@
                 </div>
 
                 <!-- Subscriptions Tab -->
-                <div id="subscriptions" class="tab-pane hidden">
+                <div id="subscriptions" class="tab-pane hidden h-full overflow-y-auto">
                     <!-- Subscriptions Status -->
                     <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
@@ -856,7 +864,7 @@
                 </div>
 
                 <!-- Skills Tab -->
-                <div id="skills" class="tab-pane hidden">
+                <div id="skills" class="tab-pane hidden h-full overflow-y-auto">
                     <!-- Skills Status -->
                     <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
@@ -978,7 +986,7 @@
                 </div>
 
                 <!-- Config Tab -->
-                <div id="config" class="tab-pane hidden">
+                <div id="config" class="tab-pane hidden h-full overflow-y-auto">
                     <!-- Agent Basic Config -->
                     <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
@@ -2009,6 +2017,62 @@
                         </div>
                     </div>
 
+                    <!-- Context & Summarization -->
+                    <div class="mt-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('context')">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl">📝</span>
+                                <div>
+                                    <h3 class="font-semibold text-slate-800 dark:text-slate-100">Context & Summarization</h3>
+                                    <p class="text-xs text-slate-500">Compaction model, thread activity summaries</p>
+                                </div>
+                            </div>
+                            <span class="text-slate-400 transition-transform" id="contextChevron">▼</span>
+                        </div>
+                        <div class="p-5 hidden" id="contextSettings">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Max Messages</label>
+                                    <input type="number" id="contextMaxMessages" placeholder="50"
+                                        class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Max Tokens</label>
+                                    <input type="number" id="contextMaxTokens" placeholder="100000"
+                                        class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Compaction Model</label>
+                                    <input type="text" id="contextCompactionModel" placeholder="claude-haiku-4-5"
+                                        class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                    <p class="text-xs text-slate-500 mt-1">Small model used for context compaction</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Summary Model</label>
+                                    <input type="text" id="contextSummaryModel" placeholder="claude-haiku-4-5"
+                                        class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                    <p class="text-xs text-slate-500 mt-1">Model for thread title & activity generation (defaults to compaction model)</p>
+                                </div>
+                            </div>
+                            <div class="mt-4 grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="flex items-center gap-2">
+                                        <input type="checkbox" id="contextCompactionEnabled" class="rounded">
+                                        <span class="text-sm text-slate-700 dark:text-slate-300">Enable Compaction</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Keep Recent Messages</label>
+                                    <input type="number" id="contextKeepRecent" placeholder="20"
+                                        class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                </div>
+                            </div>
+                            <button onclick="saveFeatureConfig('context')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                💾 Save Context Settings
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Raw Config -->
                     <div class="mt-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center cursor-pointer" onclick="toggleConfigSection('raw')">
@@ -2027,7 +2091,7 @@
                 </div>
 
                 <!-- System Tab -->
-                <div id="system" class="tab-pane hidden">
+                <div id="system" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
                         <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Status</div>
@@ -2077,7 +2141,7 @@
                 </div>
 
                 <!-- Events Tab -->
-                <div id="events" class="tab-pane hidden">
+                <div id="events" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
                         <select id="eventCategoryFilter" onchange="filterEvents()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
                             <option value="">All Categories</option>
@@ -2128,7 +2192,7 @@
                 </div>
 
                 <!-- Tracing Tab -->
-                <div id="tracing" class="tab-pane hidden">
+                <div id="tracing" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Total Traces</div>
@@ -2191,7 +2255,7 @@
                 </div>
 
                 <!-- Usage Tab -->
-                <div id="usage" class="tab-pane hidden">
+                <div id="usage" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
                         <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
                             <div class="text-sm opacity-90 mb-1">Total Tokens</div>

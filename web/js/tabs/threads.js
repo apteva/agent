@@ -41,6 +41,7 @@ async function loadThreads() {
                         🗑️
                     </button>
                 </div>
+                ${thread.activity ? `<div class="text-xs text-slate-600 dark:text-slate-300 mb-1 truncate">${escapeHtml(thread.activity)}</div>` : ''}
                 <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                     <span class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded">${thread.message_count || 0} msgs</span>
                     <span>${formatRelativeTime(thread.updated_at)}</span>
