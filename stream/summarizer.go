@@ -70,16 +70,22 @@ func (s *Summarizer) GenerateThreadSummary(threadID string, messages []Message) 
 
 	prompt := fmt.Sprintf(`Given this conversation snippet, produce a JSON object with:
 - "title": A short title (3-6 words) for the thread topic
-- "activity": A very brief status (2-4 words) of what just happened
+- "activity": A brief description (2-5 words) of the specific action that just happened. Always mention WHAT was acted on, not just the outcome. Include the subject/object (e.g. "notification", "file", "task", "weather data").
 
 Examples:
-{"title": "PR Review Auth Module", "activity": "Completed PR review"}
-{"title": "Monthly Sales Report", "activity": "Generated report"}
-{"title": "Debug Login Timeout", "activity": "Identified root cause"}
-{"title": "Deploy API Gateway", "activity": "Deployed successfully"}
-{"title": "Customer Billing Issue", "activity": "Resolved ticket"}
+{"title": "PR Review Auth Module", "activity": "Reviewed auth PR"}
+{"title": "Monthly Sales Report", "activity": "Generated sales report"}
+{"title": "Debug Login Timeout", "activity": "Found timeout root cause"}
+{"title": "Push Notification Setup", "activity": "Sent push notification"}
+{"title": "Weather Forecast Query", "activity": "Fetched weather data"}
+{"title": "Task Management", "activity": "Created recurring task"}
+{"title": "Customer Billing Issue", "activity": "Resolved billing ticket"}
+{"title": "File Upload Processing", "activity": "Uploaded CSV file"}
 
-Keep activity to 2-4 words. Respond with ONLY the JSON object.
+BAD examples (too vague - never do this):
+"Sent successfully", "Completed task", "Done", "Helped user", "Responded"
+
+Keep activity to 2-5 words. Always be specific about WHAT. Respond with ONLY the JSON object.
 
 CONVERSATION:
 %s`, snippet.String())
