@@ -3333,7 +3333,8 @@ func authMiddleware(next http.Handler) http.Handler {
 			"/chat",  // TODO: implement proper auth for agent-to-agent calls
 		}
 		whitelistedPrefixes := []string{
-			"/web/", // static assets (JS, CSS)
+			"/web/",   // static assets (JS, CSS)
+			"/files/", // file downloads (images displayed in chat, shared links)
 		}
 
 		for _, path := range whitelistedPaths {

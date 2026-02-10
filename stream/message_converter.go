@@ -104,6 +104,11 @@ func ConvertDatabaseMessageToStreamMessageWithMetadata(role string, content inte
 					// Convert server tool result types for Anthropic API compatibility
 					// web_search_result -> search_result, web_fetch_result -> text
 					block.Content = convertServerToolResultContent(content)
+
+					// Debug: log tool_result content structure for history loading diagnostics
+					if block.Type == "tool_result" {
+						logToolResultContentDebug(block.ToolUseID, block.Content)
+					}
 				}
 				if isError, ok := blockMap["is_error"].(bool); ok {
 					block.IsError = isError
@@ -290,4 +295,45 @@ func convertServerToolResultItem(item map[string]interface{}) map[string]interfa
 	}
 
 	return item
+}
+
+// logToolResultContentDebug logs a concise summary of tool_result content loaded from history
+func logToolResultContentDebug(toolUseID string, content interface{}) {
+	switch v := content.(type) {
+	case string:
+		log.Printf("📋 History tool_result (id=%s): string, %d chars", toolUseID, len(v))
+	case []interface{}:
+		imageCount, textCount := 0, 0
+		totalImageBytes := 0
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				t, _ := m["type"].(string)
+				if t == "image" {
+					imageCount++
+					if src, ok := m["source"].(map[string]interface{}); ok {
+						if d, ok := src["data"].(string); ok {
+							totalImageBytes += len(d)
+						}
+					}
+				} else if t == "text" {
+					textCount++
+				}
+			}
+		}
+		if imageCount > 0 {
+			log.Printf("📋 History tool_result (id=%s): %d blocks (%d text, %d images, ~%s image data)",
+				toolUseID, len(v), textCount, imageCount, formatDataSize(totalImageBytes))
+		}
+	}
+}
+
+// formatDataSize formats byte count as human-readable string
+func formatDataSize(bytes int) string {
+	if bytes >= 1024*1024 {
+		return fmt.Sprintf("%.1fMB", float64(bytes)/(1024*1024))
+	}
+	if bytes >= 1024 {
+		return fmt.Sprintf("%.1fKB", float64(bytes)/1024)
+	}
+	return fmt.Sprintf("%dB", bytes)
 }

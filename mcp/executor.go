@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/apteva/agent/config"
 )
@@ -152,9 +154,31 @@ func ExecuteToolWithContext(ctx context.Context, toolName string, params map[str
 func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string]interface{}) (interface{}, error) {
 	manager := GetExternalServerManager()
 
+	log.Printf("🔧 MCP External Execute: tool=%s, params_keys=%v", toolName, mapKeys(params))
+	startTime := time.Now()
+
 	result, err := manager.CallTool(toolName, params)
+	elapsed := time.Since(startTime)
+
 	if err != nil {
+		log.Printf("❌ MCP External Execute: tool=%s FAILED after %v: %v", toolName, elapsed, err)
 		return nil, err
+	}
+
+	// Log what we got back
+	log.Printf("✅ MCP External Execute: tool=%s completed in %v, isError=%v, content_blocks=%d",
+		toolName, elapsed, result.IsError, len(result.Content))
+	for i, block := range result.Content {
+		dataLen := 0
+		if block.Data != "" {
+			dataLen = len(block.Data)
+		}
+		textPreview := ""
+		if block.Text != "" {
+			textPreview = truncateForLog(block.Text, 200)
+		}
+		log.Printf("  📦 Block[%d]: type=%q, mimeType=%q, text_len=%d, data_len=%d, text_preview=%q",
+			i, block.Type, block.MimeType, len(block.Text), dataLen, textPreview)
 	}
 
 	// Convert standard MCP result to our format
@@ -168,21 +192,103 @@ func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string
 		return nil, fmt.Errorf("tool execution failed")
 	}
 
-	// Extract text content from response
+	// Extract content from response — handle both text and image blocks
 	var textContent []string
+	var parsedContent []interface{} // Parsed JSON structures from text blocks
+	var allContent []interface{}
+	hasNonText := false
+
 	for _, block := range result.Content {
-		if block.Type == "text" && block.Text != "" {
-			textContent = append(textContent, block.Text)
+		switch block.Type {
+		case "text":
+			if block.Text != "" {
+				textContent = append(textContent, block.Text)
+				allContent = append(allContent, map[string]interface{}{
+					"type": "text",
+					"text": block.Text,
+				})
+
+				// Try to parse text as JSON — MCP servers often wrap structured data
+				// (including embedded base64 images) inside a text content block
+				if len(block.Text) > 2 && (block.Text[0] == '{' || block.Text[0] == '[') {
+					var parsed interface{}
+					if err := json.Unmarshal([]byte(block.Text), &parsed); err == nil {
+						parsedContent = append(parsedContent, parsed)
+						log.Printf("  📋 Text block[%d] parsed as JSON structure (%d bytes)", len(parsedContent)-1, len(block.Text))
+					}
+				}
+			}
+		case "image":
+			hasNonText = true
+			imgBlock := map[string]interface{}{
+				"type": "image",
+				"source": map[string]interface{}{
+					"type":       "base64",
+					"media_type": block.MimeType,
+					"data":       block.Data,
+				},
+			}
+			allContent = append(allContent, imgBlock)
+			log.Printf("  🖼️  Image block preserved: mimeType=%s, data_len=%d", block.MimeType, len(block.Data))
+		default:
+			// Pass through unknown types
+			hasNonText = true
+			allContent = append(allContent, map[string]interface{}{
+				"type":      block.Type,
+				"text":      block.Text,
+				"mimeType":  block.MimeType,
+				"data":      block.Data,
+			})
+			log.Printf("  ❓ Unknown block type=%q preserved as-is", block.Type)
 		}
 	}
 
-	// Return as structured data
+	// If there are non-text blocks (images, etc.), return structured content
+	if hasNonText {
+		log.Printf("🔧 MCP External Execute: returning structured content with %d blocks (%d text, %d non-text)",
+			len(allContent), len(textContent), len(allContent)-len(textContent))
+		return map[string]interface{}{
+			"content": allContent,
+		}, nil
+	}
+
+	// If we have a single text block that parsed as JSON, return the parsed structure
+	// so downstream ProcessMCPToolResult can walk it and find embedded images (e.g. inlineData)
+	if len(parsedContent) == 1 && len(textContent) == 1 {
+		log.Printf("🔧 MCP External Execute: returning parsed JSON structure from text block")
+		return parsedContent[0], nil
+	}
+
+	// Text-only (non-JSON or multiple blocks): return as simple string
 	if len(textContent) == 1 {
 		return textContent[0], nil
 	}
+	if len(textContent) > 1 {
+		return map[string]interface{}{
+			"content": allContent,
+		}, nil
+	}
+
 	return map[string]interface{}{
 		"content": result.Content,
 	}, nil
+}
+
+// mapKeys returns the keys of a map for logging
+func mapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// truncateForLog truncates a string for log output
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // extractErrorMessage extracts error details from MCP response

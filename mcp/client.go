@@ -369,7 +369,6 @@ func RefreshMCPCache(cfg *config.MCPConfig) error {
 	}
 
 	// Load all resources in a single call
-	log.Printf("📚 MCP: Loading resources from /resources/list...")
 	allResources, err := client.ListAllResourcesFromAPI()
 	if err != nil {
 		log.Printf("📚 MCP: Failed to load resources: %v", err)
@@ -387,7 +386,6 @@ func RefreshMCPCache(cfg *config.MCPConfig) error {
 			resourcesByServer[name] = append(resourcesByServer[name], allResources[i])
 		} else {
 			unmappedCount++
-			log.Printf("📚 MCP: Resource '%s' has unknown server_id=%d", allResources[i].Name, allResources[i].ServerID)
 		}
 	}
 	cache.UpdateResources(resourcesByServer)

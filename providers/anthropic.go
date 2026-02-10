@@ -279,27 +279,7 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 		}
 	}
 
-	// DEBUG: Log full request to check tool_use blocks
-	var prettyReq map[string]interface{}
-	json.Unmarshal(reqBody, &prettyReq)
-	if messages, ok := prettyReq["messages"].([]interface{}); ok {
-		for i, msg := range messages {
-			if msgMap, ok := msg.(map[string]interface{}); ok {
-				if content, ok := msgMap["content"].([]interface{}); ok {
-					for j, block := range content {
-						if blockMap, ok := block.(map[string]interface{}); ok {
-							if blockMap["type"] == "tool_use" {
-								blockJSON, _ := json.MarshalIndent(blockMap, "", "  ")
-								log.Printf("🔍 DEBUG: Message[%d].Content[%d] tool_use block:\n%s", i, j, string(blockJSON))
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// DEBUG: Log request size breakdown
+	// Log request size breakdown
 	totalSize := len(reqBody)
 	messageCount := len(filteredMessages)
 
@@ -330,6 +310,164 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 		formatBytes(totalSize), formatBytes(totalSize), messageCount, estimatedTokens,
 		largestMsgType, formatBytes(largestMsgSize))
 
+	// ═══════════════════════════════════════════════════════════════════════════
+	// CLEAR DEBUG: Full message structure being sent to Claude API
+	// ═══════════════════════════════════════════════════════════════════════════
+	log.Printf("═══════════════ CLAUDE API REQUEST (%d messages) ═══════════════", len(filteredMessages))
+	for i, msg := range filteredMessages {
+		msgJSON, _ := json.Marshal(msg)
+		log.Printf("── Message[%d] role=%s size=%s ──", i, msg.Role, formatBytes(len(msgJSON)))
+
+		switch content := msg.Content.(type) {
+		case string:
+			preview := content
+			if len(preview) > 300 {
+				preview = preview[:300] + fmt.Sprintf("... [%d chars]", len(content))
+			}
+			log.Printf("   STRING: %q", preview)
+
+		case []stream.ContentBlock:
+			for j, block := range content {
+				switch block.Type {
+				case "text":
+					preview := block.Text
+					if len(preview) > 300 {
+						preview = preview[:300] + fmt.Sprintf("... [%d chars]", len(block.Text))
+					}
+					log.Printf("   [%d] TEXT: %q", j, preview)
+				case "image":
+					srcType, mediaType, dataLen, fileID := "?", "?", 0, ""
+					if block.Source != nil {
+						srcType = block.Source.Type
+						mediaType = block.Source.MediaType
+						dataLen = len(block.Source.Data)
+						fileID = block.Source.FileID
+					}
+					log.Printf("   [%d] IMAGE: source=%s media=%s data_len=%d file_id=%s", j, srcType, mediaType, dataLen, fileID)
+				case "tool_use":
+					inputJSON, _ := json.Marshal(block.Input)
+					inputPreview := string(inputJSON)
+					if len(inputPreview) > 300 {
+						inputPreview = inputPreview[:300] + fmt.Sprintf("... [%d chars]", len(inputJSON))
+					}
+					log.Printf("   [%d] TOOL_USE: name=%s id=%s input=%s", j, block.Name, block.ID, inputPreview)
+				case "tool_result":
+					log.Printf("   [%d] TOOL_RESULT: tool_use_id=%s is_error=%v", j, block.ToolUseID, block.IsError)
+					// Dump tool_result content structure clearly
+					switch trContent := block.Content.(type) {
+					case string:
+						preview := trContent
+						if len(preview) > 300 {
+							preview = preview[:300] + fmt.Sprintf("... [%d chars]", len(trContent))
+						}
+						log.Printf("       content(string): %q", preview)
+					case []interface{}:
+						log.Printf("       content(array): %d blocks", len(trContent))
+						for k, item := range trContent {
+							if itemMap, ok := item.(map[string]interface{}); ok {
+								itemType, _ := itemMap["type"].(string)
+								switch itemType {
+								case "text":
+									text, _ := itemMap["text"].(string)
+									preview := text
+									if len(preview) > 200 {
+										preview = preview[:200] + fmt.Sprintf("... [%d chars]", len(text))
+									}
+									log.Printf("         [%d] TEXT: %q", k, preview)
+								case "image":
+									if src, ok := itemMap["source"].(map[string]interface{}); ok {
+										st, _ := src["type"].(string)
+										mt, _ := src["media_type"].(string)
+										dl := 0
+										if d, ok := src["data"].(string); ok {
+											dl = len(d)
+										}
+										fid, _ := src["file_id"].(string)
+										log.Printf("         [%d] IMAGE: source=%s media=%s data_len=%d file_id=%s", k, st, mt, dl, fid)
+									} else {
+										log.Printf("         [%d] IMAGE: (no source)", k)
+									}
+								default:
+									raw, _ := json.Marshal(itemMap)
+									preview := string(raw)
+									if len(preview) > 200 {
+										preview = preview[:200] + "..."
+									}
+									log.Printf("         [%d] %s: %s", k, itemType, preview)
+								}
+							}
+						}
+					case nil:
+						log.Printf("       content: nil")
+					default:
+						log.Printf("       content(%T): ?", trContent)
+					}
+				default:
+					log.Printf("   [%d] %s", j, block.Type)
+				}
+			}
+
+		case []interface{}:
+			for j, item := range content {
+				if blockMap, ok := item.(map[string]interface{}); ok {
+					blockType, _ := blockMap["type"].(string)
+					switch blockType {
+					case "text":
+						text, _ := blockMap["text"].(string)
+						preview := text
+						if len(preview) > 300 {
+							preview = preview[:300] + fmt.Sprintf("... [%d chars]", len(text))
+						}
+						log.Printf("   [%d] TEXT: %q", j, preview)
+					case "image":
+						if src, ok := blockMap["source"].(map[string]interface{}); ok {
+							st, _ := src["type"].(string)
+							mt, _ := src["media_type"].(string)
+							dl := 0
+							if d, ok := src["data"].(string); ok {
+								dl = len(d)
+							}
+							log.Printf("   [%d] IMAGE: source=%s media=%s data_len=%d", j, st, mt, dl)
+						}
+					case "tool_use":
+						name, _ := blockMap["name"].(string)
+						id, _ := blockMap["id"].(string)
+						log.Printf("   [%d] TOOL_USE: name=%s id=%s", j, name, id)
+					case "tool_result":
+						tuid, _ := blockMap["tool_use_id"].(string)
+						log.Printf("   [%d] TOOL_RESULT: tool_use_id=%s", j, tuid)
+						if trContent, ok := blockMap["content"].([]interface{}); ok {
+							for k, inner := range trContent {
+								if innerMap, ok := inner.(map[string]interface{}); ok {
+									innerType, _ := innerMap["type"].(string)
+									if innerType == "image" {
+										if src, ok := innerMap["source"].(map[string]interface{}); ok {
+											st, _ := src["type"].(string)
+											dl := 0
+											if d, ok := src["data"].(string); ok {
+												dl = len(d)
+											}
+											log.Printf("         [%d] IMAGE: source=%s data_len=%d", k, st, dl)
+										}
+									} else if innerType == "text" {
+										text, _ := innerMap["text"].(string)
+										preview := text
+										if len(preview) > 200 {
+											preview = preview[:200] + "..."
+										}
+										log.Printf("         [%d] TEXT: %q", k, preview)
+									}
+								}
+							}
+						}
+					default:
+						log.Printf("   [%d] %s", j, blockType)
+					}
+				}
+			}
+		}
+	}
+	log.Printf("═══════════════ END CLAUDE API REQUEST ═══════════════")
 
 	// Create HTTP request to Anthropic
 	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewBuffer(reqBody))

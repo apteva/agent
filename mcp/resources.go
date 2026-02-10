@@ -243,7 +243,6 @@ func (c *MCPClient) ListAllResourcesFromAPI() ([]MCPResource, error) {
 		cursor = listResp.NextCursor
 	}
 
-	log.Printf("📚 MCP: GET /resources/list returned %d resources", len(allResources))
 	return allResources, nil
 }
 

@@ -30,6 +30,24 @@ func NewContextManager(maxMessages, maxTokens, keepImages int) *ContextManager {
 func (cm *ContextManager) TruncateMessages(messages []Message) []Message {
 	originalCount := len(messages)
 
+	// Step 0a: ALWAYS strip base64 images from ALL tool_result content blocks.
+	// Tool_result images are redundant in history — the text block already has
+	// file_id/URL references. These images can be 1-2MB and inflate token estimates
+	// causing important messages to be truncated away.
+	toolResultImageCount := stripImagesFromAllToolResults(messages)
+	if toolResultImageCount > 0 {
+		log.Printf("🖼️  Context: Stripped %d images from tool_result content (all messages)", toolResultImageCount)
+	}
+
+	// Step 0b: Strip top-level images from old messages (respects keepImages threshold)
+	if cm.keepImages > 0 && len(messages) > 0 {
+		imageCount := cm.stripOldImages(messages)
+		if imageCount > 0 {
+			log.Printf("🖼️  Context: Pre-truncation stripped %d top-level images, keeping last %d messages with images",
+				imageCount, cm.keepImages)
+		}
+	}
+
 	// Step 1: Apply truncation (token-based or message-based)
 	if cm.maxTokens > 0 {
 		// Token-based truncation (preferred)
@@ -44,15 +62,6 @@ func (cm *ContextManager) TruncateMessages(messages []Message) []Message {
 		messages = messages[cutIndex:]
 		log.Printf("📊 Context: Truncated %d → %d messages (limit: %d, safe cut at %d)",
 			originalCount, len(messages), cm.maxMessages, cutIndex)
-	}
-
-	// Step 2: Strip old images if configured
-	if cm.keepImages > 0 && len(messages) > 0 {
-		imageCount := cm.stripOldImages(messages)
-		if imageCount > 0 {
-			log.Printf("🖼️  Context: Stripped %d images, keeping last %d messages with images",
-				imageCount, cm.keepImages)
-		}
 	}
 
 	return messages
@@ -333,6 +342,36 @@ func (cm *ContextManager) extractToolUseIDs(msg *Message) []string {
 
 // stripOldImages removes images from messages beyond the keepImages threshold
 // Returns count of images stripped
+// stripImagesFromAllToolResults strips base64 images from tool_result content in ALL messages.
+// Tool_result images are always redundant in history because the text block has the file_id/URL.
+// This must run before token estimation to prevent 1-2MB images from inflating token counts.
+func stripImagesFromAllToolResults(messages []Message) int {
+	strippedCount := 0
+	for i := range messages {
+		if blocks, ok := messages[i].Content.([]ContentBlock); ok {
+			for j := range blocks {
+				if blocks[j].Type == "tool_result" {
+					count := stripImagesFromToolResultContent(&blocks[j])
+					strippedCount += count
+				}
+			}
+			if strippedCount > 0 {
+				messages[i].Content = blocks
+			}
+		} else if rawBlocks, ok := messages[i].Content.([]interface{}); ok {
+			for _, block := range rawBlocks {
+				if blockMap, ok := block.(map[string]interface{}); ok {
+					if blockType, _ := blockMap["type"].(string); blockType == "tool_result" {
+						count := stripImagesFromToolResultMap(blockMap)
+						strippedCount += count
+					}
+				}
+			}
+		}
+	}
+	return strippedCount
+}
+
 func (cm *ContextManager) stripOldImages(messages []Message) int {
 	if len(messages) <= cm.keepImages {
 		return 0 // All messages within keep threshold
@@ -351,6 +390,7 @@ func (cm *ContextManager) stripOldImages(messages []Message) int {
 
 // stripImagesFromMessage removes image content blocks from a single message
 // Replaces images with text placeholder
+// Also strips images nested inside tool_result content blocks
 // Returns count of images stripped
 func stripImagesFromMessage(msg *Message) int {
 	strippedCount := 0
@@ -367,6 +407,11 @@ func stripImagesFromMessage(msg *Message) int {
 					Type: "text",
 					Text: "[Image removed from context]",
 				})
+			} else if block.Type == "tool_result" {
+				// Also strip images inside tool_result content
+				innerCount := stripImagesFromToolResultContent(&block)
+				strippedCount += innerCount
+				newBlocks = append(newBlocks, block)
 			} else {
 				newBlocks = append(newBlocks, block)
 			}
@@ -403,6 +448,11 @@ func stripImagesFromMessage(msg *Message) int {
 					"type": "text",
 					"text": "[Image removed from context]",
 				})
+			} else if blockType == "tool_result" {
+				// Also strip images inside tool_result content
+				innerCount := stripImagesFromToolResultMap(blockMap)
+				strippedCount += innerCount
+				newBlocks = append(newBlocks, blockMap)
 			} else {
 				// Keep all non-image blocks
 				newBlocks = append(newBlocks, block)
@@ -414,5 +464,92 @@ func stripImagesFromMessage(msg *Message) int {
 		}
 	}
 
+	return strippedCount
+}
+
+// stripImagesFromToolResultContent strips image blocks from a ContentBlock's Content field
+// This handles tool_result blocks that contain embedded images (e.g., from vision-enabled MCP results)
+func stripImagesFromToolResultContent(block *ContentBlock) int {
+	switch content := block.Content.(type) {
+	case []interface{}:
+		strippedCount := 0
+		newContent := make([]interface{}, 0, len(content))
+		for _, item := range content {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if itemType, _ := itemMap["type"].(string); itemType == "image" {
+					strippedCount++
+					newContent = append(newContent, map[string]interface{}{
+						"type": "text",
+						"text": "[Image removed from context]",
+					})
+					continue
+				}
+			}
+			newContent = append(newContent, item)
+		}
+		if strippedCount > 0 {
+			block.Content = newContent
+			log.Printf("🖼️  Stripped %d image(s) from tool_result content (tool_use_id=%s)", strippedCount, block.ToolUseID)
+		}
+		return strippedCount
+
+	case []ContentBlock:
+		strippedCount := 0
+		newContent := make([]ContentBlock, 0, len(content))
+		for _, cb := range content {
+			if cb.Type == "image" {
+				strippedCount++
+				newContent = append(newContent, ContentBlock{
+					Type: "text",
+					Text: "[Image removed from context]",
+				})
+			} else {
+				newContent = append(newContent, cb)
+			}
+		}
+		if strippedCount > 0 {
+			block.Content = newContent
+			log.Printf("🖼️  Stripped %d image(s) from tool_result content (tool_use_id=%s)", strippedCount, block.ToolUseID)
+		}
+		return strippedCount
+	}
+
+	return 0
+}
+
+// stripImagesFromToolResultMap strips image blocks from a tool_result map's "content" field
+// This handles the []interface{} (raw JSON) representation of tool_result blocks
+func stripImagesFromToolResultMap(blockMap map[string]interface{}) int {
+	content, ok := blockMap["content"]
+	if !ok {
+		return 0
+	}
+
+	contentArr, ok := content.([]interface{})
+	if !ok {
+		return 0
+	}
+
+	strippedCount := 0
+	newContent := make([]interface{}, 0, len(contentArr))
+	for _, item := range contentArr {
+		if itemMap, ok := item.(map[string]interface{}); ok {
+			if itemType, _ := itemMap["type"].(string); itemType == "image" {
+				strippedCount++
+				newContent = append(newContent, map[string]interface{}{
+					"type": "text",
+					"text": "[Image removed from context]",
+				})
+				continue
+			}
+		}
+		newContent = append(newContent, item)
+	}
+
+	if strippedCount > 0 {
+		blockMap["content"] = newContent
+		toolUseID, _ := blockMap["tool_use_id"].(string)
+		log.Printf("🖼️  Stripped %d image(s) from tool_result map content (tool_use_id=%s)", strippedCount, toolUseID)
+	}
 	return strippedCount
 }

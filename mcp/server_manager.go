@@ -251,23 +251,73 @@ func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]i
 	}
 	if !exists {
 		m.mu.RUnlock()
+		log.Printf("❌ MCP ServerManager.CallTool: tool '%s' NOT FOUND. Available tools: %v", fullName, m.toolNames())
 		return nil, fmt.Errorf("tool '%s' not found", fullName)
 	}
+
+	log.Printf("🔧 MCP ServerManager.CallTool: fullName=%s → server=%s, toolName=%s", fullName, tool.ServerName, tool.Name)
 
 	// Try HTTP client first
 	if client, ok := m.httpClients[tool.ServerName]; ok {
 		m.mu.RUnlock()
-		return client.CallTool(tool.Name, arguments)
+		log.Printf("🌐 MCP ServerManager: Dispatching to HTTP client [%s] for tool '%s'", tool.ServerName, tool.Name)
+		startTime := time.Now()
+		result, err := client.CallTool(tool.Name, arguments)
+		elapsed := time.Since(startTime)
+		if err != nil {
+			log.Printf("❌ MCP ServerManager: HTTP [%s] tool '%s' FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)
+		} else {
+			log.Printf("✅ MCP ServerManager: HTTP [%s] tool '%s' completed in %v, blocks=%d", tool.ServerName, tool.Name, elapsed, len(result.Content))
+		}
+		return result, err
 	}
 
 	// Try stdio client
 	if client, ok := m.stdioClients[tool.ServerName]; ok {
 		m.mu.RUnlock()
-		return client.CallTool(tool.Name, arguments)
+		log.Printf("📟 MCP ServerManager: Dispatching to Stdio client [%s] for tool '%s'", tool.ServerName, tool.Name)
+		startTime := time.Now()
+		result, err := client.CallTool(tool.Name, arguments)
+		elapsed := time.Since(startTime)
+		if err != nil {
+			log.Printf("❌ MCP ServerManager: Stdio [%s] tool '%s' FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)
+		} else {
+			log.Printf("✅ MCP ServerManager: Stdio [%s] tool '%s' completed in %v, blocks=%d", tool.ServerName, tool.Name, elapsed, len(result.Content))
+		}
+		return result, err
 	}
 
 	m.mu.RUnlock()
+	log.Printf("❌ MCP ServerManager: server '%s' not connected (httpClients=%v, stdioClients=%v)",
+		tool.ServerName, m.httpClientNames(), m.stdioClientNames())
 	return nil, fmt.Errorf("server '%s' not connected", tool.ServerName)
+}
+
+// toolNames returns list of registered tool names (for debug logging, call with lock held)
+func (m *ExternalServerManager) toolNames() []string {
+	names := make([]string, 0, len(m.tools))
+	for name := range m.tools {
+		names = append(names, name)
+	}
+	return names
+}
+
+// httpClientNames returns list of HTTP client names (for debug logging, call with lock held)
+func (m *ExternalServerManager) httpClientNames() []string {
+	names := make([]string, 0, len(m.httpClients))
+	for name := range m.httpClients {
+		names = append(names, name)
+	}
+	return names
+}
+
+// stdioClientNames returns list of stdio client names (for debug logging, call with lock held)
+func (m *ExternalServerManager) stdioClientNames() []string {
+	names := make([]string, 0, len(m.stdioClients))
+	for name := range m.stdioClients {
+		names = append(names, name)
+	}
+	return names
 }
 
 // GetServerNames returns list of connected server names

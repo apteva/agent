@@ -473,7 +473,9 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 					result.ToolName, resultPreview)
 
 				// Extract files from tool result content blocks if filesystem is enabled
-				if fileProcessor != nil && fileProcessor.IsEnabled() {
+				// Skip for MCP tools — ProcessMCPToolResult already handled filesystem extraction
+				// and built proper vision blocks with base64 data for the LLM
+				if fileProcessor != nil && fileProcessor.IsEnabled() && !isMCPTool(result.ToolName) {
 					// Try to convert to []ContentBlock for processing
 					if blocksArray, ok := result.ContentBlocks.([]interface{}); ok {
 						var contentBlocks []ContentBlock
@@ -1029,8 +1031,13 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					}
 
 					// Output tool result (always string for SSE)
+					// Truncate large content for SSE — full data goes to LLM via continuation loop
+					sseContent := toolResultContent
+					if len(sseContent) > 4000 {
+						sseContent = sseContent[:4000]
+					}
 					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
-						event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
+						event.ToolID, escapeJSON(sseContent), time.Now().UnixMilli())
 					flusher.Flush()
 
 				} else if event.ToolName == "computer" {

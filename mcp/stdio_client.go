@@ -346,6 +346,7 @@ func (c *StdioMCPClient) ListTools() ([]MCPToolDefinition, error) {
 // CallTool executes a tool on the server
 func (c *StdioMCPClient) CallTool(name string, arguments map[string]interface{}) (*ToolCallResult, error) {
 	if !c.initialized {
+		log.Printf("🔌 MCP Stdio [%s]: Auto-initializing for tool call '%s'", c.name, name)
 		if err := c.Initialize(); err != nil {
 			return nil, err
 		}
@@ -356,14 +357,23 @@ func (c *StdioMCPClient) CallTool(name string, arguments map[string]interface{})
 		Arguments: arguments,
 	}
 
+	log.Printf("🔧 MCP Stdio [%s]: Calling tool '%s' (timeout=30s)", c.name, name)
+	startTime := time.Now()
+
 	resp, err := c.sendRequest("tools/call", params)
+	elapsed := time.Since(startTime)
+
 	if err != nil {
+		log.Printf("❌ MCP Stdio [%s]: Tool '%s' request FAILED after %v: %v", c.name, name, elapsed, err)
 		return nil, fmt.Errorf("tools/call failed: %w", err)
 	}
 
 	if resp.Error != nil {
+		log.Printf("❌ MCP Stdio [%s]: Tool '%s' returned RPC error after %v: %s", c.name, name, elapsed, resp.Error.Message)
 		return nil, fmt.Errorf("tools/call error: %s", resp.Error.Message)
 	}
+
+	log.Printf("✅ MCP Stdio [%s]: Tool '%s' got response in %v", c.name, name, elapsed)
 
 	// Parse result
 	resultBytes, err := json.Marshal(resp.Result)
@@ -371,10 +381,16 @@ func (c *StdioMCPClient) CallTool(name string, arguments map[string]interface{})
 		return nil, fmt.Errorf("failed to marshal result: %w", err)
 	}
 
+	log.Printf("📋 MCP Stdio [%s]: Tool '%s' response size=%d bytes", c.name, name, len(resultBytes))
+
 	var result ToolCallResult
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		log.Printf("❌ MCP Stdio [%s]: Tool '%s' failed to parse result: %v", c.name, name, err)
 		return nil, fmt.Errorf("failed to parse tool result: %w", err)
 	}
+
+	log.Printf("📋 MCP Stdio [%s]: Tool '%s' parsed: isError=%v, content_blocks=%d",
+		c.name, name, result.IsError, len(result.Content))
 
 	return &result, nil
 }
