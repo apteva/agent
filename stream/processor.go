@@ -970,22 +970,19 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 							WithDuration(toolStartTime)
 						eventBus.Publish(errorEvent)
 					} else {
-						// Extract images from tool result if filesystem is enabled
-						processedResult := result
-						if fileProcessor != nil && fileProcessor.IsEnabled() {
-							extracted, fileIDs, extractErr := fileProcessor.ExtractImagesFromToolResult(result, threadID, event.ToolName)
-							if extractErr != nil {
-								log.Printf("⚠️  Failed to extract images from MCP tool result: %v", extractErr)
-							} else if len(fileIDs) > 0 {
-								processedResult = extracted
-								log.Printf("📁 Extracted %d images from MCP tool %s result", len(fileIDs), event.ToolName)
-							}
+						// Process MCP tool result with vision/filesystem awareness
+						visionEnabled := false
+						if agentCfg := config.GetConfig().Get(); agentCfg.LLM.Vision != nil {
+							visionEnabled = agentCfg.LLM.Vision.Enabled
 						}
 
-						// Convert result to JSON string
-						resultJSON, _ := json.Marshal(processedResult)
-						toolResultContent = string(resultJSON)
+						toolContent, toolContentStr, fileIDs := ProcessMCPToolResult(result, visionEnabled, fileProcessor, threadID, event.ToolName)
+						toolResultContent = toolContentStr
 						isError = false
+
+						if len(fileIDs) > 0 {
+							log.Printf("📁 Extracted %d file(s) from MCP tool %s result", len(fileIDs), event.ToolName)
+						}
 
 						// End span successfully
 						if toolSpan != nil {
@@ -1001,33 +998,37 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 							WithData("success", true).
 							WithDuration(toolStartTime)
 						eventBus.Publish(resultEvent)
+
+						// Save tool result — use structured content (with image blocks) if available
+						toolResultBlock := map[string]interface{}{
+							"type":        "tool_result",
+							"tool_use_id": event.ToolID,
+							"content":     toolContent, // string or []interface{} with content blocks
+							"is_error":    isError,
+						}
+						toolResultArray := []interface{}{toolResultBlock}
+						if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+							log.Printf("Error saving MCP tool result message: %v", err)
+						}
+
+						// Create tool result for conversation continuation
+						toolResult := StreamEvent{
+							Type:             "tool_result",
+							ToolID:           event.ToolID,
+							ToolName:         event.ToolName,
+							ToolInput:        event.ToolInput,
+							Content:          toolResultContent,      // String for SSE
+							ThoughtSignature: event.ThoughtSignature, // Preserve for Gemini 3
+						}
+						// Set ContentBlocks if structured content (with images) so the
+						// continuation loop feeds image blocks to the next LLM call
+						if _, isBlocks := toolContent.([]interface{}); isBlocks {
+							toolResult.ContentBlocks = toolContent
+						}
+						toolResults = append(toolResults, toolResult)
 					}
 
-					// Save tool result message as an array of content blocks
-					toolResultBlock := map[string]interface{}{
-						"type":        "tool_result",
-						"tool_use_id": event.ToolID,
-						"content":     toolResultContent,
-						"is_error":    isError,
-					}
-					// Wrap in array for proper format
-					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving MCP tool result message: %v", err)
-					}
-
-					// Create tool result for conversation continuation
-					toolResult := StreamEvent{
-						Type:             "tool_result",
-						ToolID:           event.ToolID,
-						ToolName:         event.ToolName,
-						ToolInput:        event.ToolInput,
-						Content:          toolResultContent,
-						ThoughtSignature: event.ThoughtSignature, // Preserve for Gemini 3
-					}
-					toolResults = append(toolResults, toolResult)
-
-					// Output tool result
+					// Output tool result (always string for SSE)
 					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
 						event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
 					flusher.Flush()
@@ -1455,21 +1456,28 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					flusher.Flush()
 				} else if isMCPTool(event.ToolName) {
 					cfg := config.GetConfig()
-					mcpCfg := cfg.Get().MCP
+					agentCfg := cfg.Get()
+					mcpCfg := agentCfg.MCP
 					result, err := mcp.ExecuteToolWithContext(ctx, event.ToolName, event.ToolInput, mcpCfg, threadID)
 					var toolResultContent string
+					var toolContent interface{}
 					if err != nil {
 						toolResultContent = fmt.Sprintf("Error: %v", err)
+						toolContent = toolResultContent
 					} else {
-						resultJSON, _ := json.Marshal(result)
-						toolResultContent = string(resultJSON)
+						// Process MCP tool result with vision/filesystem awareness
+						visionEnabled := false
+						if agentCfg.LLM.Vision != nil {
+							visionEnabled = agentCfg.LLM.Vision.Enabled
+						}
+						toolContent, toolResultContent, _ = ProcessMCPToolResult(result, visionEnabled, fileProcessor, threadID, event.ToolName)
 					}
 
-					// Save and stream result immediately
+					// Save tool result — use structured content if available
 					toolResultBlock := map[string]interface{}{
 						"type":        "tool_result",
 						"tool_use_id": event.ToolID,
-						"content":     toolResultContent,
+						"content":     toolContent,
 					}
 					toolResultArray := []interface{}{toolResultBlock}
 					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
@@ -1482,6 +1490,9 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						ToolInput:        event.ToolInput,
 						Content:          toolResultContent,
 						ThoughtSignature: event.ThoughtSignature,
+					}
+					if _, isBlocks := toolContent.([]interface{}); isBlocks {
+						toolResult.ContentBlocks = toolContent
 					}
 					toolResults = append(toolResults, toolResult)
 					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
