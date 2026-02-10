@@ -28,14 +28,9 @@ func GetProviders() []ProviderInfo {
 			ID:   "anthropic",
 			Name: "Anthropic (Claude)",
 			Models: []ProviderModel{
-				{Value: "claude-sonnet-4-20250514", Label: "Claude Sonnet 4 (Latest)", Recommended: true},
-				{Value: "claude-opus-4-20250514", Label: "Claude Opus 4 (Most Capable)"},
-				{Value: "claude-sonnet-4-5", Label: "Claude 4.5 Sonnet"},
-				{Value: "claude-haiku-4-5", Label: "Claude 4.5 Haiku (Fast)"},
-				{Value: "claude-3-7-sonnet-20250219", Label: "Claude 3.7 Sonnet"},
-				{Value: "claude-3-5-sonnet-20241022", Label: "Claude 3.5 Sonnet"},
-				{Value: "claude-3-5-haiku-20241022", Label: "Claude 3.5 Haiku"},
-				{Value: "claude-3-opus-20240229", Label: "Claude 3 Opus"},
+				{Value: "claude-opus-4-6", Label: "Claude Opus 4.6 (Most Capable)", Recommended: true},
+				{Value: "claude-sonnet-4-5", Label: "Claude Sonnet 4.5"},
+				{Value: "claude-haiku-4-5", Label: "Claude Haiku 4.5 (Fast)"},
 			},
 		},
 		{

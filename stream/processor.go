@@ -319,9 +319,21 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 				})
 		}
 
-		// Get stream from provider
-		rawStream, err := provider.GetRawStream(currentMessages, customTools, builtinTools)
-		if err != nil {
+		// Get stream from provider (with retry for transient errors)
+		var rawStream io.ReadCloser
+		var err error
+		maxRetries := 3
+		for attempt := 0; attempt <= maxRetries; attempt++ {
+			rawStream, err = provider.GetRawStream(currentMessages, customTools, builtinTools)
+			if err == nil {
+				break
+			}
+			if attempt < maxRetries && isTransientError(err) {
+				delay := time.Duration(attempt+1) * 2 * time.Second
+				log.Printf("🔄 Retrying provider request (attempt %d/%d) after %v: %v", attempt+2, maxRetries+1, delay, err)
+				time.Sleep(delay)
+				continue
+			}
 			if llmSpan != nil {
 				llmSpan.RecordError(err).End()
 			}
@@ -1883,4 +1895,26 @@ func escapeJSON(s string) string {
 		}
 	}
 	return result
+}
+
+// isTransientError checks if an error from a provider is a transient/retryable error
+// (429 rate limit, 503 service unavailable, 529 overloaded, or connection errors)
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// Check for HTTP status codes that are transient
+	for _, code := range []string{": 429 ", ": 503 ", ": 529 "} {
+		if strings.Contains(msg, code) {
+			return true
+		}
+	}
+	// Check for connection-level failures
+	for _, phrase := range []string{"connection refused", "connection reset", "EOF", "timeout"} {
+		if strings.Contains(strings.ToLower(msg), phrase) {
+			return true
+		}
+	}
+	return false
 }
