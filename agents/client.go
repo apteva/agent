@@ -755,6 +755,17 @@ func (c *AgentClient) findAgent(agentID string) *config.AgentInfo {
 	return nil
 }
 
+// GetAgentName returns the human-readable name for an agent ID, or the ID itself if not found
+func (c *AgentClient) GetAgentName(agentID string) string {
+	agents := c.getAgentList()
+	for _, agent := range agents {
+		if agent.ID == agentID {
+			return agent.Name
+		}
+	}
+	return agentID
+}
+
 func (c *AgentClient) GetAvailableAgents(filterTags, filterCapabilities []string) []map[string]interface{} {
 	agents := []map[string]interface{}{}
 

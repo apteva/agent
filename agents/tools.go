@@ -53,6 +53,16 @@ func (t *CallAgentTool) InputSchema() map[string]interface{} {
 	}
 }
 
+// DynamicDisplayName returns "Calling {AgentName}" based on the input params
+func (t *CallAgentTool) DynamicDisplayName(params map[string]interface{}) string {
+	agentID, _ := params["agent_id"].(string)
+	if agentID != "" && t.Client != nil {
+		name := t.Client.GetAgentName(agentID)
+		return "Calling " + name
+	}
+	return ""
+}
+
 // SupportsStreaming returns true - this tool streams agent responses
 func (t *CallAgentTool) SupportsStreaming() bool {
 	return true
@@ -221,6 +231,16 @@ func (t *DelegateTaskTool) Description() string {
 	return "Delegate a task to another agent for asynchronous execution. The target agent must have the 'tasks' feature enabled (check with list_available_agents). Unlike call_agent which is synchronous, delegate_task creates a task on the remote agent that will be executed by their scheduler. Use this for long-running work that doesn't need immediate response."
 }
 
+// DynamicDisplayName returns "Delegating to {AgentName}" based on the input params
+func (t *DelegateTaskTool) DynamicDisplayName(params map[string]interface{}) string {
+	agentID, _ := params["agent_id"].(string)
+	if agentID != "" && t.Client != nil {
+		name := t.Client.GetAgentName(agentID)
+		return "Delegating to " + name
+	}
+	return ""
+}
+
 func (t *DelegateTaskTool) InputSchema() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "object",
@@ -297,6 +317,16 @@ func (t *CheckDelegatedTaskTool) DisplayName() string {
 
 func (t *CheckDelegatedTaskTool) Description() string {
 	return "Check the status and result of a task previously delegated to another agent using delegate_task."
+}
+
+// DynamicDisplayName returns "Checking task on {AgentName}" based on the input params
+func (t *CheckDelegatedTaskTool) DynamicDisplayName(params map[string]interface{}) string {
+	agentID, _ := params["agent_id"].(string)
+	if agentID != "" && t.Client != nil {
+		name := t.Client.GetAgentName(agentID)
+		return "Checking task on " + name
+	}
+	return ""
 }
 
 func (t *CheckDelegatedTaskTool) InputSchema() map[string]interface{} {

@@ -16,20 +16,21 @@ import (
 
 // StdioMCPClient connects to MCP servers using stdio transport (stdin/stdout)
 type StdioMCPClient struct {
-	name         string
-	command      []string
-	env          []string
-	cmd          *exec.Cmd
-	stdin        io.WriteCloser
-	stdout       *bufio.Reader
-	stderr       io.ReadCloser
-	initialized  bool
-	serverInfo   *ServerInfo
-	capabilities *ServerCapabilities
-	requestID    int64
-	mu           sync.Mutex
-	responseChan chan *JSONRPCResponse
-	done         chan struct{}
+	name             string
+	command          []string
+	env              []string
+	cmd              *exec.Cmd
+	stdin            io.WriteCloser
+	stdout           *bufio.Reader
+	stderr           io.ReadCloser
+	initialized      bool
+	serverInfo       *ServerInfo
+	capabilities     *ServerCapabilities
+	requestID        int64
+	mu               sync.Mutex
+	pendingRequests  map[int]chan *JSONRPCResponse // per-request response channels
+	notificationChan chan JSONRPCMessage           // server-initiated notifications
+	done             chan struct{}
 }
 
 // StdioMCPServerConfig configures a stdio MCP server
@@ -49,11 +50,12 @@ func NewStdioMCPClient(cfg StdioMCPServerConfig) *StdioMCPClient {
 	}
 
 	return &StdioMCPClient{
-		name:         cfg.Name,
-		command:      cfg.Command,
-		env:          env,
-		responseChan: make(chan *JSONRPCResponse, 100),
-		done:         make(chan struct{}),
+		name:             cfg.Name,
+		command:          cfg.Command,
+		env:              env,
+		pendingRequests:  make(map[int]chan *JSONRPCResponse),
+		notificationChan: make(chan JSONRPCMessage, 100),
+		done:             make(chan struct{}),
 	}
 }
 
@@ -107,7 +109,8 @@ func (c *StdioMCPClient) Start() error {
 	return nil
 }
 
-// readResponses reads JSON-RPC responses from stdout
+// readResponses reads JSON-RPC messages from stdout and routes them.
+// Responses (with id) go to per-request channels; notifications go to notificationChan.
 func (c *StdioMCPClient) readResponses() {
 	defer close(c.done)
 
@@ -125,20 +128,51 @@ func (c *StdioMCPClient) readResponses() {
 			continue
 		}
 
-		// Try to parse as JSON-RPC response
-		var response JSONRPCResponse
-		if err := json.Unmarshal(line, &response); err != nil {
-			// Not a valid JSON-RPC response, might be a log line
+		// Parse as generic message to determine type
+		var msg JSONRPCMessage
+		if err := json.Unmarshal(line, &msg); err != nil {
+			// Not valid JSON-RPC, treat as log output
 			log.Printf("📝 MCP Stdio [%s]: %s", c.name, string(line))
 			continue
 		}
 
-		// Send to response channel
-		select {
-		case c.responseChan <- &response:
-		default:
-			log.Printf("⚠️ MCP Stdio [%s]: Response channel full, dropping response", c.name)
+		if msg.IsNotification() {
+			// Server-initiated notification (progress, log, etc.)
+			select {
+			case c.notificationChan <- msg:
+			default:
+				log.Printf("⚠️ MCP Stdio [%s]: Notification channel full, dropping: %s", c.name, msg.Method)
+			}
+			continue
 		}
+
+		if msg.IsResponse() {
+			// Route to the pending request by ID
+			id := *msg.ID
+			var resp JSONRPCResponse
+			if err := json.Unmarshal(line, &resp); err != nil {
+				log.Printf("⚠️ MCP Stdio [%s]: Failed to parse response: %v", c.name, err)
+				continue
+			}
+
+			c.mu.Lock()
+			ch, exists := c.pendingRequests[id]
+			c.mu.Unlock()
+
+			if exists {
+				select {
+				case ch <- &resp:
+				default:
+					log.Printf("⚠️ MCP Stdio [%s]: Response channel full for id=%d", c.name, id)
+				}
+			} else {
+				log.Printf("⚠️ MCP Stdio [%s]: No pending request for id=%d", c.name, id)
+			}
+			continue
+		}
+
+		// Unknown message format
+		log.Printf("📝 MCP Stdio [%s]: Unroutable message: %s", c.name, truncateString(string(line), 200))
 	}
 }
 
@@ -178,9 +212,21 @@ func (c *StdioMCPClient) nextID() int {
 
 // sendRequest sends a JSON-RPC request and waits for response
 func (c *StdioMCPClient) sendRequest(method string, params interface{}) (*JSONRPCResponse, error) {
-	c.mu.Lock()
-
 	id := c.nextID()
+
+	// Register per-request response channel
+	respCh := make(chan *JSONRPCResponse, 1)
+	c.mu.Lock()
+	c.pendingRequests[id] = respCh
+	c.mu.Unlock()
+
+	// Clean up on exit
+	defer func() {
+		c.mu.Lock()
+		delete(c.pendingRequests, id)
+		c.mu.Unlock()
+	}()
+
 	req := JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -190,29 +236,26 @@ func (c *StdioMCPClient) sendRequest(method string, params interface{}) (*JSONRP
 
 	data, err := json.Marshal(req)
 	if err != nil {
-		c.mu.Unlock()
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Write request
-	if _, err := c.stdin.Write(append(data, '\n')); err != nil {
-		c.mu.Unlock()
-		return nil, fmt.Errorf("failed to write request: %w", err)
-	}
-
+	// Write request (hold lock only for the write)
+	c.mu.Lock()
+	_, writeErr := c.stdin.Write(append(data, '\n'))
 	c.mu.Unlock()
+	if writeErr != nil {
+		return nil, fmt.Errorf("failed to write request: %w", writeErr)
+	}
 
 	// Wait for response with timeout
 	timeout := time.After(30 * time.Second)
 	for {
 		select {
-		case response := <-c.responseChan:
-			if response.ID == id {
-				return response, nil
-			}
-			// Not our response, put it back (simplified - in production use a map)
-			// For now, just log and continue
-			log.Printf("⚠️ MCP Stdio [%s]: Got response for different ID: %d (expected %d)", c.name, response.ID, id)
+		case response := <-respCh:
+			return response, nil
+		case <-c.notificationChan:
+			// Drain notifications during non-streaming requests
+			continue
 		case <-timeout:
 			return nil, fmt.Errorf("timeout waiting for response")
 		case <-c.done:
@@ -311,7 +354,7 @@ func (c *StdioMCPClient) Initialize() error {
 	return nil
 }
 
-// ListTools fetches available tools from the server
+// ListTools fetches available tools from the server (with pagination)
 func (c *StdioMCPClient) ListTools() ([]MCPToolDefinition, error) {
 	if !c.initialized {
 		if err := c.Initialize(); err != nil {
@@ -319,28 +362,44 @@ func (c *StdioMCPClient) ListTools() ([]MCPToolDefinition, error) {
 		}
 	}
 
-	resp, err := c.sendRequest("tools/list", nil)
-	if err != nil {
-		return nil, fmt.Errorf("tools/list failed: %w", err)
+	var allTools []MCPToolDefinition
+	var cursor string
+
+	for {
+		var params interface{}
+		if cursor != "" {
+			params = map[string]interface{}{"cursor": cursor}
+		}
+
+		resp, err := c.sendRequest("tools/list", params)
+		if err != nil {
+			return nil, fmt.Errorf("tools/list failed: %w", err)
+		}
+
+		if resp.Error != nil {
+			return nil, fmt.Errorf("tools/list error: %s", resp.Error.Message)
+		}
+
+		resultBytes, err := json.Marshal(resp.Result)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal result: %w", err)
+		}
+
+		var result ToolsListResult
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse tools list: %w", err)
+		}
+
+		allTools = append(allTools, result.Tools...)
+
+		if result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
 	}
 
-	if resp.Error != nil {
-		return nil, fmt.Errorf("tools/list error: %s", resp.Error.Message)
-	}
-
-	// Parse result
-	resultBytes, err := json.Marshal(resp.Result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal result: %w", err)
-	}
-
-	var result ToolsListResult
-	if err := json.Unmarshal(resultBytes, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse tools list: %w", err)
-	}
-
-	log.Printf("🔧 MCP Stdio [%s]: Loaded %d tools", c.name, len(result.Tools))
-	return result.Tools, nil
+	log.Printf("🔧 MCP Stdio [%s]: Loaded %d tools", c.name, len(allTools))
+	return allTools, nil
 }
 
 // CallTool executes a tool on the server
@@ -391,6 +450,118 @@ func (c *StdioMCPClient) CallTool(name string, arguments map[string]interface{})
 
 	log.Printf("📋 MCP Stdio [%s]: Tool '%s' parsed: isError=%v, content_blocks=%d",
 		c.name, name, result.IsError, len(result.Content))
+
+	return &result, nil
+}
+
+// sendRequestStreaming sends a JSON-RPC request and routes notifications to a callback.
+// This is like sendRequest but invokes the callback for each notification received
+// while waiting for the response.
+func (c *StdioMCPClient) sendRequestStreaming(method string, params interface{}, callback MCPNotificationCallback) (*JSONRPCResponse, error) {
+	id := c.nextID()
+
+	// Register per-request response channel
+	respCh := make(chan *JSONRPCResponse, 1)
+	c.mu.Lock()
+	c.pendingRequests[id] = respCh
+	c.mu.Unlock()
+
+	// Clean up on exit
+	defer func() {
+		c.mu.Lock()
+		delete(c.pendingRequests, id)
+		c.mu.Unlock()
+	}()
+
+	req := JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	c.mu.Lock()
+	_, writeErr := c.stdin.Write(append(data, '\n'))
+	c.mu.Unlock()
+	if writeErr != nil {
+		return nil, fmt.Errorf("failed to write request: %w", writeErr)
+	}
+
+	// Wait for response, routing notifications to callback
+	timeout := time.After(30 * time.Second)
+	for {
+		select {
+		case response := <-respCh:
+			return response, nil
+		case notif := <-c.notificationChan:
+			if callback != nil {
+				notification := ParseNotification(notif)
+				callback(notification)
+			}
+		case <-timeout:
+			return nil, fmt.Errorf("timeout waiting for response")
+		case <-c.done:
+			return nil, fmt.Errorf("process exited")
+		}
+	}
+}
+
+// CallToolStreaming executes a tool with streaming notification support.
+// Progress and log notifications from the server are routed to the callback.
+// If callback is nil, behaves identically to CallTool.
+func (c *StdioMCPClient) CallToolStreaming(name string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
+	if !c.initialized {
+		log.Printf("🔌 MCP Stdio [%s]: Auto-initializing for streaming tool call '%s'", c.name, name)
+		if err := c.Initialize(); err != nil {
+			return nil, err
+		}
+	}
+
+	// If no callback, fall back to non-streaming path
+	if callback == nil {
+		return c.CallTool(name, arguments)
+	}
+
+	params := ToolCallParams{
+		Name:      name,
+		Arguments: arguments,
+		Meta: &ToolCallMeta{
+			ProgressToken: fmt.Sprintf("tool_%s_%d", name, time.Now().UnixMilli()),
+		},
+	}
+
+	log.Printf("🔧 MCP Stdio [%s]: Calling tool '%s' (streaming, timeout=30s)", c.name, name)
+	startTime := time.Now()
+
+	resp, err := c.sendRequestStreaming("tools/call", params, callback)
+	elapsed := time.Since(startTime)
+
+	if err != nil {
+		log.Printf("❌ MCP Stdio [%s]: Tool '%s' streaming FAILED after %v: %v", c.name, name, elapsed, err)
+		return nil, fmt.Errorf("tools/call failed: %w", err)
+	}
+
+	if resp.Error != nil {
+		log.Printf("❌ MCP Stdio [%s]: Tool '%s' returned RPC error after %v: %s", c.name, name, elapsed, resp.Error.Message)
+		return nil, fmt.Errorf("tools/call error: %s", resp.Error.Message)
+	}
+
+	log.Printf("✅ MCP Stdio [%s]: Tool '%s' streaming completed in %v", c.name, name, elapsed)
+
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	var result ToolCallResult
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse tool result: %w", err)
+	}
 
 	return &result, nil
 }

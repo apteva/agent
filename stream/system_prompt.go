@@ -165,6 +165,11 @@ For real-time voice interactions, direct users to the voice WebSocket endpoint.`
 		}
 	}
 
+	// Add tool execution guidance for parallel vs sequential calls
+	if llmConfig.ParallelTools != nil && llmConfig.ParallelTools.Enabled {
+		systemPrompt += "\n\n6. Tool execution: You may call multiple tools simultaneously for efficiency, but ONLY when their inputs are fully independent. If one tool's input depends on another tool's output, you MUST call them sequentially — wait for the first result before making the next call."
+	}
+
 	// Add MCP credentials if available
 	if mcpConfig != nil && mcpConfig.Enabled && len(mcpConfig.Credentials) > 0 {
 		var credentialsList []string

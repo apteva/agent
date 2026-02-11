@@ -946,7 +946,7 @@ func IsParallelToolsEnabled(llmConfig LLMConfig) bool {
 
 // GetParallelToolsPrompt returns the system prompt for parallel tool execution
 func GetParallelToolsPrompt() string {
-	return "\n\nFor maximum efficiency, whenever you need to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially."
+	return "\n\nFor maximum efficiency, whenever you need to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially. However, if one tool's input depends on another tool's output, call them sequentially — wait for the first result before making the next call."
 }
 
 // IsTestMode checks if test mode is enabled for a subsystem

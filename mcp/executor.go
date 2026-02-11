@@ -150,24 +150,30 @@ func ExecuteToolWithContext(ctx context.Context, toolName string, params map[str
 	return executor.ExecuteMCPToolWithContext(ctx, toolName, params, cfg, sessionID)
 }
 
-// executeExternalTool executes a tool on an external standard MCP server
-func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string]interface{}) (interface{}, error) {
-	manager := GetExternalServerManager()
-
-	log.Printf("🔧 MCP External Execute: tool=%s, params_keys=%v", toolName, mapKeys(params))
-	startTime := time.Now()
-
-	result, err := manager.CallTool(toolName, params)
-	elapsed := time.Since(startTime)
-
-	if err != nil {
-		log.Printf("❌ MCP External Execute: tool=%s FAILED after %v: %v", toolName, elapsed, err)
-		return nil, err
+// ExecuteToolStreamingWithContext executes an MCP tool with notification streaming support.
+// For external MCP tools, notifications are streamed via the callback.
+// For gateway/internal tools, falls through to the standard sync path.
+func ExecuteToolStreamingWithContext(ctx context.Context, toolName string, params map[string]interface{}, cfg *config.MCPConfig, sessionID string, callback MCPNotificationCallback) (interface{}, error) {
+	executor := GetMCPExecutor(cfg)
+	if executor == nil {
+		return nil, fmt.Errorf("MCP executor not available")
 	}
 
+	// External MCP tools support streaming notifications
+	if IsExternalTool(toolName) && callback != nil {
+		return executor.executeExternalToolStreaming(toolName, params, callback)
+	}
+
+	// Non-external tools (gateway) use the standard path
+	return executor.ExecuteMCPToolWithContext(ctx, toolName, params, cfg, sessionID)
+}
+
+// processExternalToolResult converts a standard MCP ToolCallResult into our internal format.
+// Shared by executeExternalTool and executeExternalToolStreaming.
+func processExternalToolResult(toolName string, result *ToolCallResult) (interface{}, error) {
 	// Log what we got back
-	log.Printf("✅ MCP External Execute: tool=%s completed in %v, isError=%v, content_blocks=%d",
-		toolName, elapsed, result.IsError, len(result.Content))
+	log.Printf("📋 MCP External: tool=%s, isError=%v, content_blocks=%d",
+		toolName, result.IsError, len(result.Content))
 	for i, block := range result.Content {
 		dataLen := 0
 		if block.Data != "" {
@@ -183,7 +189,6 @@ func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string
 
 	// Convert standard MCP result to our format
 	if result.IsError {
-		// Extract error message from content
 		for _, block := range result.Content {
 			if block.Type == "text" && block.Text != "" {
 				return nil, fmt.Errorf("%s", block.Text)
@@ -194,7 +199,7 @@ func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string
 
 	// Extract content from response — handle both text and image blocks
 	var textContent []string
-	var parsedContent []interface{} // Parsed JSON structures from text blocks
+	var parsedContent []interface{}
 	var allContent []interface{}
 	hasNonText := false
 
@@ -208,8 +213,6 @@ func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string
 					"text": block.Text,
 				})
 
-				// Try to parse text as JSON — MCP servers often wrap structured data
-				// (including embedded base64 images) inside a text content block
 				if len(block.Text) > 2 && (block.Text[0] == '{' || block.Text[0] == '[') {
 					var parsed interface{}
 					if err := json.Unmarshal([]byte(block.Text), &parsed); err == nil {
@@ -231,35 +234,27 @@ func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string
 			allContent = append(allContent, imgBlock)
 			log.Printf("  🖼️  Image block preserved: mimeType=%s, data_len=%d", block.MimeType, len(block.Data))
 		default:
-			// Pass through unknown types
 			hasNonText = true
 			allContent = append(allContent, map[string]interface{}{
-				"type":      block.Type,
-				"text":      block.Text,
-				"mimeType":  block.MimeType,
-				"data":      block.Data,
+				"type":     block.Type,
+				"text":     block.Text,
+				"mimeType": block.MimeType,
+				"data":     block.Data,
 			})
 			log.Printf("  ❓ Unknown block type=%q preserved as-is", block.Type)
 		}
 	}
 
-	// If there are non-text blocks (images, etc.), return structured content
 	if hasNonText {
-		log.Printf("🔧 MCP External Execute: returning structured content with %d blocks (%d text, %d non-text)",
-			len(allContent), len(textContent), len(allContent)-len(textContent))
 		return map[string]interface{}{
 			"content": allContent,
 		}, nil
 	}
 
-	// If we have a single text block that parsed as JSON, return the parsed structure
-	// so downstream ProcessMCPToolResult can walk it and find embedded images (e.g. inlineData)
 	if len(parsedContent) == 1 && len(textContent) == 1 {
-		log.Printf("🔧 MCP External Execute: returning parsed JSON structure from text block")
 		return parsedContent[0], nil
 	}
 
-	// Text-only (non-JSON or multiple blocks): return as simple string
 	if len(textContent) == 1 {
 		return textContent[0], nil
 	}
@@ -272,6 +267,44 @@ func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string
 	return map[string]interface{}{
 		"content": result.Content,
 	}, nil
+}
+
+// executeExternalTool executes a tool on an external standard MCP server
+func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string]interface{}) (interface{}, error) {
+	manager := GetExternalServerManager()
+
+	log.Printf("🔧 MCP External Execute: tool=%s, params_keys=%v", toolName, mapKeys(params))
+	startTime := time.Now()
+
+	result, err := manager.CallTool(toolName, params)
+	elapsed := time.Since(startTime)
+
+	if err != nil {
+		log.Printf("❌ MCP External Execute: tool=%s FAILED after %v: %v", toolName, elapsed, err)
+		return nil, err
+	}
+
+	log.Printf("✅ MCP External Execute: tool=%s completed in %v", toolName, elapsed)
+	return processExternalToolResult(toolName, result)
+}
+
+// executeExternalToolStreaming executes a tool on an external MCP server with notification streaming.
+func (e *MCPToolExecutor) executeExternalToolStreaming(toolName string, params map[string]interface{}, callback MCPNotificationCallback) (interface{}, error) {
+	manager := GetExternalServerManager()
+
+	log.Printf("🔧 MCP External Execute (streaming): tool=%s, params_keys=%v", toolName, mapKeys(params))
+	startTime := time.Now()
+
+	result, err := manager.CallToolStreaming(toolName, params, callback)
+	elapsed := time.Since(startTime)
+
+	if err != nil {
+		log.Printf("❌ MCP External Execute (streaming): tool=%s FAILED after %v: %v", toolName, elapsed, err)
+		return nil, err
+	}
+
+	log.Printf("✅ MCP External Execute (streaming): tool=%s completed in %v", toolName, elapsed)
+	return processExternalToolResult(toolName, result)
 }
 
 // mapKeys returns the keys of a map for logging

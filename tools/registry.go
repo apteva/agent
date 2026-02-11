@@ -236,6 +236,13 @@ type ToolManifestEntry struct {
 	Summary string `json:"summary"`
 }
 
+// DynamicDisplayNameProvider is an optional interface that tools can implement
+// to provide context-specific display names based on their input parameters.
+// For example, call_agent can return "Calling Jarvis" instead of generic "Call Agent".
+type DynamicDisplayNameProvider interface {
+	DynamicDisplayName(params map[string]interface{}) string
+}
+
 // GetDisplayName returns the display name for a built-in tool
 // Returns empty string if tool not found (caller should check MCP tools or use fallback)
 func GetDisplayName(name string) string {
@@ -243,6 +250,19 @@ func GetDisplayName(name string) string {
 		return tool.DisplayName()
 	}
 	// Return empty so caller can check MCP tools before falling back to title-case
+	return ""
+}
+
+// GetDynamicDisplayName returns a context-specific display name for a tool if it supports it.
+// Returns empty string if the tool doesn't implement DynamicDisplayNameProvider or isn't found.
+func GetDynamicDisplayName(name string, params map[string]interface{}) string {
+	if tool, err := GetTool(name); err == nil {
+		if dyn, ok := tool.(DynamicDisplayNameProvider); ok {
+			if dn := dyn.DynamicDisplayName(params); dn != "" {
+				return dn
+			}
+		}
+	}
 	return ""
 }
 

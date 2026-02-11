@@ -167,9 +167,10 @@ func UnifiedStreamResponse(w http.ResponseWriter, rawReader io.Reader, processor
 		if event != nil {
 				// Handle tool execution
 			if event.Type == "tool_use" {
-				// Output tool use event
-				fmt.Fprintf(w, "data: {\"type\":\"tool_use\",\"tool_name\":\"%s\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
-						event.ToolName, event.ToolID, escapeJSON(event.Content), time.Now().UnixMilli())
+				// Output tool use event (use dynamic display name since we have full input)
+				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
+				fmt.Fprintf(w, "data: {\"type\":\"tool_use\",\"tool_name\":\"%s\",\"tool_display_name\":\"%s\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+						event.ToolName, escapeJSON(displayName), event.ToolID, escapeJSON(event.Content), time.Now().UnixMilli())
 					flusher.Flush()
 
 					// Execute the tool
@@ -882,8 +883,8 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					log.Printf("Error saving tool use message: %v", err)
 				}
 
-				// Output tool use event
-				displayName := getToolDisplayName(event.ToolName)
+				// Output tool use event (use dynamic display name since we have full input)
+				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
 				fmt.Fprintf(w, "data: {\"type\":\"tool_use\",\"tool_name\":\"%s\",\"tool_display_name\":\"%s\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
 					event.ToolName, escapeJSON(displayName), event.ToolID, escapeJSON(event.Content), time.Now().UnixMilli())
 				flusher.Flush()
@@ -952,7 +953,20 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						WithData("input", event.ToolInput)
 					eventBus.Publish(toolEvent)
 
-					result, err := mcp.ExecuteToolWithContext(ctx, event.ToolName, event.ToolInput, mcpConfig, threadID)
+					// Create MCP notification callback for streaming progress/log events
+					mcpNotifyCallback := func(n mcp.MCPNotification) {
+						switch n.Type {
+						case "progress":
+							fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"progress\",\"tool_id\":\"%s\",\"content\":\"%s\",\"progress\":%.2f,\"timestamp\":%d}\n\n",
+								event.ToolID, escapeJSON(n.Message), n.Progress, time.Now().UnixMilli())
+							flusher.Flush()
+						case "log":
+							fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"log\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+								event.ToolID, escapeJSON(n.Message), time.Now().UnixMilli())
+							flusher.Flush()
+						}
+					}
+					result, err := mcp.ExecuteToolStreamingWithContext(ctx, event.ToolName, event.ToolInput, mcpConfig, threadID, mcpNotifyCallback)
 					if err != nil {
 						log.Printf("Error executing MCP tool %s: %v", event.ToolName, err)
 						toolResultContent = fmt.Sprintf("Error: %s", err.Error())
@@ -1426,8 +1440,8 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					log.Printf("Error saving tool use message: %v", err)
 				}
 
-				// Stream tool_use event
-				displayName := getToolDisplayName(event.ToolName)
+				// Stream tool_use event (use dynamic display name since we have full input)
+				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
 				fmt.Fprintf(w, "data: {\"type\":\"tool_use\",\"tool_name\":\"%s\",\"tool_display_name\":\"%s\",\"tool_id\":\"%s\",\"content\":\"\",\"timestamp\":%d}\n\n",
 					event.ToolName, escapeJSON(displayName), event.ToolID, time.Now().UnixMilli())
 				flusher.Flush()
@@ -1465,7 +1479,20 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					cfg := config.GetConfig()
 					agentCfg := cfg.Get()
 					mcpCfg := agentCfg.MCP
-					result, err := mcp.ExecuteToolWithContext(ctx, event.ToolName, event.ToolInput, mcpCfg, threadID)
+					// Create MCP notification callback for streaming progress/log events
+					mcpNotifyCallback2 := func(n mcp.MCPNotification) {
+						switch n.Type {
+						case "progress":
+							fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"progress\",\"tool_id\":\"%s\",\"content\":\"%s\",\"progress\":%.2f,\"timestamp\":%d}\n\n",
+								event.ToolID, escapeJSON(n.Message), n.Progress, time.Now().UnixMilli())
+							flusher.Flush()
+						case "log":
+							fmt.Fprintf(w, "data: {\"type\":\"tool_stream\",\"event\":\"log\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
+								event.ToolID, escapeJSON(n.Message), time.Now().UnixMilli())
+							flusher.Flush()
+						}
+					}
+					result, err := mcp.ExecuteToolStreamingWithContext(ctx, event.ToolName, event.ToolInput, mcpCfg, threadID, mcpNotifyCallback2)
 					var toolResultContent string
 					var toolContent interface{}
 					if err != nil {
@@ -1702,6 +1729,17 @@ func getToolDisplayName(toolName string) string {
 
 	// Fall back to title-casing the tool name
 	return toTitleCase(toolName)
+}
+
+// getDynamicToolDisplayName returns a context-specific display name based on tool input params.
+// Falls back to the static display name if the tool doesn't support dynamic names.
+func getDynamicToolDisplayName(toolName string, params map[string]interface{}) string {
+	// Try dynamic display name first (e.g. "Calling Jarvis" for call_agent)
+	if dynName := tools.GetDynamicDisplayName(toolName, params); dynName != "" {
+		return dynName
+	}
+	// Fall back to static display name
+	return getToolDisplayName(toolName)
 }
 
 // toTitleCase converts "tool-name" or "tool_name" to "Tool Name"

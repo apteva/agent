@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -119,14 +120,36 @@ func (c *StandardMCPClient) doRequest(method string, params interface{}) (*JSONR
 	}
 
 	// Handle SSE response format (event: message\ndata: {...})
-	jsonBody := body
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "text/event-stream") || strings.HasPrefix(string(body), "event:") {
-		jsonBody = parseSSEResponse(body)
+		// Parse all SSE data lines and find the actual response (has id, not a notification)
+		messages := parseSSEMessages(body)
+		for _, msgBytes := range messages {
+			var msg JSONRPCMessage
+			if err := json.Unmarshal(msgBytes, &msg); err != nil {
+				continue
+			}
+			// Skip notifications (no id) — they're progress/log events
+			if msg.IsNotification() {
+				continue
+			}
+			// This is our response
+			if msg.IsResponse() {
+				var rpcResp JSONRPCResponse
+				if err := json.Unmarshal(msgBytes, &rpcResp); err != nil {
+					return nil, fmt.Errorf("failed to decode SSE response: %w", err)
+				}
+				if rpcResp.Error != nil {
+					return nil, fmt.Errorf("RPC error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+				}
+				return &rpcResp, nil
+			}
+		}
+		return nil, fmt.Errorf("no response found in SSE stream (body: %s)", truncateString(string(body), 500))
 	}
 
 	var rpcResp JSONRPCResponse
-	if err := json.Unmarshal(jsonBody, &rpcResp); err != nil {
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w (body: %s)", err, string(body))
 	}
 
@@ -228,7 +251,7 @@ func (c *StandardMCPClient) sendNotification(method string, params interface{}) 
 	resp.Body.Close()
 }
 
-// ListTools fetches available tools from the server
+// ListTools fetches available tools from the server (with pagination)
 func (c *StandardMCPClient) ListTools() ([]MCPToolDefinition, error) {
 	if !c.initialized {
 		if err := c.Initialize(); err != nil {
@@ -236,24 +259,40 @@ func (c *StandardMCPClient) ListTools() ([]MCPToolDefinition, error) {
 		}
 	}
 
-	resp, err := c.doRequest("tools/list", nil)
-	if err != nil {
-		return nil, fmt.Errorf("tools/list failed: %w", err)
+	var allTools []MCPToolDefinition
+	var cursor string
+
+	for {
+		var params interface{}
+		if cursor != "" {
+			params = map[string]interface{}{"cursor": cursor}
+		}
+
+		resp, err := c.doRequest("tools/list", params)
+		if err != nil {
+			return nil, fmt.Errorf("tools/list failed: %w", err)
+		}
+
+		resultBytes, err := json.Marshal(resp.Result)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal result: %w", err)
+		}
+
+		var result ToolsListResult
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse tools list: %w", err)
+		}
+
+		allTools = append(allTools, result.Tools...)
+
+		if result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
 	}
 
-	// Parse result
-	resultBytes, err := json.Marshal(resp.Result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal result: %w", err)
-	}
-
-	var result ToolsListResult
-	if err := json.Unmarshal(resultBytes, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse tools list: %w", err)
-	}
-
-	log.Printf("🔧 MCP [%s]: Loaded %d tools", c.name, len(result.Tools))
-	return result.Tools, nil
+	log.Printf("🔧 MCP [%s]: Loaded %d tools", c.name, len(allTools))
+	return allTools, nil
 }
 
 // CallTool executes a tool on the server
@@ -305,7 +344,7 @@ func (c *StandardMCPClient) CallTool(name string, arguments map[string]interface
 	return &result, nil
 }
 
-// ListResources fetches available resources from the server
+// ListResources fetches available resources from the server (with pagination)
 func (c *StandardMCPClient) ListResources() ([]MCPResourceDefinition, error) {
 	if !c.initialized {
 		if err := c.Initialize(); err != nil {
@@ -322,22 +361,39 @@ func (c *StandardMCPClient) ListResources() ([]MCPResourceDefinition, error) {
 		return []MCPResourceDefinition{}, nil
 	}
 
-	resp, err := c.doRequest("resources/list", nil)
-	if err != nil {
-		return nil, fmt.Errorf("resources/list failed: %w", err)
+	var allResources []MCPResourceDefinition
+	var cursor string
+
+	for {
+		var params interface{}
+		if cursor != "" {
+			params = map[string]interface{}{"cursor": cursor}
+		}
+
+		resp, err := c.doRequest("resources/list", params)
+		if err != nil {
+			return nil, fmt.Errorf("resources/list failed: %w", err)
+		}
+
+		resultBytes, err := json.Marshal(resp.Result)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal result: %w", err)
+		}
+
+		var result ResourcesListResult
+		if err := json.Unmarshal(resultBytes, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse resources list: %w", err)
+		}
+
+		allResources = append(allResources, result.Resources...)
+
+		if result.NextCursor == "" {
+			break
+		}
+		cursor = result.NextCursor
 	}
 
-	resultBytes, err := json.Marshal(resp.Result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal result: %w", err)
-	}
-
-	var result ResourcesListResult
-	if err := json.Unmarshal(resultBytes, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse resources list: %w", err)
-	}
-
-	return result.Resources, nil
+	return allResources, nil
 }
 
 // ListPrompts fetches available prompts from the server
@@ -403,19 +459,189 @@ func (c *StandardMCPClient) Close() error {
 	return nil
 }
 
-// parseSSEResponse extracts JSON from SSE format
+// parseSSEMessages extracts all JSON data lines from an SSE response body.
 // SSE format: "event: message\ndata: {...}\n\n"
-func parseSSEResponse(body []byte) []byte {
+// Returns all data payloads as raw JSON bytes.
+func parseSSEMessages(body []byte) []json.RawMessage {
+	var messages []json.RawMessage
 	lines := strings.Split(string(body), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "data:") {
-			// Extract JSON after "data: "
 			jsonStr := strings.TrimPrefix(line, "data:")
 			jsonStr = strings.TrimSpace(jsonStr)
-			return []byte(jsonStr)
+			if jsonStr != "" {
+				messages = append(messages, json.RawMessage(jsonStr))
+			}
 		}
 	}
-	// If no data line found, return original body
-	return body
+	return messages
+}
+
+// doRequestStreaming sends a JSON-RPC request and streams SSE responses line-by-line.
+// Notifications are routed to the callback; the final response is returned.
+func (c *StandardMCPClient) doRequestStreaming(method string, params interface{}, callback MCPNotificationCallback) (*JSONRPCResponse, error) {
+	req := JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      c.nextID(),
+		Method:  method,
+		Params:  params,
+	}
+
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", c.url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream, application/json")
+
+	c.mu.RLock()
+	if c.sessionID != "" {
+		httpReq.Header.Set("Mcp-Session-Id", c.sessionID)
+	}
+	c.mu.RUnlock()
+
+	for k, v := range c.headers {
+		httpReq.Header.Set(k, v)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if sessionID := resp.Header.Get("Mcp-Session-Id"); sessionID != "" {
+		c.mu.Lock()
+		c.sessionID = sessionID
+		c.mu.Unlock()
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+
+	// If server responds with JSON (not SSE), handle it directly
+	if !strings.Contains(contentType, "text/event-stream") {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+		var rpcResp JSONRPCResponse
+		if err := json.Unmarshal(body, &rpcResp); err != nil {
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+		if rpcResp.Error != nil {
+			return nil, fmt.Errorf("RPC error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+		}
+		return &rpcResp, nil
+	}
+
+	// Stream SSE line-by-line
+	scanner := bufio.NewScanner(resp.Body)
+	// Increase scanner buffer for large responses
+	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+
+		jsonStr := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if jsonStr == "" {
+			continue
+		}
+
+		// Parse as generic message to route
+		var msg JSONRPCMessage
+		if err := json.Unmarshal([]byte(jsonStr), &msg); err != nil {
+			continue
+		}
+
+		if msg.IsNotification() {
+			// Route notification to callback
+			if callback != nil {
+				notification := ParseNotification(msg)
+				callback(notification)
+			}
+			continue
+		}
+
+		if msg.IsResponse() {
+			var rpcResp JSONRPCResponse
+			if err := json.Unmarshal([]byte(jsonStr), &rpcResp); err != nil {
+				return nil, fmt.Errorf("failed to decode SSE response: %w", err)
+			}
+			if rpcResp.Error != nil {
+				return nil, fmt.Errorf("RPC error %d: %s", rpcResp.Error.Code, rpcResp.Error.Message)
+			}
+			return &rpcResp, nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading SSE stream: %w", err)
+	}
+
+	return nil, fmt.Errorf("SSE stream ended without response")
+}
+
+// CallToolStreaming executes a tool with streaming notification support.
+// Progress and log notifications from the server are routed to the callback.
+// If callback is nil, behaves identically to CallTool.
+func (c *StandardMCPClient) CallToolStreaming(name string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
+	if !c.initialized {
+		log.Printf("🔌 MCP HTTP [%s]: Auto-initializing for streaming tool call '%s'", c.name, name)
+		if err := c.Initialize(); err != nil {
+			return nil, err
+		}
+	}
+
+	// If no callback, fall back to non-streaming path
+	if callback == nil {
+		return c.CallTool(name, arguments)
+	}
+
+	params := ToolCallParams{
+		Name:      name,
+		Arguments: arguments,
+		Meta: &ToolCallMeta{
+			ProgressToken: fmt.Sprintf("tool_%s_%d", name, time.Now().UnixMilli()),
+		},
+	}
+
+	log.Printf("🔧 MCP HTTP [%s]: Calling tool '%s' (streaming) → POST %s", c.name, name, c.url)
+	startTime := time.Now()
+
+	resp, err := c.doRequestStreaming("tools/call", params, callback)
+	elapsed := time.Since(startTime)
+
+	if err != nil {
+		log.Printf("❌ MCP HTTP [%s]: Tool '%s' streaming FAILED after %v: %v", c.name, name, elapsed, err)
+		return nil, fmt.Errorf("tools/call failed: %w", err)
+	}
+
+	log.Printf("✅ MCP HTTP [%s]: Tool '%s' streaming completed in %v", c.name, name, elapsed)
+
+	resultBytes, err := json.Marshal(resp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal result: %w", err)
+	}
+
+	var result ToolCallResult
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse tool result: %w", err)
+	}
+
+	return &result, nil
 }

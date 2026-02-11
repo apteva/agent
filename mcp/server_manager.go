@@ -18,6 +18,13 @@ type ExternalClientInterface interface {
 	Name() string
 }
 
+// StreamingExternalClient extends ExternalClientInterface with streaming support.
+// Clients that implement this can stream progress/log notifications during tool calls.
+type StreamingExternalClient interface {
+	ExternalClientInterface
+	CallToolStreaming(name string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error)
+}
+
 // ExternalServerManager manages connections to external standard MCP servers
 type ExternalServerManager struct {
 	httpClients  map[string]*StandardMCPClient // HTTP clients keyed by server name
@@ -290,6 +297,65 @@ func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]i
 	m.mu.RUnlock()
 	log.Printf("❌ MCP ServerManager: server '%s' not connected (httpClients=%v, stdioClients=%v)",
 		tool.ServerName, m.httpClientNames(), m.stdioClientNames())
+	return nil, fmt.Errorf("server '%s' not connected", tool.ServerName)
+}
+
+// CallToolStreaming executes a tool on the appropriate external server with streaming notification support.
+// If callback is nil, falls back to CallTool.
+func (m *ExternalServerManager) CallToolStreaming(fullName string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
+	// If no callback, use non-streaming path
+	if callback == nil {
+		return m.CallTool(fullName, arguments)
+	}
+
+	m.mu.RLock()
+	tool, exists := m.tools[fullName]
+	if !exists {
+		for originalName, t := range m.tools {
+			if sanitizeToolName(originalName) == fullName {
+				tool = t
+				exists = true
+				log.Printf("🔧 MCP: Matched sanitized tool name '%s' to original '%s'", fullName, originalName)
+				break
+			}
+		}
+	}
+	if !exists {
+		m.mu.RUnlock()
+		return nil, fmt.Errorf("tool '%s' not found", fullName)
+	}
+
+	// Try HTTP client first
+	if client, ok := m.httpClients[tool.ServerName]; ok {
+		m.mu.RUnlock()
+		log.Printf("🌐 MCP ServerManager: Dispatching streaming to HTTP client [%s] for tool '%s'", tool.ServerName, tool.Name)
+		startTime := time.Now()
+		result, err := client.CallToolStreaming(tool.Name, arguments, callback)
+		elapsed := time.Since(startTime)
+		if err != nil {
+			log.Printf("❌ MCP ServerManager: HTTP [%s] tool '%s' streaming FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)
+		} else {
+			log.Printf("✅ MCP ServerManager: HTTP [%s] tool '%s' streaming completed in %v", tool.ServerName, tool.Name, elapsed)
+		}
+		return result, err
+	}
+
+	// Try stdio client
+	if client, ok := m.stdioClients[tool.ServerName]; ok {
+		m.mu.RUnlock()
+		log.Printf("📟 MCP ServerManager: Dispatching streaming to Stdio client [%s] for tool '%s'", tool.ServerName, tool.Name)
+		startTime := time.Now()
+		result, err := client.CallToolStreaming(tool.Name, arguments, callback)
+		elapsed := time.Since(startTime)
+		if err != nil {
+			log.Printf("❌ MCP ServerManager: Stdio [%s] tool '%s' streaming FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)
+		} else {
+			log.Printf("✅ MCP ServerManager: Stdio [%s] tool '%s' streaming completed in %v", tool.ServerName, tool.Name, elapsed)
+		}
+		return result, err
+	}
+
+	m.mu.RUnlock()
 	return nil, fmt.Errorf("server '%s' not connected", tool.ServerName)
 }
 
