@@ -303,22 +303,35 @@ let eventSource = null;
 const EVENT_TYPES = [
     // System
     'system_startup', 'system_shutdown', 'config_change', 'sse_connected', 'heartbeat',
+    'webhook_received', 'subscription_created', 'subscription_deleted',
+    'realtime_session_created', 'realtime_session_closed', 'realtime_event', 'realtime_telephony_event',
     // Chat
-    'message_received', 'response_started', 'stream_chunk', 'response_complete', 'chat_error', 'thread_created',
+    'message_received', 'response_started', 'stream_chunk', 'response_complete', 'chat_error',
+    'thread_created', 'thread_activity',
     // Tool
     'tool_invocation', 'tool_result', 'tool_error',
     // Database
-    'db_query', 'db_insert', 'db_update', 'db_delete', 'db_error',
+    'db_query', 'db_insert', 'db_update', 'db_delete', 'db_error', 'db_connection', 'db_schema',
     // MCP
     'mcp_server_connect', 'mcp_tool_discovery', 'mcp_tool_execution', 'mcp_error',
     // Scheduler
-    'scheduler_task_start', 'scheduler_task_complete', 'scheduler_task_failed',
+    'scheduler_started', 'scheduler_stopped', 'scheduler_tick', 'scheduler_manual_tick',
+    'scheduler_task_start', 'scheduler_task_complete', 'scheduler_task_failed', 'scheduler_agent_called',
     // LLM
     'llm_request', 'llm_response', 'llm_tokens', 'llm_error',
     // Task
     'task_created', 'task_updated', 'task_executed', 'task_deleted', 'task_failed', 'task_listed',
     // File
-    'file_uploaded', 'file_deleted', 'file_expired', 'file_ingested'
+    'file_uploaded', 'file_deleted', 'file_expired', 'file_ingested',
+    // Memory
+    'memory_stored', 'memory_retrieved', 'memories_injected',
+    // Agent
+    'agent_comm_initialized', 'agent_call_started', 'agent_call_completed', 'agent_call_failed',
+    'agent_call_retry', 'agent_call_blocked',
+    // Reflection
+    'reflection_started', 'reflection_stopped', 'reflection_session_started', 'reflection_session_completed',
+    // Browser/Operator
+    'operator_enabled', 'session_created', 'session_cleanup'
 ];
 
 function connectEventStream(onEvent) {
