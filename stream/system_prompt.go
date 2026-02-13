@@ -1,12 +1,21 @@
 package stream
 
 import (
+	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/apteva/agent/config"
 )
+
+var promptDB *sql.DB
+
+// SetDatabase sets the database connection for system prompt queries
+func SetDatabase(db *sql.DB) {
+	promptDB = db
+}
 
 // BuildTaskManagementContext builds context about task management capabilities
 func BuildTaskManagementContext(tasksConfig *config.TasksConfig, schedulerConfig *config.SchedulerConfig) string {
@@ -197,6 +206,12 @@ For real-time voice interactions, direct users to the voice WebSocket endpoint.`
 		systemPrompt += agentContext
 	}
 
+	// Add reflection insights if reflection is enabled
+	reflectionContext := BuildReflectionContext()
+	if reflectionContext != "" {
+		systemPrompt += reflectionContext
+	}
+
 	// Add additional system context if provided
 	if system != nil {
 		switch ctx := system.(type) {
@@ -258,4 +273,52 @@ func PrepareMessagesWithFullConfig(messages []Message, llmConfig config.LLMConfi
 		Role:    "system",
 		Content: systemPrompt,
 	}}, messages...)
+}
+
+// BuildReflectionContext returns recent reflection insights to inject into the system prompt
+func BuildReflectionContext() string {
+	cfg := config.GetConfig()
+	if cfg == nil {
+		return ""
+	}
+	agentConfig := cfg.Get()
+	if agentConfig.Reflection == nil || !agentConfig.Reflection.Enabled {
+		return ""
+	}
+	if promptDB == nil {
+		return ""
+	}
+
+	// Query memories from reflection threads
+	rows, err := promptDB.Query(`
+		SELECT m.content, m.category
+		FROM memories m
+		WHERE m.thread_id LIKE 'reflection_%'
+		ORDER BY m.created_at DESC
+		LIMIT 5
+	`)
+	if err != nil {
+		log.Printf("BuildReflectionContext: Error querying reflection memories: %v", err)
+		return ""
+	}
+	defer rows.Close()
+
+	var insights []string
+	for rows.Next() {
+		var content, category string
+		if err := rows.Scan(&content, &category); err != nil {
+			continue
+		}
+		// Truncate long content
+		if len(content) > 300 {
+			content = content[:300] + "..."
+		}
+		insights = append(insights, fmt.Sprintf("- [%s] %s", category, content))
+	}
+
+	if len(insights) == 0 {
+		return ""
+	}
+
+	return "\n\nSelf-Reflection Insights (from your past reflection sessions):\n" + strings.Join(insights, "\n")
 }

@@ -116,19 +116,14 @@ type MCPCredential struct {
 }
 
 type MCPConfig struct {
-	Enabled        bool                       `json:"enabled"`
-	BaseURL        string                     `json:"base_url"`
-	APIKey         string                     `json:"api_key"`
-	Timeout        string                     `json:"timeout"`
-	RetryCount     int                        `json:"retry_count"`
-	CacheTTL       string                     `json:"cache_ttl"`
-	TestMode       *bool                      `json:"test_mode,omitempty"`        // When true, MCP calls use mock responses. nil = use global test_mode
-	Tools          []string                   `json:"tools,omitempty"`            // MCP tools to enable (e.g., ["geocode", "list-customers"])
-	Resources      []string                   `json:"resources,omitempty"`        // MCP servers to sync resources from (e.g., ["notion", "github"])
-	Credentials    map[string]MCPCredential   `json:"credentials,omitempty"`      // MCP tool credentials
-	ResourceConfig *MCPResourceConfig         `json:"resource_config,omitempty"`  // Resource sync settings (auto_sync, interval, filters)
-	Webhooks       []string                   `json:"webhooks,omitempty"`         // MCP servers to enable webhooks from (e.g., ["stripe", "github"])
-	Servers        []ExternalMCPServer        `json:"servers,omitempty"`          // External standard MCP servers
+	Enabled     bool                     `json:"enabled"`
+	BaseURL     string                   `json:"base_url,omitempty"`         // Backend API URL for subscriptions
+	APIKey      string                   `json:"api_key,omitempty"`          // Backend API key for subscriptions
+	TestMode    *bool                    `json:"test_mode,omitempty"`        // When true, MCP calls use mock responses. nil = use global test_mode
+	Tools       []string                 `json:"tools,omitempty"`            // MCP tools to enable (e.g., ["geocode", "list-customers"])
+	Credentials map[string]MCPCredential `json:"credentials,omitempty"`      // MCP tool credentials
+	Webhooks    []string                 `json:"webhooks,omitempty"`         // Webhook servers (e.g., ["stripe", "github"])
+	Servers     []ExternalMCPServer      `json:"servers,omitempty"`          // External standard MCP servers
 }
 
 // ExternalMCPServer configures a connection to an external standard MCP server
@@ -161,20 +156,19 @@ type SkillsConfig struct {
 	Definitions []Skill `json:"definitions,omitempty"` // Inline skill definitions
 }
 
-// MCPResourceConfig configures MCP resource syncing to memory
-type MCPResourceConfig struct {
-	Enabled      bool     `json:"enabled"`                 // Enable resource syncing
-	AutoSync     bool     `json:"auto_sync"`               // Sync on startup
-	SyncInterval string   `json:"sync_interval,omitempty"` // Periodic sync: "1h", "6h", "24h", "" = disabled
-	Subscribe    bool     `json:"subscribe"`               // Subscribe to resource change notifications
-	Filters      []string `json:"filters,omitempty"`       // URI patterns to include: ["notion://*", "github://*/docs/*"]
-	MaxSize      int      `json:"max_size,omitempty"`      // Skip resources > N bytes (default: 10MB)
-}
-
 type SchedulerConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Interval string `json:"interval"`  // "30s", "1m", "5m"
 	MaxTasks int    `json:"max_tasks"` // Future: task limit
+}
+
+type ReflectionConfig struct {
+	Enabled         bool   `json:"enabled"`
+	Interval        string `json:"interval"`          // "6h", "12h", "24h"
+	Prompt          string `json:"prompt"`             // Reflection prompt (agent can self-modify via config_set)
+	AfterTask       bool   `json:"after_task"`         // Trigger after each task completes
+	ConversationMin int    `json:"conversation_min"`   // Trigger after N conversations (0=disabled)
+	LookbackHours   int    `json:"lookback_hours"`     // How far back to analyze (default: 24)
 }
 
 type TasksConfig struct {
@@ -361,6 +355,7 @@ type AgentConfig struct {
 	FileSystem  *FileSystemConfig  `json:"filesystem,omitempty"`
 	Realtime    *RealtimeConfig    `json:"realtime,omitempty"`
 	Telemetry   *TelemetryConfig   `json:"telemetry,omitempty"`
+	Reflection  *ReflectionConfig  `json:"reflection,omitempty"`
 	Version     string             `json:"version"`
 }
 
@@ -433,23 +428,10 @@ func (c *Config) loadDefaults() {
 		},
 		MCP: &MCPConfig{
 			Enabled:     true,
-			BaseURL:     "http://localhost:3000/mcp",
-			APIKey:      "mcp_test1234567890abcdef",
-			Timeout:     "30s",
-			RetryCount:  3,
-			CacheTTL:    "15m",
-			TestMode:    nil, // nil = use global test_mode
-			Tools:       []string{"get-current-weather"},
-			Resources:   []string{}, // MCP servers to sync resources from, e.g., ["notion", "github"]
+			TestMode:    nil,
+			Tools:       []string{},
 			Credentials: make(map[string]MCPCredential),
-			ResourceConfig: &MCPResourceConfig{
-				Enabled:      true,       // Enabled by default (syncs if mcp.resources has URIs)
-				AutoSync:     true,       // Sync on startup
-				SyncInterval: "1h",       // Auto refresh every 1 hour
-				Subscribe:    true,       // Subscribe to change notifications
-				Filters:      []string{}, // URI patterns to filter
-				MaxSize:      10485760,   // 10MB max per resource
-			},
+			Servers:     []ExternalMCPServer{},
 		},
 		Skills: &SkillsConfig{
 			Enabled:     false,     // Disabled by default
@@ -518,6 +500,24 @@ func (c *Config) loadDefaults() {
 			RetentionDays:  7,                     // Keep files for 7 days
 			CleanupOrphans: true,                  // Remove orphaned files
 			AllowedTypes:   []string{"image", "document", "audio"}, // Store images, documents, and audio
+		},
+		Reflection: &ReflectionConfig{
+			Enabled:         false,
+			Interval:        "24h",
+			AfterTask:       false,
+			ConversationMin: 0,
+			LookbackHours:   24,
+			Prompt: `You are performing a self-reflection session. There is no user present. Review your recent activity and think deeply about what you've learned.
+
+Analyze:
+1. What tasks/conversations went well and why
+2. What could have been handled better
+3. Patterns in user requests or issues
+4. Knowledge gaps you noticed
+5. Strategies that worked effectively
+
+Share your insights clearly — they will be automatically saved to your memory for future use.
+If you want to change how future reflections work, use config_set to update the reflection prompt.`,
 		},
 		Version: GetVersion(),
 	}

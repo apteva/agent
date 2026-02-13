@@ -9,6 +9,7 @@ import (
 
 	appConfig "github.com/apteva/agent/config"
 	"github.com/apteva/agent/mcp"
+	"github.com/apteva/agent/reflection"
 	"github.com/apteva/agent/scheduler"
 	"github.com/apteva/agent/skills"
 )
@@ -318,23 +319,6 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 				}
 				currentConfig.MCP.APIKey = newVal
 			}
-			if val, exists := mcpConfig["timeout"]; exists {
-				if str, ok := val.(string); ok {
-					currentConfig.MCP.Timeout = str
-				} else if val == nil {
-					currentConfig.MCP.Timeout = ""
-				}
-			}
-			if val, exists := mcpConfig["cache_ttl"]; exists {
-				if str, ok := val.(string); ok {
-					currentConfig.MCP.CacheTTL = str
-				} else if val == nil {
-					currentConfig.MCP.CacheTTL = ""
-				}
-			}
-			if retryCount, ok := mcpConfig["retry_count"].(float64); ok {
-				currentConfig.MCP.RetryCount = int(retryCount)
-			}
 			if tools, ok := mcpConfig["tools"].([]interface{}); ok {
 				var toolNames []string
 				for _, tool := range tools {
@@ -344,46 +328,6 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 				}
 				currentConfig.MCP.Tools = toolNames
 				mcpConfigChanged = true
-			}
-			if resources, ok := mcpConfig["resources"].([]interface{}); ok {
-				var resourceServers []string
-				for _, res := range resources {
-					if resName, ok := res.(string); ok {
-						resourceServers = append(resourceServers, resName)
-					}
-				}
-				currentConfig.MCP.Resources = resourceServers
-				mcpConfigChanged = true
-			}
-			if resourceConfig, ok := mcpConfig["resource_config"].(map[string]interface{}); ok {
-				if currentConfig.MCP.ResourceConfig == nil {
-					currentConfig.MCP.ResourceConfig = &appConfig.MCPResourceConfig{}
-				}
-				if enabled, ok := resourceConfig["enabled"].(bool); ok {
-					currentConfig.MCP.ResourceConfig.Enabled = enabled
-					mcpConfigChanged = true
-				}
-				if autoSync, ok := resourceConfig["auto_sync"].(bool); ok {
-					currentConfig.MCP.ResourceConfig.AutoSync = autoSync
-				}
-				if syncInterval, ok := resourceConfig["sync_interval"].(string); ok {
-					currentConfig.MCP.ResourceConfig.SyncInterval = syncInterval
-				}
-				if subscribe, ok := resourceConfig["subscribe"].(bool); ok {
-					currentConfig.MCP.ResourceConfig.Subscribe = subscribe
-				}
-				if maxSize, ok := resourceConfig["max_size"].(float64); ok {
-					currentConfig.MCP.ResourceConfig.MaxSize = int(maxSize)
-				}
-				if filters, ok := resourceConfig["filters"].([]interface{}); ok {
-					var filterList []string
-					for _, f := range filters {
-						if str, ok := f.(string); ok {
-							filterList = append(filterList, str)
-						}
-					}
-					currentConfig.MCP.ResourceConfig.Filters = filterList
-				}
 			}
 			if testMode, ok := mcpConfig["test_mode"].(bool); ok {
 				currentConfig.MCP.TestMode = &testMode
@@ -479,6 +423,38 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			if maxTasks, ok := schedulerConfig["max_tasks"].(float64); ok {
 				currentConfig.Scheduler.MaxTasks = int(maxTasks)
 				schedulerConfigChanged = true
+			}
+		}
+
+		// Reflection config
+		reflectionConfigChanged := false
+		if reflectionConfig, ok := updateConfig["reflection"].(map[string]interface{}); ok {
+			if currentConfig.Reflection == nil {
+				currentConfig.Reflection = &appConfig.ReflectionConfig{}
+			}
+			if enabled, ok := reflectionConfig["enabled"].(bool); ok {
+				currentConfig.Reflection.Enabled = enabled
+				reflectionConfigChanged = true
+			}
+			if interval, ok := reflectionConfig["interval"].(string); ok {
+				currentConfig.Reflection.Interval = interval
+				reflectionConfigChanged = true
+			}
+			if prompt, ok := reflectionConfig["prompt"].(string); ok {
+				currentConfig.Reflection.Prompt = prompt
+				reflectionConfigChanged = true
+			}
+			if afterTask, ok := reflectionConfig["after_task"].(bool); ok {
+				currentConfig.Reflection.AfterTask = afterTask
+				reflectionConfigChanged = true
+			}
+			if conversationMin, ok := reflectionConfig["conversation_min"].(float64); ok {
+				currentConfig.Reflection.ConversationMin = int(conversationMin)
+				reflectionConfigChanged = true
+			}
+			if lookbackHours, ok := reflectionConfig["lookback_hours"].(float64); ok {
+				currentConfig.Reflection.LookbackHours = int(lookbackHours)
+				reflectionConfigChanged = true
 			}
 		}
 
@@ -999,24 +975,43 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			}()
 		}
 
-		// Refresh MCP cache if MCP config changed and is enabled
-		if mcpConfigChanged && currentConfig.MCP != nil && currentConfig.MCP.Enabled {
-			log.Printf("🔄 MCP configuration changed, refreshing cache...")
+		// Restart reflection scheduler if reflection config changed
+		if reflectionConfigChanged && globalDB != nil {
+			log.Printf("🔄 Reflection configuration changed, restarting reflection scheduler...")
 			go func() {
-				// Refresh gateway cache
-				err := mcp.RefreshMCPCache(currentConfig.MCP)
-				if err != nil {
-					log.Printf("⚠️  Failed to refresh MCP cache after config update: %v", err)
-					log.Printf("💡 You can manually refresh via: POST /mcp/refresh")
-				} else {
-					cache := mcp.GetMCPCache()
-					tools := cache.GetTools("")
-					log.Printf("✅ MCP cache refreshed: %d tools loaded from %s", len(tools), currentConfig.MCP.BaseURL)
+				reflectionScheduler := reflection.GetReflectionScheduler(currentConfig.Reflection)
+
+				// Stop if running
+				if reflectionScheduler.IsRunning() {
+					log.Printf("⏹️  Stopping existing reflection scheduler...")
+					reflectionScheduler.Stop()
 				}
 
-				// Initialize external MCP servers if configured
+				// Update config
+				if err := reflectionScheduler.UpdateConfig(currentConfig.Reflection); err != nil {
+					log.Printf("⚠️  Failed to update reflection config: %v", err)
+					return
+				}
+
+				// Start if enabled
+				if currentConfig.Reflection.Enabled {
+					reflectionScheduler.SetDatabase(globalDB)
+					if err := reflectionScheduler.Start(); err != nil {
+						log.Printf("⚠️  Failed to start reflection after config update: %v", err)
+					} else {
+						log.Printf("✅ Reflection scheduler restarted successfully with interval: %s", currentConfig.Reflection.Interval)
+					}
+				} else {
+					log.Printf("✅ Reflection scheduler stopped (disabled in config)")
+				}
+			}()
+		}
+
+		// Re-initialize external MCP servers if config changed
+		if mcpConfigChanged && currentConfig.MCP != nil && currentConfig.MCP.Enabled {
+			go func() {
 				if len(currentConfig.MCP.Servers) > 0 {
-					log.Printf("🔌 Initializing %d external MCP servers...", len(currentConfig.MCP.Servers))
+					log.Printf("🔌 Re-initializing %d external MCP servers...", len(currentConfig.MCP.Servers))
 					if err := mcp.InitializeExternalServers(currentConfig.MCP.Servers); err != nil {
 						log.Printf("⚠️  Failed to initialize some external servers: %v", err)
 					}

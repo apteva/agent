@@ -88,19 +88,8 @@ func getMCPAPIKey() string {
 	return ""
 }
 
-// MCPWebhooksListTool lists available webhooks from MCP servers
-// Only returns webhooks from servers enabled in the agent's MCP.Webhooks config
+// MCPWebhooksListTool lists available webhook servers from config
 func MCPWebhooksListTool(input map[string]interface{}) (map[string]interface{}, error) {
-	// Get MCP client from context or global
-	mcpClient := GetMCPClient()
-	if mcpClient == nil {
-		return map[string]interface{}{
-			"webhooks": []interface{}{},
-			"message":  "MCP client not available",
-		}, nil
-	}
-
-	// Get enabled webhook servers from agent config
 	cfg := config.GetConfig()
 	var enabledServers []string
 	if cfg != nil {
@@ -110,37 +99,9 @@ func MCPWebhooksListTool(input map[string]interface{}) (map[string]interface{}, 
 		}
 	}
 
-	// If no webhook servers are enabled, return empty
-	if len(enabledServers) == 0 {
-		return map[string]interface{}{
-			"webhooks": []interface{}{},
-			"message":  "No webhook servers enabled in agent config",
-			"count":    0,
-		}, nil
-	}
-
-	// Get available webhooks from MCP servers
-	allWebhooks, err := mcpClient.ListWebhooks()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list webhooks: %w", err)
-	}
-
-	// Filter webhooks to only include enabled servers
-	var filteredWebhooks []map[string]interface{}
-	for _, wh := range allWebhooks {
-		serverName, _ := wh["server"].(string)
-		for _, enabled := range enabledServers {
-			if serverName == enabled {
-				filteredWebhooks = append(filteredWebhooks, wh)
-				break
-			}
-		}
-	}
-
 	return map[string]interface{}{
-		"webhooks":        filteredWebhooks,
 		"enabled_servers": enabledServers,
-		"count":           len(filteredWebhooks),
+		"count":           len(enabledServers),
 	}, nil
 }
 
@@ -530,19 +491,3 @@ func UpdateSubscriptionTool(input map[string]interface{}) (map[string]interface{
 	}, nil
 }
 
-// MCP client interface for getting webhooks
-var mcpClientInstance MCPWebhookClient
-
-type MCPWebhookClient interface {
-	ListWebhooks() ([]map[string]interface{}, error)
-}
-
-// SetMCPClient sets the MCP client for webhook operations
-func SetMCPClient(client MCPWebhookClient) {
-	mcpClientInstance = client
-}
-
-// GetMCPClient returns the MCP client
-func GetMCPClient() MCPWebhookClient {
-	return mcpClientInstance
-}

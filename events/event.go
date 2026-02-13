@@ -21,8 +21,9 @@ const (
 	CategoryTask      EventCategory = "TASK"
 	CategoryMemory    EventCategory = "MEMORY"
 	CategoryAgent     EventCategory = "AGENT"
-	CategoryError     EventCategory = "ERROR"
-	CategoryFile      EventCategory = "FILE"
+	CategoryError      EventCategory = "ERROR"
+	CategoryFile       EventCategory = "FILE"
+	CategoryReflection EventCategory = "REFLECTION"
 )
 
 // EventType represents specific event types within categories

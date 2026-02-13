@@ -36,6 +36,7 @@ import (
 	"github.com/apteva/agent/pdf"
 	"github.com/apteva/agent/providers"
 	"github.com/apteva/agent/realtime"
+	"github.com/apteva/agent/reflection"
 	"github.com/apteva/agent/scheduler"
 	"github.com/apteva/agent/stream"
 	"github.com/apteva/agent/tools"
@@ -308,14 +309,16 @@ var (
 	geminiProvider      *providers.GeminiProvider
 	fireworksProvider   *providers.FireworksProvider
 	xaiProvider         *providers.XAIProvider
+	zaiProvider         *providers.ZAIProvider
+	novitaProvider      *providers.NovitaProvider
 	veniceProvider      *providers.VeniceProvider
 	moonshotProvider    *providers.MoonshotProvider
 	togetherProvider    *providers.TogetherProvider
 	db                  *sql.DB
 	messageSaver        threads.MessageSaver
 	memoryManager       *memory.MemoryManager
-	resourceSyncer      *mcp.ResourceSyncer
 	agentScheduler      *scheduler.Scheduler
+	agentReflection     *reflection.ReflectionScheduler
 	discoveryService    discovery.DiscoveryService
 	agentClient         *agents.AgentClient
 	fileManager         *filesystem.FileManager
@@ -2053,7 +2056,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	mcpConfig := cfg.Get().MCP
 	if mcpConfig != nil && mcpConfig.Enabled {
 		enabledMCPTools := mcp.GetEnabledMCPTools(mcpConfig)
-		log.Printf("🔧 MCP tools enabled: %d (gateway + external)", len(enabledMCPTools))
+		log.Printf("🔧 MCP tools enabled: %d (external)", len(enabledMCPTools))
 		for _, t := range enabledMCPTools {
 			log.Printf("   - %s (%s)", t.Name, t.ServerName)
 		}
@@ -2061,9 +2064,18 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		customTools = append(customTools, mcpToolDefs...)
 
 		// Auto-enable MCP tools referenced by skills
-		if agentConfig.Skills != nil && agentConfig.Skills.Enabled {
-			enabledSkills := mcp.GetEnabledSkills(agentConfig.Skills)
-			skillToolNames := mcp.GetSkillTools(enabledSkills)
+		if skillsManager.IsEnabled() && skillsManager.Count() > 0 {
+			// Collect tool names from all enabled skills
+			var skillToolNames []string
+			toolSet := make(map[string]bool)
+			for _, s := range skillsManager.GetAll() {
+				for _, t := range s.Tools {
+					if !toolSet[t] {
+						toolSet[t] = true
+						skillToolNames = append(skillToolNames, t)
+					}
+				}
+			}
 			if len(skillToolNames) > 0 {
 				// Get additional tools from skills that aren't already loaded
 				existingTools := make(map[string]bool)
@@ -2187,6 +2199,22 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		provider = xaiProvider
 		processor = &stream.OpenAIProcessor{} // xAI uses OpenAI-compatible format
+		model = &llmConfig.Model
+	case "zai":
+		if !zaiProvider.IsConfigured() {
+			http.Error(w, "ZAI_API_KEY not set", http.StatusInternalServerError)
+			return
+		}
+		provider = zaiProvider
+		processor = &stream.OpenAIProcessor{} // Z.ai uses OpenAI-compatible format
+		model = &llmConfig.Model
+	case "novita":
+		if !novitaProvider.IsConfigured() {
+			http.Error(w, "NOVITA_API_KEY not set", http.StatusInternalServerError)
+			return
+		}
+		provider = novitaProvider
+		processor = &stream.OpenAIProcessor{} // Novita uses OpenAI-compatible format
 		model = &llmConfig.Model
 	case "venice":
 		if !veniceProvider.IsConfigured() {
@@ -2660,6 +2688,24 @@ func initScheduler() {
 	agentScheduler.SetDatabase(db)  // Pass database to scheduler
 	if err := agentScheduler.Start(); err != nil {
 		log.Printf("Warning: Failed to start scheduler: %v", err)
+		return
+	}
+}
+
+// initReflection initializes the reflection scheduler if enabled in configuration
+func initReflection() {
+	cfg := config.GetConfig()
+	reflectionConfig := cfg.Get().Reflection
+
+	if reflectionConfig == nil || !reflectionConfig.Enabled {
+		log.Println("Reflection not enabled, skipping initialization")
+		return
+	}
+
+	agentReflection = reflection.GetReflectionScheduler(reflectionConfig)
+	agentReflection.SetDatabase(db)
+	if err := agentReflection.Start(); err != nil {
+		log.Printf("Warning: Failed to start reflection: %v", err)
 		return
 	}
 }
@@ -3216,6 +3262,7 @@ type StartupStatus struct {
 	MCP          bool
 	MCPResources bool
 	Scheduler    bool
+	Reflection   bool
 	Realtime     bool
 	Operator     bool
 	Discovery    bool
@@ -3258,7 +3305,7 @@ func printStartupBanner(status StartupStatus, port string, version string) {
 	fmt.Printf("%s║%s    %s %-12s   %s %-12s   %s %-12s   %s║%s\n",
 		colorCyan, colorReset,
 		enabled(status.MCP), label(status.MCP, "MCP"),
-		enabled(status.MCPResources), label(status.MCPResources, "Resources"),
+		enabled(status.Reflection), label(status.Reflection, "Reflection"),
 		enabled(status.Operator), label(status.Operator, "Operator"),
 		colorCyan, colorReset)
 	fmt.Printf("%s║%s                                                              %s║%s\n", colorCyan, colorReset, colorCyan, colorReset)
@@ -3467,6 +3514,9 @@ func main() {
 		if agentScheduler != nil && agentScheduler.IsRunning() {
 			agentScheduler.Stop()
 		}
+		if agentReflection != nil && agentReflection.IsRunning() {
+			agentReflection.Stop()
+		}
 	}()
 
 	log.Printf("⏱️  DB initialized in %v", time.Since(startupTime))
@@ -3496,6 +3546,8 @@ func main() {
 	geminiProvider = providers.NewGeminiProvider()
 	fireworksProvider = providers.NewFireworksProvider()
 	xaiProvider = providers.NewXAIProvider()
+	zaiProvider = providers.NewZAIProvider()
+	novitaProvider = providers.NewNovitaProvider()
 	veniceProvider = providers.NewVeniceProvider()
 	moonshotProvider = providers.NewMoonshotProvider()
 	togetherProvider = providers.NewTogetherProvider()
@@ -3553,14 +3605,11 @@ func main() {
 		},
 		// Skills provider
 		func() []tools.SkillInfo {
-			// Provide available skills for discovery
-			cache := mcp.GetSkillsCache()
-			skills := cache.GetSkills(nil) // Get all cached skills
+			sm := skills.GetManager()
 			var skillInfos []tools.SkillInfo
-			for _, s := range skills {
+			for _, s := range sm.GetAll() {
 				skillInfos = append(skillInfos, tools.SkillInfo{
 					Name:        s.Name,
-					DisplayName: s.DisplayName,
 					Description: s.Description,
 					Category:    s.Category,
 					Tools:       s.Tools,
@@ -3670,36 +3719,18 @@ func main() {
 			handlerMcp.InitMCP()
 			log.Printf("⏱️  MCP initialized in %v (background)", time.Since(mcpStart))
 
-			// Initialize MCP Resource Syncer AFTER MCP cache is populated
-			// Requires: mcp.enabled, mcp.resources (URI list), mcp.resource_config.enabled
-			mcpCfg := config.GetConfig().Get()
-
-			// Create MCP client for subscription tools (webhooks listing)
-			if mcpCfg.MCP != nil && mcpCfg.MCP.Enabled {
-				mcpClient := mcp.NewMCPClient(mcpCfg.MCP)
-				tools.SetMCPClient(mcpClient)
-				log.Printf("🔌 MCP: Client set for subscription tools")
-
-				// Initialize resource syncer if configured
-				if len(mcpCfg.MCP.Resources) > 0 && mcpCfg.MCP.ResourceConfig != nil && mcpCfg.MCP.ResourceConfig.Enabled {
-					if memoryManager != nil {
-						resourceSyncer = mcp.NewResourceSyncer(mcpClient, memoryManager, mcpCfg.MCP.Resources, mcpCfg.MCP.ResourceConfig, eventBus)
-						if err := resourceSyncer.Start(); err != nil {
-							log.Printf("⚠️  MCP resources failed: %v", err)
-						} else {
-							log.Printf("📚 MCP Resources: Syncing %d resource URIs", len(mcpCfg.MCP.Resources))
-						}
-					}
-				}
-
-				// Note: Skills are now loaded from config at startup, not from MCP server
-				// See skills.GetManager().Initialize() earlier in main()
-			}
+			// Skills are loaded from config at startup via skills.GetManager().Initialize()
 		}()
 	}
 
 	// Initialize scheduler if enabled (non-blocking)
 	go initScheduler()
+
+	// Initialize reflection scheduler if enabled (non-blocking)
+	go initReflection()
+
+	// Set database for system prompt queries (reflection context)
+	stream.SetDatabase(db)
 
 	// Initialize browser session if operator mode enabled (non-blocking)
 	go operator.InitBrowserSession()
@@ -3750,6 +3781,9 @@ func main() {
 	mux.HandleFunc("/scheduler/stop", scheduler.HandleSchedulerStop)
 	mux.HandleFunc("/scheduler/jobs", scheduler.HandleSchedulerJobs)
 
+	// Reflection routes
+	reflection.RegisterRoutes(mux)
+
 	// Discovery endpoint - returns discovered peer agents
 	mux.HandleFunc("/discovery/agents", handleDiscoveredAgents)
 
@@ -3770,10 +3804,6 @@ func main() {
 	threads.RegisterRoutes(mux, db)
 	tasks.RegisterRoutes(mux)
 
-	// Set resource syncer getter for MCP resource handlers
-	handlerMcp.SetResourceSyncerGetter(func() *mcp.ResourceSyncer {
-		return resourceSyncer
-	})
 	handlerMcp.RegisterRoutes(mux)
 	handlerSkills.RegisterRoutes(mux)
 	memories.RegisterRoutes(mux, func() *memory.MemoryManager { return memoryManager })
@@ -3816,8 +3846,9 @@ func main() {
 		Memory:       memoryManager != nil,
 		FileSystem:   fileManager != nil && fileManager.IsEnabled(),
 		MCP:          agentConfig.MCP != nil && agentConfig.MCP.Enabled,
-		MCPResources: resourceSyncer != nil,
+		MCPResources: false,
 		Scheduler:    agentScheduler != nil && agentScheduler.IsRunning(),
+		Reflection:   agentReflection != nil && agentReflection.IsRunning(),
 		Realtime:     agentConfig.Realtime != nil && agentConfig.Realtime.Enabled,
 		Operator:     agentConfig.Operator != nil && agentConfig.Operator.Enabled,
 		Discovery:    discoveryService != nil,

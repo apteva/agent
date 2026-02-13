@@ -194,6 +194,7 @@ async function loadConfig() {
         document.getElementById('toggleScheduler').checked = currentConfig.scheduler?.enabled || false;
         document.getElementById('toggleOperator').checked = currentConfig.operator?.enabled || false;
         document.getElementById('toggleAgents').checked = currentConfig.agents?.enabled || false;
+        document.getElementById('toggleReflection').checked = currentConfig.reflection?.enabled || false;
 
         // Update version display
         document.getElementById('agentVersion').textContent = currentConfig.version || '1.0.0';
@@ -256,6 +257,14 @@ async function loadConfig() {
         document.getElementById('schedulerTimezone').value = sched.timezone || '';
         document.getElementById('schedulerMaxConcurrent').value = sched.max_concurrent || '';
         document.getElementById('schedulerCatchUp').checked = sched.catch_up_missed || false;
+
+        // Load Reflection settings
+        const refl = currentConfig.reflection || {};
+        document.getElementById('reflectionInterval').value = refl.interval || '24h';
+        document.getElementById('reflectionLookbackHours').value = refl.lookback_hours || '24';
+        document.getElementById('reflectionConversationMin').value = refl.conversation_min || '0';
+        document.getElementById('reflectionAfterTask').checked = refl.after_task || false;
+        document.getElementById('reflectionPrompt').value = refl.prompt || '';
 
         // Load MCP settings
         const mcp = currentConfig.mcp || {};
@@ -376,7 +385,8 @@ async function toggleFeature(feature) {
         operator: 'toggleOperator',
         agents: 'toggleAgents',
         telemetry: 'toggleTelemetry',
-        realtime: 'toggleRealtime'
+        realtime: 'toggleRealtime',
+        reflection: 'toggleReflection'
     };
 
     const enabled = document.getElementById(toggleMap[feature]).checked;
@@ -603,6 +613,20 @@ async function saveFeatureConfig(feature) {
             };
             break;
 
+        case 'reflection':
+            updates = {
+                reflection: {
+                    ...currentConfig?.reflection,
+                    enabled: document.getElementById('toggleReflection').checked,
+                    interval: document.getElementById('reflectionInterval').value || '24h',
+                    lookback_hours: parseInt(document.getElementById('reflectionLookbackHours').value) || 24,
+                    conversation_min: parseInt(document.getElementById('reflectionConversationMin').value) || 0,
+                    after_task: document.getElementById('reflectionAfterTask').checked,
+                    prompt: document.getElementById('reflectionPrompt').value || undefined
+                }
+            };
+            break;
+
         case 'context':
             updates = {
                 context: {
@@ -628,6 +652,16 @@ async function saveFeatureConfig(feature) {
         loadConfig();
     } else {
         showToast(`Failed to save ${feature} settings: ${response.data?.error || 'Unknown error'}`, 'error');
+    }
+}
+
+async function triggerReflection() {
+    const response = await makeRequest('/reflection/trigger', 'POST');
+
+    if (response.status === 200) {
+        showToast('Reflection triggered', 'success');
+    } else {
+        showToast(response.data?.error || 'Failed to trigger reflection', 'error');
     }
 }
 

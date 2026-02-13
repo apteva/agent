@@ -1478,6 +1478,68 @@
                             </div>
                         </div>
 
+                        <!-- Reflection Section -->
+                        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
+                            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('reflection')">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl">🪞</span>
+                                    <div>
+                                        <h3 class="font-semibold text-slate-800 dark:text-slate-100">Self-Reflection</h3>
+                                        <p class="text-sm text-slate-500">Periodic self-review and learning</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="toggleReflection" onchange="toggleFeature('reflection')">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="text-slate-400 transition-transform" id="reflectionChevron">▼</span>
+                                </div>
+                            </div>
+                            <div class="p-5 hidden" id="reflectionSettings">
+                                <div class="grid grid-cols-3 gap-4 mb-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Interval</label>
+                                        <select id="reflectionInterval" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="1h">Every 1 hour</option>
+                                            <option value="6h">Every 6 hours</option>
+                                            <option value="12h">Every 12 hours</option>
+                                            <option value="24h">Every 24 hours</option>
+                                            <option value="48h">Every 48 hours</option>
+                                            <option value="168h">Weekly</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Lookback (hours)</label>
+                                        <input type="number" id="reflectionLookbackHours" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="24" min="1" max="168">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">After N conversations</label>
+                                        <input type="number" id="reflectionConversationMin" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="0 = disabled" min="0">
+                                    </div>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="flex items-center gap-2 text-sm">
+                                        <input type="checkbox" id="reflectionAfterTask" class="rounded border-slate-300">
+                                        <span class="text-slate-700 dark:text-slate-300">Trigger after each completed task</span>
+                                    </label>
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Reflection Prompt</label>
+                                    <textarea id="reflectionPrompt" rows="6" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm font-mono" placeholder="The prompt used when the agent reflects on its activity..."></textarea>
+                                    <p class="text-xs text-slate-400 mt-1">The agent can also modify this prompt itself via config_set during reflection sessions.</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="saveFeatureConfig('reflection')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
+                                        💾 Save Reflection Settings
+                                    </button>
+                                    <button onclick="triggerReflection()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+                                        🪞 Trigger Now
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- MCP Section -->
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('mcp')">

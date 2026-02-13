@@ -57,6 +57,8 @@ var ProviderAPIKeyEnvVars = map[string]string{
 	"cohere":      "COHERE_API_KEY",
 	"huggingface": "HUGGINGFACE_API_KEY",
 	"openrouter":  "OPENROUTER_API_KEY",
+	"zai":         "ZAI_API_KEY",
+	"novita":      "NOVITA_API_KEY",
 }
 
 // CompletionEndpoints maps providers to their chat completion API endpoints

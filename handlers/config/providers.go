@@ -74,7 +74,9 @@ func GetProviders() []ProviderInfo {
 			ID:   "fireworks",
 			Name: "Fireworks AI",
 			Models: []ProviderModel{
-				{Value: "accounts/fireworks/models/kimi-k2-thinking", Label: "Kimi K2 Thinking (Reasoning)", Recommended: true},
+				{Value: "accounts/fireworks/models/glm-5", Label: "GLM 5 (745B MoE, Agentic)", Recommended: true},
+				{Value: "accounts/fireworks/models/minimax-m2p5", Label: "MiniMax M2.5"},
+				{Value: "accounts/fireworks/models/kimi-k2-thinking", Label: "Kimi K2 Thinking (Reasoning)"},
 				{Value: "accounts/fireworks/models/kimi-k2p5", Label: "Kimi K2.5"},
 				{Value: "accounts/fireworks/models/qwen3-vl-235b-a22b-thinking", Label: "Qwen 3 VL 235B Thinking (Vision)"},
 				{Value: "accounts/fireworks/models/kimi-k2-instruct-0905", Label: "Kimi K2 Instruct"},
@@ -101,6 +103,19 @@ func GetProviders() []ProviderInfo {
 			},
 		},
 		{
+			ID:   "zai",
+			Name: "Z.ai (GLM)",
+			Models: []ProviderModel{
+				{Value: "glm-5", Label: "GLM 5 (745B MoE, Agentic)", Recommended: true},
+				{Value: "glm-4.7", Label: "GLM 4.7 (200K)"},
+				{Value: "glm-4.6", Label: "GLM 4.6 (Flagship, 200K)"},
+				{Value: "glm-4.5", Label: "GLM 4.5 (128K)"},
+				{Value: "glm-4.5v", Label: "GLM 4.5V (Vision, 128K)"},
+				{Value: "glm-4.5-air", Label: "GLM 4.5 Air (Lightweight)"},
+				{Value: "glm-4.5-flash", Label: "GLM 4.5 Flash (Free)"},
+			},
+		},
+		{
 			ID:   "moonshot",
 			Name: "Moonshot AI (Kimi)",
 			Models: []ProviderModel{
@@ -118,6 +133,18 @@ func GetProviders() []ProviderInfo {
 			Models: []ProviderModel{
 				{Value: "zai-org-glm-4.7", Label: "GLM 4.7 Private (203K context)", Recommended: true},
 				{Value: "venice-uncensored", Label: "Venice Uncensored"},
+			},
+		},
+		{
+			ID:   "novita",
+			Name: "Novita AI",
+			Models: []ProviderModel{
+				{Value: "deepseek/deepseek-v3.2", Label: "DeepSeek V3.2", Recommended: true},
+				{Value: "openai/gpt-oss-120b", Label: "GPT OSS 120B"},
+				{Value: "openai/gpt-oss-20b", Label: "GPT OSS 20B (Fast)"},
+				{Value: "qwen/qwen3-coder-480b-a35b-instruct", Label: "Qwen 3 Coder 480B"},
+				{Value: "zai-org/glm-5", Label: "GLM 5 (745B MoE, Agentic)"},
+				{Value: "zai-org/glm-4.7", Label: "GLM 4.7"},
 			},
 		},
 		{

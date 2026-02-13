@@ -521,7 +521,6 @@ func InitializeExternalServers(servers []config.ExternalMCPServer) error {
 // ConvertExternalToolsToToolDefinitions converts external MCP tools to our internal format
 func ConvertExternalToolsToToolDefinitions(tools []ExternalMCPTool) []MCPTool {
 	result := make([]MCPTool, len(tools))
-	now := time.Now()
 
 	for i, tool := range tools {
 		result[i] = MCPTool{
@@ -530,7 +529,6 @@ func ConvertExternalToolsToToolDefinitions(tools []ExternalMCPTool) []MCPTool {
 			Description: tool.Description,
 			InputSchema: tool.InputSchema,
 			ServerName:  tool.ServerName,
-			LoadedAt:    now,
 		}
 	}
 
@@ -558,6 +556,87 @@ func ParseExternalToolName(fullName string) (serverName, toolName string) {
 // MakeExternalToolName creates a full tool name from server and tool names
 func MakeExternalToolName(serverName, toolName string) string {
 	return serverName + ExternalToolSeparator + toolName
+}
+
+// GetToolDisplayName returns the display name for an MCP tool.
+// Checks external tools for Title, then falls back to cleaned tool name.
+func GetToolDisplayName(toolName string) string {
+	if IsExternalTool(toolName) {
+		externalTool := GetExternalServerManager().GetTool(toolName)
+		if externalTool != nil {
+			if externalTool.Title != "" {
+				return externalTool.Title
+			}
+			return cleanToolName(externalTool.Name)
+		}
+	}
+	return ""
+}
+
+// cleanToolName converts verbose tool names to readable format.
+// e.g. GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER -> "List Repositories"
+func cleanToolName(name string) string {
+	if name == "" {
+		return ""
+	}
+
+	prefixes := []string{
+		"GITHUB_", "SLACK_", "GMAIL_", "GOOGLE_", "DISCORD_",
+		"NOTION_", "JIRA_", "TRELLO_", "ASANA_", "LINEAR_",
+		"TWITTER_", "FACEBOOK_", "INSTAGRAM_", "LINKEDIN_",
+		"DROPBOX_", "ONEDRIVE_", "DRIVE_", "SHEETS_", "DOCS_",
+		"CALENDAR_", "ZOOM_", "TEAMS_", "HUBSPOT_", "SALESFORCE_",
+	}
+
+	cleanName := name
+	for _, prefix := range prefixes {
+		if len(cleanName) > len(prefix) && cleanName[:len(prefix)] == prefix {
+			cleanName = cleanName[len(prefix):]
+			break
+		}
+	}
+
+	suffixes := []string{
+		"_FOR_THE_AUTHENTICATED_USER",
+		"_FOR_AUTHENTICATED_USER",
+		"_FOR_A_USER",
+		"_FOR_USER",
+	}
+	for _, suffix := range suffixes {
+		if len(cleanName) > len(suffix) && cleanName[len(cleanName)-len(suffix):] == suffix {
+			cleanName = cleanName[:len(cleanName)-len(suffix)]
+			break
+		}
+	}
+
+	return toTitleCase(cleanName)
+}
+
+// toTitleCase converts "TOOL_NAME" or "tool-name" to "Tool Name"
+func toTitleCase(s string) string {
+	words := make([]byte, 0, len(s))
+	capitalizeNext := true
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '-' || c == '_' {
+			words = append(words, ' ')
+			capitalizeNext = true
+		} else if capitalizeNext {
+			if c >= 'a' && c <= 'z' {
+				words = append(words, c-32)
+			} else {
+				words = append(words, c)
+			}
+			capitalizeNext = false
+		} else {
+			if c >= 'A' && c <= 'Z' {
+				words = append(words, c+32)
+			} else {
+				words = append(words, c)
+			}
+		}
+	}
+	return string(words)
 }
 
 // sanitizeToolName ensures a tool name matches Anthropic's pattern ^[a-zA-Z0-9_-]{1,128}$
