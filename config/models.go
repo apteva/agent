@@ -5,12 +5,18 @@ import "os"
 // SmallModels maps providers to their small/fast models for internal tasks
 // (memory decisions, summarization, etc.)
 // Updated: February 2026
+// SmallModels maps providers to their small/fast models for internal tasks
+// Providers with expensive inference get a dedicated cheap model here.
+// Providers NOT listed here (fireworks, zai, novita, moonshot, together)
+// reuse the main agent model since their inference cost is negligible.
 var SmallModels = map[string]string{
-	"anthropic":  "claude-haiku-4-5",                      // Fast, cheap, 1/3 cost of Sonnet 4
-	"openai":     "gpt-4.1-mini",                          // Replaces gpt-4o-mini, 1M context
-	"gemini":     "gemini-2.5-flash-lite",                 // Fast, low-cost, high-performance
-	"venice":     "qwen3-4b",                              // Replaced llama-3.2-3b
-	"openrouter": "meta-llama/llama-3.3-70b-instruct:free", // Free tier available
+	"anthropic":  "claude-haiku-4-5",                        // Fast, cheap, 1/3 cost of Sonnet 4
+	"openai":     "gpt-4.1-mini",                            // Replaces gpt-4o-mini, 1M context
+	"gemini":     "gemini-2.5-flash-lite",                   // Fast, low-cost, high-performance
+	"venice":     "qwen3-4b",                                // Replaced llama-3.2-3b
+	"groq":       "llama-3.1-8b-instant",                    // Ultra-fast inference
+	"xai":        "grok-4-1-fast-non-reasoning",             // Fast, non-reasoning
+	"openrouter": "meta-llama/llama-3.3-70b-instruct:free",  // Free tier available
 }
 
 // EmbeddingModels maps providers to their default embedding models
@@ -59,24 +65,46 @@ var ProviderAPIKeyEnvVars = map[string]string{
 	"openrouter":  "OPENROUTER_API_KEY",
 	"zai":         "ZAI_API_KEY",
 	"novita":      "NOVITA_API_KEY",
+	"fireworks":   "FIREWORKS_API_KEY",
+	"groq":        "GROQ_API_KEY",
+	"xai":         "XAI_API_KEY",
+	"moonshot":    "MOONSHOT_API_KEY",
+	"together":    "TOGETHER_API_KEY",
 }
 
 // CompletionEndpoints maps providers to their chat completion API endpoints
 var CompletionEndpoints = map[string]string{
-	"anthropic": "https://api.anthropic.com/v1/messages",
-	"openai":    "https://api.openai.com/v1/chat/completions",
-	"gemini":    "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent",
-	"venice":    "https://api.venice.ai/api/v1/chat/completions",
+	"anthropic":  "https://api.anthropic.com/v1/messages",
+	"openai":     "https://api.openai.com/v1/chat/completions",
+	"gemini":     "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent",
+	"venice":     "https://api.venice.ai/api/v1/chat/completions",
 	"openrouter": "https://openrouter.ai/api/v1/chat/completions",
+	"fireworks":  "https://api.fireworks.ai/inference/v1/chat/completions",
+	"groq":       "https://api.groq.com/openai/v1/chat/completions",
+	"xai":        "https://api.x.ai/v1/chat/completions",
+	"zai":        "https://api.z.ai/api/paas/v4/chat/completions",
+	"novita":     "https://api.novita.ai/v3/openai/chat/completions",
+	"moonshot":   "https://api.moonshot.cn/v1/chat/completions",
+	"together":   "https://api.together.xyz/v1/chat/completions",
 }
 
 // GetSmallModel returns the small/fast model for a given provider
-// Used for internal tasks like memory decisions, summarization
+// Used for internal tasks like memory decisions, summarization.
+// Providers without a dedicated small model reuse the main agent model
+// (cheap inference providers like Fireworks, Novita, Together, etc.)
 func GetSmallModel(provider string) string {
 	if model, ok := SmallModels[provider]; ok {
 		return model
 	}
-	// Fallback to OpenAI if available, otherwise return empty
+	// No dedicated small model — use the main agent model
+	// (cheap inference providers like Fireworks, Novita, Z.ai, Moonshot, Together)
+	if cfg := GetConfig(); cfg != nil {
+		agentCfg := cfg.Get()
+		if agentCfg.LLM.Provider == provider && agentCfg.LLM.Model != "" {
+			return agentCfg.LLM.Model
+		}
+	}
+	// Fallback to OpenAI if available
 	if HasAPIKey("openai") {
 		return SmallModels["openai"]
 	}
@@ -160,7 +188,7 @@ func GetAvailableEmbeddingProvider(configuredProvider, mainProvider string) stri
 // Uses the same provider as the main LLM when possible
 func GetAvailableDecisionProvider(mainProvider string) string {
 	// Providers that support chat completions for decision making
-	decisionCapable := []string{"anthropic", "openai", "gemini", "venice", "openrouter"}
+	decisionCapable := []string{"anthropic", "openai", "gemini", "venice", "openrouter", "fireworks", "groq", "xai", "zai", "novita", "moonshot", "together"}
 
 	// First try the main provider
 	for _, p := range decisionCapable {
