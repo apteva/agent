@@ -5,18 +5,21 @@ import "os"
 // SmallModels maps providers to their small/fast models for internal tasks
 // (memory decisions, summarization, etc.)
 // Updated: February 2026
-// SmallModels maps providers to their small/fast models for internal tasks
-// Providers with expensive inference get a dedicated cheap model here.
-// Providers NOT listed here (fireworks, zai, novita, moonshot, together)
-// reuse the main agent model since their inference cost is negligible.
+// Every provider gets an explicit small model so summarization/activity
+// generation always uses a fast, cheap model instead of the main agent model.
 var SmallModels = map[string]string{
-	"anthropic":  "claude-haiku-4-5",                        // Fast, cheap, 1/3 cost of Sonnet 4
-	"openai":     "gpt-4.1-mini",                            // Replaces gpt-4o-mini, 1M context
-	"gemini":     "gemini-2.5-flash-lite",                   // Fast, low-cost, high-performance
-	"venice":     "qwen3-4b",                                // Replaced llama-3.2-3b
-	"groq":       "llama-3.1-8b-instant",                    // Ultra-fast inference
-	"xai":        "grok-4-1-fast-non-reasoning",             // Fast, non-reasoning
-	"openrouter": "meta-llama/llama-3.3-70b-instruct:free",  // Free tier available
+	"anthropic":  "claude-haiku-4-5",                                          // Fast, cheap, 1/3 cost of Sonnet 4
+	"openai":     "gpt-4.1-mini",                                              // Replaces gpt-4o-mini, 1M context
+	"gemini":     "gemini-2.5-flash-lite",                                     // Fast, low-cost, high-performance
+	"venice":     "qwen3-4b",                                                  // Replaced llama-3.2-3b
+	"groq":       "llama-3.1-8b-instant",                                      // Ultra-fast inference
+	"xai":        "grok-4-1-fast-non-reasoning",                               // Fast, non-reasoning
+	"openrouter": "meta-llama/llama-3.3-70b-instruct:free",                    // Free tier available
+	"fireworks":  "accounts/fireworks/models/qwen3-8b",                        // $0.20/M tokens, fast small model
+	"together":   "meta-llama/Llama-3.1-8B-Instruct-Turbo",                   // Fast 8B turbo
+	"novita":     "meta-llama/llama-3.1-8b-instruct",                          // 8B instruct
+	"moonshot":   "moonshot-v1-8k",                                            // Smallest context, fastest
+	"zai":        "llama-3.1-8b-instruct",                                     // 8B instruct
 }
 
 // EmbeddingModels maps providers to their default embedding models
@@ -90,14 +93,13 @@ var CompletionEndpoints = map[string]string{
 
 // GetSmallModel returns the small/fast model for a given provider
 // Used for internal tasks like memory decisions, summarization.
-// Providers without a dedicated small model reuse the main agent model
-// (cheap inference providers like Fireworks, Novita, Together, etc.)
+// All known providers have explicit small models. Fallback to main agent
+// model only for unknown/custom providers.
 func GetSmallModel(provider string) string {
 	if model, ok := SmallModels[provider]; ok {
 		return model
 	}
-	// No dedicated small model — use the main agent model
-	// (cheap inference providers like Fireworks, Novita, Z.ai, Moonshot, Together)
+	// Unknown provider — fall back to the main agent model
 	if cfg := GetConfig(); cfg != nil {
 		agentCfg := cfg.Get()
 		if agentCfg.LLM.Provider == provider && agentCfg.LLM.Model != "" {

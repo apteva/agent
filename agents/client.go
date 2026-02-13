@@ -943,6 +943,71 @@ func (c *AgentClient) DelegateTask(agentID, title, description string, priority 
 	return result, nil
 }
 
+// GetAgentActivity fetches the activity summary from a remote agent's /activity endpoint
+func (c *AgentClient) GetAgentActivity(agentID, since string, limit int) (map[string]interface{}, error) {
+	agent := c.findAgent(agentID)
+	if agent == nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("agent not found: %s", agentID),
+		}, nil
+	}
+
+	if !agent.Enabled {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("agent is disabled: %s", agent.Name),
+		}, nil
+	}
+
+	// Build URL with query params
+	url := fmt.Sprintf("%s/activity?since=%s&limit=%d", agent.URL, since, limit)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("failed to create request: %v", err),
+		}, nil
+	}
+
+	if agent.APIKey != "" {
+		req.Header.Set("X-Agent-Key", agent.APIKey)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("request failed: %v", err),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)),
+		}, nil
+	}
+
+	// Parse response
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("failed to parse response: %v", err),
+		}, nil
+	}
+
+	// Add success flag and agent info
+	result["success"] = true
+	result["agent_name"] = agent.Name
+
+	return result, nil
+}
+
 // CheckDelegatedTask checks the status of a task on a remote agent
 func (c *AgentClient) CheckDelegatedTask(agentID, taskID string) (map[string]interface{}, error) {
 	agent := c.findAgent(agentID)

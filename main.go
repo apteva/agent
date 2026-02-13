@@ -25,6 +25,7 @@ import (
 	handlerConfig "github.com/apteva/agent/handlers/config"
 	"github.com/apteva/agent/handlers/memories"
 	handlerMcp "github.com/apteva/agent/handlers/mcp"
+	"github.com/apteva/agent/handlers/activity"
 	"github.com/apteva/agent/handlers/observability"
 	handlerSkills "github.com/apteva/agent/handlers/skills"
 	"github.com/apteva/agent/handlers/tasks"
@@ -2877,6 +2878,11 @@ func registerAgentTools() {
 		Client: agentClient,
 	})
 
+	// Register activity tool (coordinator mode only)
+	registry.RegisterTool(&agents.GetAgentActivityTool{
+		Client: agentClient,
+	})
+
 	// Only register list_available_agents tool when discovery is NOT active
 	// When discovery is active, agent info is already injected into the system prompt,
 	// so the list tool is redundant and can confuse the model
@@ -2884,9 +2890,9 @@ func registerAgentTools() {
 		registry.RegisterTool(&agents.ListAvailableAgentsTool{
 			Client: agentClient,
 		})
-		log.Printf("✅ Agent tools registered: call_agent, delegate_task, check_delegated_task, list_available_agents")
+		log.Printf("✅ Agent tools registered: call_agent, delegate_task, check_delegated_task, get_agent_activity, list_available_agents")
 	} else {
-		log.Printf("✅ Agent tools registered: call_agent, delegate_task, check_delegated_task (list_available_agents skipped - discovery active)")
+		log.Printf("✅ Agent tools registered: call_agent, delegate_task, check_delegated_task, get_agent_activity (list_available_agents skipped - discovery active)")
 	}
 }
 
@@ -3806,6 +3812,9 @@ func main() {
 	handlerSkills.RegisterRoutes(mux)
 	memories.RegisterRoutes(mux, func() *memory.MemoryManager { return memoryManager })
 	observability.RegisterRoutes(mux, db)
+
+	// Activity endpoint - agent activity summary
+	mux.HandleFunc("/activity", activity.HandleActivity(db, config.GetConfig().Get().ID))
 
 	// File management endpoints - always register, check IsEnabled() dynamically in handlers
 	if fileManager != nil {

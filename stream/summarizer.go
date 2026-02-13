@@ -105,6 +105,9 @@ Your JSON:`, snippet.String())
 		return nil, fmt.Errorf("API call failed: %w", err)
 	}
 
+	// Strip <think>...</think> tags from reasoning models (Qwen3, DeepSeek, etc.)
+	response = stripThinkTags(response)
+
 	log.Printf("📝 DEBUG Summarizer raw response (%s/%s): %s", s.provider, s.model, truncate(response, 300))
 
 	// Parse the JSON response
@@ -334,8 +337,28 @@ func extractTextForSummary(msg Message) string {
 	return strings.Join(parts, " ")
 }
 
+// stripThinkTags removes <think>...</think> blocks from model output
+// (used by reasoning models like Qwen3, DeepSeek, etc.)
+func stripThinkTags(s string) string {
+	for {
+		start := strings.Index(s, "<think>")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(s, "</think>")
+		if end == -1 {
+			// Unclosed tag — strip from <think> to end
+			s = s[:start]
+			break
+		}
+		s = s[:start] + s[end+len("</think>"):]
+	}
+	return strings.TrimSpace(s)
+}
+
 // extractJSON tries to extract a JSON object from a string that may contain markdown fences
 func extractJSON(s string) string {
+	s = stripThinkTags(s)
 	s = strings.TrimSpace(s)
 	// Strip markdown code fences if present
 	if strings.HasPrefix(s, "```") {

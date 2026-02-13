@@ -367,3 +367,83 @@ func (t *CheckDelegatedTaskTool) Execute(params map[string]interface{}) (interfa
 
 	return result, nil
 }
+
+// GetAgentActivityTool implements the get_agent_activity tool for coordinators
+type GetAgentActivityTool struct {
+	Client *AgentClient
+}
+
+func (t *GetAgentActivityTool) Name() string {
+	return "get_agent_activity"
+}
+
+func (t *GetAgentActivityTool) DisplayName() string {
+	return "Get Agent Activity"
+}
+
+func (t *GetAgentActivityTool) Description() string {
+	return "Get a summary of what another agent has been doing recently. Returns active threads, message counts, tool usage, and per-thread activity summaries. Use this to check on worker agents and understand their recent activity without interrupting them."
+}
+
+// DynamicDisplayName returns "Checking activity of {AgentName}" based on the input params
+func (t *GetAgentActivityTool) DynamicDisplayName(params map[string]interface{}) string {
+	agentID, _ := params["agent_id"].(string)
+	if agentID != "" && t.Client != nil {
+		name := t.Client.GetAgentName(agentID)
+		return "Checking activity of " + name
+	}
+	return ""
+}
+
+func (t *GetAgentActivityTool) InputSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"agent_id": map[string]interface{}{
+				"type":        "string",
+				"description": "ID of the agent to check activity for (use list_available_agents to see options)",
+			},
+			"since": map[string]interface{}{
+				"type":        "string",
+				"description": "How far back to look (e.g. '1h', '6h', '24h', '7d'). Default: '1h'",
+				"default":     "1h",
+			},
+			"limit": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum number of recent threads to return (default 20, max 100)",
+				"default":     20,
+			},
+		},
+		"required": []string{"agent_id"},
+	}
+}
+
+func (t *GetAgentActivityTool) Execute(params map[string]interface{}) (interface{}, error) {
+	agentID, _ := params["agent_id"].(string)
+	since, _ := params["since"].(string)
+	limit, _ := params["limit"].(float64)
+
+	if agentID == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "agent_id is required",
+		}, nil
+	}
+
+	if since == "" {
+		since = "1h"
+	}
+	if limit == 0 {
+		limit = 20
+	}
+
+	result, err := t.Client.GetAgentActivity(agentID, since, int(limit))
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}, nil
+	}
+
+	return result, nil
+}
