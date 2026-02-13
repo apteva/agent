@@ -409,6 +409,20 @@ func (eb *EventBus) GetStats() map[string]interface{} {
 	}
 }
 
+// SubscriberCount returns the number of active subscribers
+func (eb *EventBus) SubscriberCount() int {
+	eb.mu.RLock()
+	defer eb.mu.RUnlock()
+	return len(eb.subscribers)
+}
+
+// IsRunning returns whether the event bus is running
+func (eb *EventBus) IsRunning() bool {
+	eb.mu.RLock()
+	defer eb.mu.RUnlock()
+	return eb.running
+}
+
 // EventCallback is a function that handles events
 type EventCallback func(event *Event)
 

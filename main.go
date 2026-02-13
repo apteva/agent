@@ -2412,22 +2412,13 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Generate thread activity summary in background
-		anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
-		if anthropicKey != "" {
+		{
 			summaryThreadID := threadID
 			summaryIsNew := isNewThread
-			// Get the summary model from config, fallback to compaction model, then default
-			summaryModel := "claude-haiku-4-5"
-			if agentConfig.Context != nil {
-				if agentConfig.Context.SummaryModel != "" {
-					summaryModel = agentConfig.Context.SummaryModel
-				} else if agentConfig.Context.Compaction != nil && agentConfig.Context.Compaction.Model != "" {
-					summaryModel = agentConfig.Context.Compaction.Model
-				}
-			}
+			mainProvider := agentConfig.LLM.Provider
 			go func() {
 				time.Sleep(2 * time.Second)
-				summarizer := stream.NewSummarizer(db, anthropicKey, summaryModel)
+				summarizer := stream.NewSummarizer(db, mainProvider)
 				threadMessages, err := messageSaver.GetThreadMessages(summaryThreadID)
 				if err != nil {
 					log.Printf("Failed to get messages for summary: %v", err)
@@ -2451,18 +2442,25 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 					titlePtr = &result.Title
 				}
 				if err := messageSaver.UpdateThreadActivity(summaryThreadID, result.Activity, titlePtr); err != nil {
-					log.Printf("Failed to update thread activity: %v", err)
+					log.Printf("❌ Failed to update thread activity: %v", err)
 				} else {
 					log.Printf("Updated thread %s activity: %s", summaryThreadID, result.Activity)
 
-					// Emit thread activity event for telemetry
+					// Emit thread activity event
+					bus := events.GetEventBus()
+					log.Printf("🔔 DEBUG thread_activity: emitting event for thread=%s, subscribers=%d, bus_running=%v",
+						summaryThreadID, bus.SubscriberCount(), bus.IsRunning())
 					activityEvent := events.NewEvent(events.CategoryChat, "thread_activity", events.LevelInfo).
 						WithThread(summaryThreadID).
 						WithData("activity", result.Activity)
 					if titlePtr != nil {
 						activityEvent.WithData("title", result.Title)
 					}
-					events.GetEventBus().Publish(activityEvent)
+					if err := bus.Publish(activityEvent); err != nil {
+						log.Printf("❌ DEBUG thread_activity: publish failed: %v", err)
+					} else {
+						log.Printf("✅ DEBUG thread_activity: event published id=%s", activityEvent.ID)
+					}
 				}
 			}()
 		}

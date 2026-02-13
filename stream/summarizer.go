@@ -6,16 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/apteva/agent/config"
 )
 
 // Summarizer generates short thread titles and activity summaries using a small LLM
 type Summarizer struct {
-	db           *sql.DB
-	anthropicKey string
-	model        string
+	db       *sql.DB
+	provider string
+	apiKey   string
+	model    string
+	endpoint string
 }
 
 // SummaryResult holds the generated title and activity
@@ -24,23 +29,34 @@ type SummaryResult struct {
 	Activity string `json:"activity"`
 }
 
-// NewSummarizer creates a new Summarizer instance
-func NewSummarizer(db *sql.DB, anthropicKey string, model string) *Summarizer {
-	if model == "" {
-		model = "claude-haiku-4-5"
+// NewSummarizer creates a new Summarizer instance that auto-detects the best provider
+func NewSummarizer(db *sql.DB, mainProvider string) *Summarizer {
+	provider := config.GetAvailableDecisionProvider(mainProvider)
+	if provider == "" {
+		log.Printf("⚠️  Summarizer: no provider available for thread activity")
+		return &Summarizer{db: db}
 	}
+
+	apiKey := config.GetAPIKey(provider)
+	model := config.GetSmallModel(provider)
+	endpoint := config.GetCompletionEndpoint(provider)
+
+	log.Printf("📝 Summarizer: using %s/%s for thread activity", provider, model)
+
 	return &Summarizer{
-		db:           db,
-		anthropicKey: anthropicKey,
-		model:        model,
+		db:       db,
+		provider: provider,
+		apiKey:   apiKey,
+		model:    model,
+		endpoint: endpoint,
 	}
 }
 
 // GenerateThreadSummary generates a title and activity line from recent messages.
 // Returns title, activity, and error. Title may be empty if it shouldn't be updated.
 func (s *Summarizer) GenerateThreadSummary(threadID string, messages []Message) (*SummaryResult, error) {
-	if s.anthropicKey == "" {
-		return nil, fmt.Errorf("no Anthropic API key configured")
+	if s.provider == "" || s.apiKey == "" {
+		return nil, fmt.Errorf("no provider/API key configured for summarization")
 	}
 
 	if len(messages) == 0 {
@@ -71,46 +87,40 @@ func (s *Summarizer) GenerateThreadSummary(threadID string, messages []Message) 
 	}
 	snippet.WriteString(fmt.Sprintf("\n(Total messages: %d. Message #%d is the MOST RECENT.)\n", totalMessages, totalMessages))
 
-	prompt := fmt.Sprintf(`Given this conversation snippet (messages are numbered chronologically), produce a JSON object with:
-- "title": A short title (3-6 words) for the overall thread topic
-- "activity": A brief description (2-5 words) of what happened in the LAST/MOST RECENT exchange only. Ignore earlier messages — focus ONLY on the final user request and assistant response.
-
-IMPORTANT: The activity MUST describe the LATEST exchange (highest numbered messages). Earlier messages are just context for the title. Always mention WHAT was acted on, not just the outcome.
+	prompt := fmt.Sprintf(`CONVERSATION:
+%s
+Summarize this conversation as a JSON object with two fields:
+- "title": 3-6 word thread topic
+- "activity": 2-5 words about the LAST exchange only
 
 Examples:
 {"title": "PR Review Auth Module", "activity": "Reviewed auth PR"}
-{"title": "Monthly Sales Report", "activity": "Generated sales report"}
-{"title": "Debug Login Timeout", "activity": "Found timeout root cause"}
-{"title": "Push Notification Setup", "activity": "Sent push notification"}
 {"title": "Weather Forecast Query", "activity": "Fetched weather data"}
 {"title": "Task Management", "activity": "Created recurring task"}
-{"title": "Customer Billing Issue", "activity": "Resolved billing ticket"}
-{"title": "File Upload Processing", "activity": "Uploaded CSV file"}
 
-BAD examples (too vague - never do this):
-"Sent successfully", "Completed task", "Done", "Helped user", "Responded"
-
-Keep activity to 2-5 words. Always be specific about WHAT. Respond with ONLY the JSON object.
-
-CONVERSATION:
-%s`, snippet.String())
+Your JSON:`, snippet.String())
 
 	response, err := s.callAPI(prompt)
 	if err != nil {
 		return nil, fmt.Errorf("API call failed: %w", err)
 	}
 
+	log.Printf("📝 DEBUG Summarizer raw response (%s/%s): %s", s.provider, s.model, truncate(response, 300))
+
 	// Parse the JSON response
 	var result SummaryResult
 	// Try to extract JSON from response (LLM might add markdown fences)
 	jsonStr := extractJSON(response)
+	log.Printf("📝 DEBUG Summarizer extractJSON: %s", truncate(jsonStr, 300))
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		log.Printf("⚠️  Summarizer JSON parse failed: %v — raw: %s", err, truncate(response, 200))
 		// Fallback: use the raw response as activity
 		return &SummaryResult{
 			Activity: truncate(response, 100),
 		}, nil
 	}
 
+	log.Printf("📝 Summarizer result: title=%q activity=%q", result.Title, result.Activity)
 	return &result, nil
 }
 
@@ -137,9 +147,18 @@ func (s *Summarizer) UpdateThread(threadID string, result *SummaryResult, isNewT
 }
 
 func (s *Summarizer) callAPI(prompt string) (string, error) {
+	if s.provider == "anthropic" {
+		return s.callAnthropicAPI(prompt)
+	}
+	return s.callOpenAICompatibleAPI(prompt)
+}
+
+func (s *Summarizer) callAnthropicAPI(prompt string) (string, error) {
 	requestBody := map[string]interface{}{
 		"model":      s.model,
-		"max_tokens": 150,
+		"max_tokens": 300,
+		"temperature": 0.0,
+		"system":     "You summarize conversations. Always include a JSON object in your response with exactly these fields: title, activity.",
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
@@ -156,7 +175,7 @@ func (s *Summarizer) callAPI(prompt string) (string, error) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", s.anthropicKey)
+	req.Header.Set("x-api-key", s.apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -191,6 +210,77 @@ func (s *Summarizer) callAPI(prompt string) (string, error) {
 	}
 
 	return response.Content[0].Text, nil
+}
+
+func (s *Summarizer) callOpenAICompatibleAPI(prompt string) (string, error) {
+	requestBody := map[string]interface{}{
+		"model":      s.model,
+		"max_tokens": 300,
+		"stream":     false,
+		"temperature": 0.0,
+		"messages": []map[string]interface{}{
+			{"role": "system", "content": "You summarize conversations. Always include a JSON object in your response with exactly these fields: title, activity."},
+			{"role": "user", "content": prompt},
+		},
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", err
+	}
+
+	endpoint := s.endpoint
+	if endpoint == "" {
+		return "", fmt.Errorf("no completion endpoint for provider %s", s.provider)
+	}
+
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("📝 DEBUG Summarizer API response status=%d body_len=%d", resp.StatusCode, len(body))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%s API error %d: %s", s.provider, resp.StatusCode, string(body))
+	}
+
+	// Log raw body for debugging (truncated)
+	log.Printf("📝 DEBUG Summarizer API raw body: %s", truncate(string(body), 500))
+
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return "", fmt.Errorf("JSON unmarshal failed: %w — body: %s", err, truncate(string(body), 300))
+	}
+
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("empty response from %s — body: %s", s.provider, truncate(string(body), 300))
+	}
+
+	log.Printf("📝 DEBUG Summarizer finish_reason=%s content_len=%d", response.Choices[0].FinishReason, len(response.Choices[0].Message.Content))
+	return response.Choices[0].Message.Content, nil
 }
 
 // extractTextForSummary extracts readable text from a message for summarization
