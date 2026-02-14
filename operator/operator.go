@@ -249,10 +249,24 @@ func getSession(agentID string) *BrowserSession {
 	return val.(*BrowserSession)
 }
 
-// executeCommand routes a command to CDP or REST based on session state
+// executeCommand routes a command to CDP or REST based on session state.
+// For CDP sessions, it attempts one reconnect if the WebSocket has dropped.
 func executeCommand(ctx context.Context, session *BrowserSession, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
 	if session.IsConnectedCDP() {
-		return ExecuteCDPCommand(ctx, session, cmdType, params)
+		result, err := ExecuteCDPCommand(ctx, session, cmdType, params)
+		if err != nil && session.ConnectURL != "" && (strings.Contains(err.Error(), "context canceled") || strings.Contains(err.Error(), "websocket")) {
+			// CDP WebSocket may have dropped (e.g., Browserbase keepAlive session idle disconnect).
+			// Try to reconnect once before failing.
+			log.Printf("⚠️  CDP command failed (%v), attempting reconnect to %s...", err, session.ID[:8])
+			session.Close()
+			if reconnErr := ConnectCDP(context.Background(), session); reconnErr != nil {
+				log.Printf("❌ CDP reconnect failed: %v", reconnErr)
+				return nil, fmt.Errorf("CDP connection lost and reconnect failed: %w (original: %v)", reconnErr, err)
+			}
+			log.Printf("✅ CDP reconnected to session %s, retrying command", session.ID[:8])
+			return ExecuteCDPCommand(ctx, session, cmdType, params)
+		}
+		return result, err
 	}
 	return executeRESTCommand(ctx, session.ID, cmdType, params)
 }

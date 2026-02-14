@@ -95,8 +95,7 @@
       "enabled": false,
       "virtual_browser": "",
       "display_width": 1024,
-      "display_height": 768,
-      "max_actions_per_turn": 5
+      "display_height": 768
     },
     "context": {
       "max_messages": 50,

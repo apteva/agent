@@ -31,7 +31,9 @@ func NewSteelProvider(apiKey, baseURL string) *SteelProvider {
 func (p *SteelProvider) Name() string { return "steel" }
 
 func (p *SteelProvider) CreateSession(ctx context.Context, opts SessionOptions) (*BrowserSession, error) {
-	body := map[string]interface{}{}
+	body := map[string]interface{}{
+		"sessionTimeout": 1800000, // 30 minutes in ms — prevents premature session expiry during agent thinking
+	}
 
 	if opts.ViewportWidth > 0 && opts.ViewportHeight > 0 {
 		body["dimensions"] = map[string]int{
@@ -98,15 +100,15 @@ func (p *SteelProvider) CreateSession(ctx context.Context, opts SessionOptions) 
 		connectURL = connectURL + "&apiKey=" + p.APIKey
 	}
 
-	// Extract optional URLs
-	viewURL, _ := result["sessionViewerUrl"].(string)
+	// Extract the embeddable live view URL (WebRTC iframe, 25fps)
+	streamURL, _ := result["debugUrl"].(string)
 
 	log.Printf("🔧 Steel session created: %s", sessionID)
 
 	return &BrowserSession{
 		ID:         sessionID,
 		ConnectURL: connectURL,
-		ViewURL:    viewURL,
+		StreamURL:  streamURL,
 		Provider:   "steel",
 		Metadata:   result,
 	}, nil

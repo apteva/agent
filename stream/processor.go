@@ -281,7 +281,12 @@ func UnifiedToolConversationWithBuiltins(w http.ResponseWriter, provider Provide
 func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWriter, provider Provider, processor StreamProcessor, messages []Message, customTools []tools.ToolDefinition, builtinTools []interface{}, messageSaver MessageSaver, threadID string, requestID string, model *string, fileProcessor FileProcessor, taskID string) error {
 	// Start conversation with current messages
 	currentMessages := messages
-	maxIterations := 10 // Prevent infinite loops
+	// Use configured max turns, default 50 (was hardcoded to 10)
+	cfg := config.GetConfig()
+	maxIterations := cfg.GetLLMConfig().MaxTurns
+	if maxIterations <= 0 {
+		maxIterations = 50
+	}
 
 	for iteration := 0; iteration < maxIterations; iteration++ {
 		// Check for cancellation at start of each iteration

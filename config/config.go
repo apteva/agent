@@ -13,6 +13,7 @@ type LLMConfig struct {
 	Provider      string               `json:"provider"`
 	Model         string               `json:"model"`
 	MaxTokens     int                  `json:"max_tokens"`
+	MaxTurns      int                  `json:"max_turns,omitempty"`    // Max agentic loop iterations (default 50, was 10)
 	Temperature   *float64             `json:"temperature,omitempty"`
 	SystemPrompt  string               `json:"system_prompt,omitempty"`
 	Tools         []string             `json:"tools,omitempty"`
@@ -225,9 +226,8 @@ type OperatorConfig struct {
 	TestMode          *bool    `json:"test_mode,omitempty"`   // Use test mode (nil = use global test_mode)
 	DisplayWidth      int      `json:"display_width"`         // 1024
 	DisplayHeight     int      `json:"display_height"`        // 768
-	AllowedDomains    []string `json:"allowed_domains,omitempty"`
-	BlockedDomains    []string `json:"blocked_domains,omitempty"`
-	MaxActionsPerTurn int      `json:"max_actions_per_turn"`  // 5
+	AllowedDomains []string `json:"allowed_domains,omitempty"`
+	BlockedDomains []string `json:"blocked_domains,omitempty"`
 
 	// Provider-specific configs (only the active provider's config is used)
 	Browserbase *BrowserbaseProviderConfig `json:"browserbase,omitempty"`
@@ -426,6 +426,7 @@ func (c *Config) loadDefaults() {
 			Provider:     "anthropic",
 			Model:        "claude-sonnet-4-5",
 			MaxTokens:    4000,
+			MaxTurns:     50,
 			Temperature:  &temp,
 			SystemPrompt: "You are a helpful AI assistant. Be concise and accurate in your responses.",
 			Tools:        []string{},
@@ -505,9 +506,8 @@ func (c *Config) loadDefaults() {
 			TestMode:          nil, // nil = use global test_mode
 			DisplayWidth:      1024,
 			DisplayHeight:     768,
-			AllowedDomains:    []string{},
-			BlockedDomains:    []string{},
-			MaxActionsPerTurn: 5,
+			AllowedDomains: []string{},
+			BlockedDomains: []string{},
 		},
 		Context: &ContextConfig{
 			MaxMessages: 30, // Keep last 30 messages by default

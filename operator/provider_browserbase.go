@@ -32,6 +32,8 @@ func (p *BrowserbaseProvider) Name() string { return "browserbase" }
 func (p *BrowserbaseProvider) CreateSession(ctx context.Context, opts SessionOptions) (*BrowserSession, error) {
 	body := map[string]interface{}{
 		"projectId": p.ProjectID,
+		"keepAlive": true,
+		"timeout":   1800, // 30 minutes — prevents premature session expiry during agent thinking
 	}
 
 	// Add browser settings if viewport specified

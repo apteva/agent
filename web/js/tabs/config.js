@@ -305,7 +305,6 @@ async function loadConfig() {
         const op = currentConfig.operator || {};
         document.getElementById('operatorBrowserProvider').value = op.browser_provider || 'browserengine';
         document.getElementById('operatorBrowserUrl').value = op.virtual_browser || '';
-        document.getElementById('operatorMaxActions').value = op.max_actions_per_turn || '';
         document.getElementById('operatorDisplayWidth').value = op.display_width || '';
         document.getElementById('operatorDisplayHeight').value = op.display_height || '';
         document.getElementById('operatorAllowedDomains').value = (op.allowed_domains || []).join(', ');
@@ -574,7 +573,6 @@ async function saveFeatureConfig(feature) {
                 enabled: document.getElementById('toggleOperator').checked,
                 browser_provider: browserProvider,
                 virtual_browser: document.getElementById('operatorBrowserUrl').value || undefined,
-                max_actions_per_turn: parseInt(document.getElementById('operatorMaxActions').value) || undefined,
                 display_width: parseInt(document.getElementById('operatorDisplayWidth').value) || undefined,
                 display_height: parseInt(document.getElementById('operatorDisplayHeight').value) || undefined,
                 allowed_domains: allowedDomains.length > 0 ? allowedDomains : undefined,

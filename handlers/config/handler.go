@@ -629,9 +629,6 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			if displayHeight, ok := operatorConfig["display_height"].(float64); ok {
 				currentConfig.Operator.DisplayHeight = int(displayHeight)
 			}
-			if maxActionsPerTurn, ok := operatorConfig["max_actions_per_turn"].(float64); ok {
-				currentConfig.Operator.MaxActionsPerTurn = int(maxActionsPerTurn)
-			}
 			if browserProvider, ok := operatorConfig["browser_provider"].(string); ok {
 				if currentConfig.Operator.BrowserProvider != browserProvider {
 					operatorConfigChanged = true
