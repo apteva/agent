@@ -214,18 +214,24 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 					// Convert to OpenAI tool role format
 					for _, block := range blocks {
 						if block.Type == "tool_result" {
-							var resultText string
-							switch c := block.Content.(type) {
-							case string:
-								resultText = c
-							default:
-								contentJSON, _ := json.Marshal(block.Content)
-								resultText = string(contentJSON)
+							// Check if content has image blocks (from browser/computer tool screenshots)
+							var content interface{}
+							if contentBlocks, ok := block.Content.([]interface{}); ok && hasImageBlocks(contentBlocks) {
+								// Convert to OpenAI multimodal content parts so vision models can see screenshots
+								content = convertToOpenAIMultimodal(contentBlocks)
+							} else {
+								switch c := block.Content.(type) {
+								case string:
+									content = c
+								default:
+									contentJSON, _ := json.Marshal(block.Content)
+									content = string(contentJSON)
+								}
 							}
 
 							openaiMessages = append(openaiMessages, OpenAIMessage{
 								Role:       "tool",
-								Content:    resultText,
+								Content:    content,
 								ToolCallID: block.ToolUseID,
 							})
 						}
@@ -369,4 +375,52 @@ func (p *OpenAICompatibleProvider) StreamChat(w http.ResponseWriter, message str
 	}
 
 	return nil
+}
+
+// hasImageBlocks checks if content blocks contain any image blocks (e.g., from browser screenshots)
+func hasImageBlocks(blocks []interface{}) bool {
+	for _, block := range blocks {
+		if blockMap, ok := block.(map[string]interface{}); ok {
+			if blockMap["type"] == "image" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// convertToOpenAIMultimodal converts Anthropic-style content blocks (with images) to OpenAI multimodal format.
+// This allows vision models to actually see browser screenshots in tool results.
+func convertToOpenAIMultimodal(blocks []interface{}) []interface{} {
+	var parts []interface{}
+	for _, block := range blocks {
+		blockMap, ok := block.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		switch blockMap["type"] {
+		case "text":
+			if text, ok := blockMap["text"].(string); ok {
+				parts = append(parts, map[string]interface{}{
+					"type": "text",
+					"text": text,
+				})
+			}
+		case "image":
+			if source, ok := blockMap["source"].(map[string]interface{}); ok {
+				mediaType, _ := source["media_type"].(string)
+				data, _ := source["data"].(string)
+				if mediaType != "" && data != "" {
+					dataURL := fmt.Sprintf("data:%s;base64,%s", mediaType, data)
+					parts = append(parts, map[string]interface{}{
+						"type": "image_url",
+						"image_url": map[string]interface{}{
+							"url": dataURL,
+						},
+					})
+				}
+			}
+		}
+	}
+	return parts
 }

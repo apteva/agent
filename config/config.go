@@ -220,13 +220,36 @@ type MemoryConfig struct {
 
 type OperatorConfig struct {
 	Enabled           bool     `json:"enabled"`
-	VirtualBrowser    string   `json:"virtual_browser"`       // Virtual browser service URL (e.g., http://localhost:8098)
+	BrowserProvider   string   `json:"browser_provider"`      // "browserengine" (default), "browserbase", "steel", "chrome"
+	VirtualBrowser    string   `json:"virtual_browser"`       // BrowserEngine service URL (e.g., http://localhost:8098)
 	TestMode          *bool    `json:"test_mode,omitempty"`   // Use test mode (nil = use global test_mode)
 	DisplayWidth      int      `json:"display_width"`         // 1024
 	DisplayHeight     int      `json:"display_height"`        // 768
 	AllowedDomains    []string `json:"allowed_domains,omitempty"`
 	BlockedDomains    []string `json:"blocked_domains,omitempty"`
 	MaxActionsPerTurn int      `json:"max_actions_per_turn"`  // 5
+
+	// Provider-specific configs (only the active provider's config is used)
+	Browserbase *BrowserbaseProviderConfig `json:"browserbase,omitempty"`
+	Steel       *SteelProviderConfig       `json:"steel,omitempty"`
+	Chrome      *ChromeProviderConfig      `json:"chrome,omitempty"`
+}
+
+// BrowserbaseProviderConfig holds Browserbase connection settings
+type BrowserbaseProviderConfig struct {
+	APIKey    string `json:"api_key"`
+	ProjectID string `json:"project_id"`
+}
+
+// SteelProviderConfig holds Steel.dev connection settings
+type SteelProviderConfig struct {
+	APIKey  string `json:"api_key"`
+	BaseURL string `json:"base_url"` // Default: "https://api.steel.dev"
+}
+
+// ChromeProviderConfig holds raw Chrome CDP connection settings
+type ChromeProviderConfig struct {
+	DebugURL string `json:"debug_url"` // e.g., "ws://localhost:9222" or "http://localhost:9222"
 }
 
 type ContextConfig struct {
@@ -477,6 +500,7 @@ func (c *Config) loadDefaults() {
 		},
 		Operator: &OperatorConfig{
 			Enabled:           false, // Disabled by default, enable via config
+			BrowserProvider:   "browserengine",
 			VirtualBrowser:    "http://localhost:8098",
 			TestMode:          nil, // nil = use global test_mode
 			DisplayWidth:      1024,

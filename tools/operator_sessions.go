@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/apteva/agent/config"
@@ -91,12 +92,22 @@ func CreateOperatorSession(url, name, sessionID string) map[string]interface{} {
 		"message":    fmt.Sprintf("Operator session created for %s. Use computer tools to interact.", url),
 	}
 
-	// Add stream/view URLs if available from session data
+	// Add stream/view URLs if available from session data.
+	// Only prepend VirtualBrowser base URL for relative paths (BrowserEngine).
+	// Cloud providers (Steel, Browserbase) return full absolute URLs.
 	if streamURL, ok := sessionData["stream_url"].(string); ok {
-		response["stream_url"] = fmt.Sprintf("%s%s", operatorConfig.VirtualBrowser, streamURL)
+		if strings.HasPrefix(streamURL, "http://") || strings.HasPrefix(streamURL, "https://") {
+			response["stream_url"] = streamURL
+		} else {
+			response["stream_url"] = fmt.Sprintf("%s%s", operatorConfig.VirtualBrowser, streamURL)
+		}
 	}
 	if viewURL, ok := sessionData["view_url"].(string); ok {
-		response["view_url"] = fmt.Sprintf("%s%s", operatorConfig.VirtualBrowser, viewURL)
+		if strings.HasPrefix(viewURL, "http://") || strings.HasPrefix(viewURL, "https://") {
+			response["view_url"] = viewURL
+		} else {
+			response["view_url"] = fmt.Sprintf("%s%s", operatorConfig.VirtualBrowser, viewURL)
+		}
 	}
 	if title, ok := sessionData["title"].(string); ok {
 		response["title"] = title

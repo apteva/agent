@@ -148,6 +148,22 @@ func GetProviders() []ProviderInfo {
 			},
 		},
 		{
+			ID:   "mistral",
+			Name: "Mistral AI",
+			Models: []ProviderModel{
+				{Value: "mistral-large-3-25-12", Label: "Mistral Large 3 (Flagship, Open-Weight)", Recommended: true},
+				{Value: "mistral-medium-3-1-25-08", Label: "Mistral Medium 3.1 (Multimodal)"},
+				{Value: "mistral-small-3-2-25-06", Label: "Mistral Small 3.2 (Fast)"},
+				{Value: "magistral-medium-2509", Label: "Magistral Medium (Reasoning, 40K)"},
+				{Value: "magistral-small-2509", Label: "Magistral Small (Reasoning, 40K)"},
+				{Value: "devstral-2-25-12", Label: "Devstral 2 (Code Agents)"},
+				{Value: "codestral-2508", Label: "Codestral (Code Completion)"},
+				{Value: "ministral-3-14b-25-12", Label: "Ministral 3 14B (Open-Weight)"},
+				{Value: "ministral-3-8b-25-12", Label: "Ministral 3 8B (Open-Weight, Fast)"},
+				{Value: "ministral-3-3b-25-12", Label: "Ministral 3 3B (Open-Weight, Edge)"},
+			},
+		},
+		{
 			ID:   "together",
 			Name: "Together AI",
 			Models: []ProviderModel{

@@ -30,13 +30,17 @@ func NewContextManager(maxMessages, maxTokens, keepImages int) *ContextManager {
 func (cm *ContextManager) TruncateMessages(messages []Message) []Message {
 	originalCount := len(messages)
 
-	// Step 0a: ALWAYS strip base64 images from ALL tool_result content blocks.
-	// Tool_result images are redundant in history — the text block already has
-	// file_id/URL references. These images can be 1-2MB and inflate token estimates
-	// causing important messages to be truncated away.
-	toolResultImageCount := stripImagesFromAllToolResults(messages)
+	// Step 0a: Strip images from OLD tool_result content blocks, keeping the most
+	// recent ones. For operator/computer-use, screenshots in tool_results are the
+	// primary way the model sees the screen — stripping them all makes the model blind.
+	// keepImages controls how many recent messages with images are preserved (default: keep last 2).
+	keep := cm.keepImages
+	if keep <= 0 {
+		keep = 2 // Always keep at least the last 2 messages with images
+	}
+	toolResultImageCount := stripOldToolResultImages(messages, keep)
 	if toolResultImageCount > 0 {
-		log.Printf("🖼️  Context: Stripped %d images from tool_result content (all messages)", toolResultImageCount)
+		log.Printf("🖼️  Context: Stripped %d images from old tool_result content (keeping last %d with images)", toolResultImageCount, keep)
 	}
 
 	// Step 0b: Strip top-level images from old messages (respects keepImages threshold)
@@ -345,9 +349,35 @@ func (cm *ContextManager) extractToolUseIDs(msg *Message) []string {
 // stripImagesFromAllToolResults strips base64 images from tool_result content in ALL messages.
 // Tool_result images are always redundant in history because the text block has the file_id/URL.
 // This must run before token estimation to prevent 1-2MB images from inflating token counts.
-func stripImagesFromAllToolResults(messages []Message) int {
+// stripOldToolResultImages strips images from tool_result blocks in older messages,
+// keeping images in the last `keep` messages that contain tool_result images.
+// This preserves recent screenshots for operator/computer-use while saving tokens.
+func stripOldToolResultImages(messages []Message, keep int) int {
+	// First pass: find which messages have tool_result images (from the end)
+	messagesWithImages := []int{}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messageHasToolResultImages(&messages[i]) {
+			messagesWithImages = append(messagesWithImages, i)
+		}
+	}
+
+	// If we have fewer messages with images than the keep threshold, nothing to strip
+	if len(messagesWithImages) <= keep {
+		return 0
+	}
+
+	// Build set of message indices to preserve (the most recent `keep`)
+	preserveSet := make(map[int]bool)
+	for i := 0; i < keep && i < len(messagesWithImages); i++ {
+		preserveSet[messagesWithImages[i]] = true
+	}
+
+	// Second pass: strip images from messages NOT in the preserve set
 	strippedCount := 0
 	for i := range messages {
+		if preserveSet[i] {
+			continue
+		}
 		if blocks, ok := messages[i].Content.([]ContentBlock); ok {
 			for j := range blocks {
 				if blocks[j].Type == "tool_result" {
@@ -370,6 +400,53 @@ func stripImagesFromAllToolResults(messages []Message) int {
 		}
 	}
 	return strippedCount
+}
+
+// messageHasToolResultImages checks if a message contains tool_result blocks with images
+func messageHasToolResultImages(msg *Message) bool {
+	if blocks, ok := msg.Content.([]ContentBlock); ok {
+		for _, block := range blocks {
+			if block.Type == "tool_result" {
+				if hasImagesInContent(block.Content) {
+					return true
+				}
+			}
+		}
+	} else if rawBlocks, ok := msg.Content.([]interface{}); ok {
+		for _, block := range rawBlocks {
+			if blockMap, ok := block.(map[string]interface{}); ok {
+				if blockType, _ := blockMap["type"].(string); blockType == "tool_result" {
+					if content, ok := blockMap["content"]; ok {
+						if hasImagesInContent(content) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// hasImagesInContent checks if a tool_result content field contains image blocks
+func hasImagesInContent(content interface{}) bool {
+	switch c := content.(type) {
+	case []interface{}:
+		for _, item := range c {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if itemType, _ := itemMap["type"].(string); itemType == "image" {
+					return true
+				}
+			}
+		}
+	case []ContentBlock:
+		for _, cb := range c {
+			if cb.Type == "image" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (cm *ContextManager) stripOldImages(messages []Message) int {

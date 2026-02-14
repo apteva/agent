@@ -301,7 +301,7 @@ func init() {
 	globalRegistry.RegisterTool(&WaitToolWrapper{})
 	globalRegistry.RegisterTool(&GenerateTestImageTool{})
 	globalRegistry.RegisterTool(&AnalyzeImageURLTool{})
-	globalRegistry.RegisterTool(&BrowserTool{})
+	// BrowserTool is registered dynamically via RegisterBrowserTool() when operator mode is enabled
 	globalRegistry.RegisterTool(&DocumentSearchTool{})
 }
 

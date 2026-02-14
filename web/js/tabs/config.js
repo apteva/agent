@@ -4,6 +4,15 @@ let currentConfig = null;
 let providersData = null;
 let embeddingProvidersData = null;
 
+// Show/hide browser provider-specific settings
+function updateBrowserProviderUI() {
+    const provider = document.getElementById('operatorBrowserProvider').value;
+    document.getElementById('providerBrowserEngineSettings').classList.toggle('hidden', provider !== 'browserengine');
+    document.getElementById('providerBrowserbaseSettings').classList.toggle('hidden', provider !== 'browserbase');
+    document.getElementById('providerSteelSettings').classList.toggle('hidden', provider !== 'steel');
+    document.getElementById('providerChromeSettings').classList.toggle('hidden', provider !== 'chrome');
+}
+
 // Load available providers and models from API
 async function loadProviders() {
     try {
@@ -294,12 +303,22 @@ async function loadConfig() {
 
         // Load Operator settings
         const op = currentConfig.operator || {};
+        document.getElementById('operatorBrowserProvider').value = op.browser_provider || 'browserengine';
         document.getElementById('operatorBrowserUrl').value = op.virtual_browser || '';
         document.getElementById('operatorMaxActions').value = op.max_actions_per_turn || '';
         document.getElementById('operatorDisplayWidth').value = op.display_width || '';
         document.getElementById('operatorDisplayHeight').value = op.display_height || '';
         document.getElementById('operatorAllowedDomains').value = (op.allowed_domains || []).join(', ');
         document.getElementById('operatorBlockedDomains').value = (op.blocked_domains || []).join(', ');
+        // Load provider-specific settings
+        const bb = op.browserbase || {};
+        document.getElementById('operatorBrowserbaseApiKey').value = bb.api_key || '';
+        document.getElementById('operatorBrowserbaseProjectId').value = bb.project_id || '';
+        const steel = op.steel || {};
+        document.getElementById('operatorSteelApiKey').value = steel.api_key || '';
+        document.getElementById('operatorSteelBaseUrl').value = steel.base_url || '';
+        document.getElementById('operatorChromeDebugUrl').value = (op.chrome || {}).debug_url || '';
+        updateBrowserProviderUI();
 
         // Load Agents settings
         const agents = currentConfig.agents || {};
@@ -549,18 +568,34 @@ async function saveFeatureConfig(feature) {
                 .split(',')
                 .map(d => d.trim())
                 .filter(d => d);
-            updates = {
-                operator: {
-                    ...currentConfig?.operator,
-                    enabled: document.getElementById('toggleOperator').checked,
-                    virtual_browser: document.getElementById('operatorBrowserUrl').value || undefined,
-                    max_actions_per_turn: parseInt(document.getElementById('operatorMaxActions').value) || undefined,
-                    display_width: parseInt(document.getElementById('operatorDisplayWidth').value) || undefined,
-                    display_height: parseInt(document.getElementById('operatorDisplayHeight').value) || undefined,
-                    allowed_domains: allowedDomains.length > 0 ? allowedDomains : undefined,
-                    blocked_domains: blockedDomains.length > 0 ? blockedDomains : undefined
-                }
+            const browserProvider = document.getElementById('operatorBrowserProvider').value;
+            const operatorUpdate = {
+                ...currentConfig?.operator,
+                enabled: document.getElementById('toggleOperator').checked,
+                browser_provider: browserProvider,
+                virtual_browser: document.getElementById('operatorBrowserUrl').value || undefined,
+                max_actions_per_turn: parseInt(document.getElementById('operatorMaxActions').value) || undefined,
+                display_width: parseInt(document.getElementById('operatorDisplayWidth').value) || undefined,
+                display_height: parseInt(document.getElementById('operatorDisplayHeight').value) || undefined,
+                allowed_domains: allowedDomains.length > 0 ? allowedDomains : undefined,
+                blocked_domains: blockedDomains.length > 0 ? blockedDomains : undefined
             };
+            // Include provider-specific configs
+            const bbApiKey = document.getElementById('operatorBrowserbaseApiKey').value;
+            const bbProjectId = document.getElementById('operatorBrowserbaseProjectId').value;
+            if (bbApiKey) {
+                operatorUpdate.browserbase = { api_key: bbApiKey, project_id: bbProjectId || undefined };
+            }
+            const steelApiKey = document.getElementById('operatorSteelApiKey').value;
+            const steelBaseUrl = document.getElementById('operatorSteelBaseUrl').value;
+            if (steelApiKey) {
+                operatorUpdate.steel = { api_key: steelApiKey, base_url: steelBaseUrl || undefined };
+            }
+            const chromeDebugUrl = document.getElementById('operatorChromeDebugUrl').value;
+            if (chromeDebugUrl) {
+                operatorUpdate.chrome = { debug_url: chromeDebugUrl };
+            }
+            updates = { operator: operatorUpdate };
             break;
 
         case 'agents':

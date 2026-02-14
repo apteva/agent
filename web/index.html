@@ -1826,12 +1826,54 @@
                             <div class="p-5 hidden" id="operatorSettings">
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Virtual Browser URL</label>
-                                        <input type="text" id="operatorBrowserUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="http://localhost:8098">
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Browser Provider</label>
+                                        <select id="operatorBrowserProvider" onchange="updateBrowserProviderUI()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <option value="browserengine">BrowserEngine</option>
+                                            <option value="browserbase">Browserbase</option>
+                                            <option value="steel">Steel.dev</option>
+                                            <option value="chrome">Chrome DevTools</option>
+                                        </select>
+                                        <p class="text-xs text-slate-500 mt-1">BrowserEngine: REST proxy. Others: direct CDP WebSocket.</p>
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Max Actions/Turn</label>
                                         <input type="number" id="operatorMaxActions" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="5">
+                                    </div>
+                                </div>
+                                <!-- Self provider settings -->
+                                <div class="mt-4" id="providerBrowserEngineSettings">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Virtual Browser URL</label>
+                                        <input type="text" id="operatorBrowserUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="http://localhost:8098">
+                                    </div>
+                                </div>
+                                <!-- Browserbase provider settings -->
+                                <div class="grid grid-cols-2 gap-4 mt-4 hidden" id="providerBrowserbaseSettings">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Browserbase API Key</label>
+                                        <input type="password" id="operatorBrowserbaseApiKey" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="bb_live_...">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Browserbase Project ID</label>
+                                        <input type="text" id="operatorBrowserbaseProjectId" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="Optional">
+                                    </div>
+                                </div>
+                                <!-- Steel provider settings -->
+                                <div class="grid grid-cols-2 gap-4 mt-4 hidden" id="providerSteelSettings">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Steel API Key</label>
+                                        <input type="password" id="operatorSteelApiKey" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="steel_...">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Steel Base URL</label>
+                                        <input type="text" id="operatorSteelBaseUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="https://api.steel.dev">
+                                    </div>
+                                </div>
+                                <!-- Chrome provider settings -->
+                                <div class="mt-4 hidden" id="providerChromeSettings">
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Chrome Debug URL</label>
+                                        <input type="text" id="operatorChromeDebugUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="http://localhost:9222">
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4 mt-4">

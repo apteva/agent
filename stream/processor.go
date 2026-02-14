@@ -422,8 +422,8 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 				toolInput = map[string]interface{}{}
 			}
 
-			// DEBUG: Log computer tool result being added to conversation
-			if result.ToolName == "computer" {
+			// DEBUG: Log computer/browser tool result being added to conversation
+			if result.ToolName == "computer" || result.ToolName == "browser" {
 				inputJSON, _ := json.Marshal(toolInput)
 				log.Printf("🖥️  COMPUTER TOOL - Adding to next turn: toolID=%s, input=%s", result.ToolID, string(inputJSON))
 			}
@@ -826,10 +826,10 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					toolThoughtSignatures[event.ToolID] = event.ThoughtSignature
 				}
 
-				// DEBUG: Log computer tool details
-				if event.ToolName == "computer" {
+				// DEBUG: Log computer/browser tool details
+				if event.ToolName == "computer" || event.ToolName == "browser" {
 					inputJSON, _ := json.Marshal(event.ToolInput)
-					log.Printf("🖥️  COMPUTER TOOL - Received from LLM: id=%s, input=%s", event.ToolID, string(inputJSON))
+					log.Printf("🖥️  COMPUTER TOOL - Received from LLM: tool=%s, id=%s, input=%s", event.ToolName, event.ToolID, string(inputJSON))
 				}
 
 				// Save the assistant message with text content if we have any
@@ -861,7 +861,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				}
 
 				// DEBUG: Log what we're saving to database
-				if event.ToolName == "computer" {
+				if event.ToolName == "computer" || event.ToolName == "browser" {
 					blockJSON, _ := json.Marshal(toolUseBlock)
 					log.Printf("🖥️  COMPUTER TOOL - Saving to DB: %s", string(blockJSON))
 				}
@@ -1054,10 +1054,10 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						event.ToolID, escapeJSON(sseContent), time.Now().UnixMilli())
 					flusher.Flush()
 
-				} else if event.ToolName == "computer" {
-					// DEBUG: Log computer tool execution
+				} else if event.ToolName == "computer" || event.ToolName == "browser" {
+					// DEBUG: Log computer/browser tool execution
 					inputJSON, _ := json.Marshal(event.ToolInput)
-					log.Printf("🖥️  COMPUTER TOOL - Executing: input=%s", string(inputJSON))
+					log.Printf("🖥️  COMPUTER TOOL - Executing: tool=%s, input=%s", event.ToolName, string(inputJSON))
 
 					// Handle computer tool locally using operator module
 					result, err := operator.HandleComputerToolWithContext(ctx, event.ToolInput)
@@ -1700,7 +1700,7 @@ func isCustomTool(toolName string) bool {
 		"web_search": true,
 		"web_fetch":  true,
 		"computer":   true, // Computer tool handled locally but is builtin
-		// Add other built-in tools as they become available
+		"browser":    true, // Browser tool handled locally like computer (for non-Claude providers)
 	}
 	return !builtinTools[toolName]
 }

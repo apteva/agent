@@ -20,6 +20,7 @@ var SmallModels = map[string]string{
 	"novita":     "meta-llama/llama-3.1-8b-instruct",                          // 8B instruct
 	"moonshot":   "moonshot-v1-8k",                                            // Smallest context, fastest
 	"zai":        "llama-3.1-8b-instruct",                                     // 8B instruct
+	"mistral":    "ministral-3-8b-25-12",                                      // Open-weight, fast 8B
 }
 
 // EmbeddingModels maps providers to their default embedding models
@@ -73,6 +74,7 @@ var ProviderAPIKeyEnvVars = map[string]string{
 	"xai":         "XAI_API_KEY",
 	"moonshot":    "MOONSHOT_API_KEY",
 	"together":    "TOGETHER_API_KEY",
+	"mistral":     "MISTRAL_API_KEY",
 }
 
 // CompletionEndpoints maps providers to their chat completion API endpoints
@@ -89,6 +91,7 @@ var CompletionEndpoints = map[string]string{
 	"novita":     "https://api.novita.ai/v3/openai/chat/completions",
 	"moonshot":   "https://api.moonshot.cn/v1/chat/completions",
 	"together":   "https://api.together.xyz/v1/chat/completions",
+	"mistral":    "https://api.mistral.ai/v1/chat/completions",
 }
 
 // GetSmallModel returns the small/fast model for a given provider
@@ -190,7 +193,7 @@ func GetAvailableEmbeddingProvider(configuredProvider, mainProvider string) stri
 // Uses the same provider as the main LLM when possible
 func GetAvailableDecisionProvider(mainProvider string) string {
 	// Providers that support chat completions for decision making
-	decisionCapable := []string{"anthropic", "openai", "gemini", "venice", "openrouter", "fireworks", "groq", "xai", "zai", "novita", "moonshot", "together"}
+	decisionCapable := []string{"anthropic", "openai", "gemini", "venice", "openrouter", "fireworks", "groq", "xai", "zai", "novita", "moonshot", "together", "mistral"}
 
 	// First try the main provider
 	for _, p := range decisionCapable {

@@ -21,6 +21,7 @@ var memoryCallback func(enabled bool) error
 var filesystemCallback func(enabled bool) error
 var telemetryCallback func(enabled bool) error
 var tasksCallback func(enabled bool) error
+var operatorCallback func() error
 
 // SetDatabase sets the global database for scheduler operations
 func SetDatabase(db *sql.DB) {
@@ -55,6 +56,11 @@ func SetTelemetryCallback(callback func(enabled bool) error) {
 // SetTasksCallback sets the callback function for tasks updates
 func SetTasksCallback(callback func(enabled bool) error) {
 	tasksCallback = callback
+}
+
+// SetOperatorCallback sets the callback function for operator/browser provider updates
+func SetOperatorCallback(callback func() error) {
+	operatorCallback = callback
 }
 
 // HandleConfig handles GET and POST requests for agent configuration
@@ -579,11 +585,15 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Operator config
+		operatorConfigChanged := false
 		if operatorConfig, ok := updateConfig["operator"].(map[string]interface{}); ok {
 			if currentConfig.Operator == nil {
 				currentConfig.Operator = &appConfig.OperatorConfig{}
 			}
 			if enabled, ok := operatorConfig["enabled"].(bool); ok {
+				if currentConfig.Operator.Enabled != enabled {
+					operatorConfigChanged = true
+				}
 				currentConfig.Operator.Enabled = enabled
 				// When operator is disabled, clear only computer builtin tools and operator tools
 				if !enabled {
@@ -602,6 +612,7 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 						"create_operator_session": true,
 						"list_operator_sessions":  true,
 						"close_operator_session":  true,
+						"browser":                 true,
 					}
 					var filteredTools []string
 					for _, tool := range currentConfig.LLM.Tools {
@@ -620,6 +631,54 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			if maxActionsPerTurn, ok := operatorConfig["max_actions_per_turn"].(float64); ok {
 				currentConfig.Operator.MaxActionsPerTurn = int(maxActionsPerTurn)
+			}
+			if browserProvider, ok := operatorConfig["browser_provider"].(string); ok {
+				if currentConfig.Operator.BrowserProvider != browserProvider {
+					operatorConfigChanged = true
+				}
+				currentConfig.Operator.BrowserProvider = browserProvider
+			}
+			if virtualBrowser, ok := operatorConfig["virtual_browser"].(string); ok {
+				if currentConfig.Operator.VirtualBrowser != virtualBrowser {
+					operatorConfigChanged = true
+				}
+				currentConfig.Operator.VirtualBrowser = virtualBrowser
+			}
+			// Browserbase provider config
+			if bbConfig, ok := operatorConfig["browserbase"].(map[string]interface{}); ok {
+				if currentConfig.Operator.Browserbase == nil {
+					currentConfig.Operator.Browserbase = &appConfig.BrowserbaseProviderConfig{}
+				}
+				if apiKey, ok := bbConfig["api_key"].(string); ok {
+					currentConfig.Operator.Browserbase.APIKey = apiKey
+					operatorConfigChanged = true
+				}
+				if projectID, ok := bbConfig["project_id"].(string); ok {
+					currentConfig.Operator.Browserbase.ProjectID = projectID
+				}
+			}
+			// Steel provider config
+			if steelConfig, ok := operatorConfig["steel"].(map[string]interface{}); ok {
+				if currentConfig.Operator.Steel == nil {
+					currentConfig.Operator.Steel = &appConfig.SteelProviderConfig{}
+				}
+				if apiKey, ok := steelConfig["api_key"].(string); ok {
+					currentConfig.Operator.Steel.APIKey = apiKey
+					operatorConfigChanged = true
+				}
+				if baseURL, ok := steelConfig["base_url"].(string); ok {
+					currentConfig.Operator.Steel.BaseURL = baseURL
+				}
+			}
+			// Chrome provider config
+			if chromeConfig, ok := operatorConfig["chrome"].(map[string]interface{}); ok {
+				if currentConfig.Operator.Chrome == nil {
+					currentConfig.Operator.Chrome = &appConfig.ChromeProviderConfig{}
+				}
+				if debugURL, ok := chromeConfig["debug_url"].(string); ok {
+					currentConfig.Operator.Chrome.DebugURL = debugURL
+					operatorConfigChanged = true
+				}
 			}
 		}
 
@@ -894,6 +953,13 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 		if telemetryConfigChanged && telemetryCallback != nil {
 			if err := telemetryCallback(currentConfig.Telemetry.Enabled); err != nil {
 				log.Printf("⚠️  Failed to update telemetry: %v", err)
+			}
+		}
+
+		// Re-initialize operator/browser provider if config changed
+		if operatorConfigChanged && operatorCallback != nil {
+			if err := operatorCallback(); err != nil {
+				log.Printf("⚠️  Failed to re-initialize operator: %v", err)
 			}
 		}
 

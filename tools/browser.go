@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/apteva/agent/config"
 	"github.com/apteva/agent/operator"
 )
 
@@ -20,7 +21,18 @@ func (t *BrowserTool) DisplayName() string {
 }
 
 func (t *BrowserTool) Description() string {
-	return `Control a web browser to interact with web pages. Use this tool to automate browser actions.
+	width, height := 1024, 768
+	if cfg := config.GetConfig(); cfg != nil {
+		if op := cfg.Get().Operator; op != nil {
+			if op.DisplayWidth > 0 {
+				width = op.DisplayWidth
+			}
+			if op.DisplayHeight > 0 {
+				height = op.DisplayHeight
+			}
+		}
+	}
+	return fmt.Sprintf(`Control a web browser to interact with web pages. The viewport is %dx%d pixels.
 
 WORKFLOW:
 1. First use create_operator_session to open a browser with a URL
@@ -30,7 +42,7 @@ WORKFLOW:
 5. Take another screenshot to verify your action worked
 6. Repeat until task is complete
 
-IMPORTANT: Coordinates (x, y) are in pixels from the top-left corner of the viewport.`
+IMPORTANT: Coordinates (x, y) are in pixels from the top-left corner of the %dx%d viewport.`, width, height, width, height)
 }
 
 func (t *BrowserTool) InputSchema() map[string]interface{} {
@@ -105,8 +117,8 @@ func (t *BrowserTool) Execute(params map[string]interface{}) (interface{}, error
 	return result, nil
 }
 
-// RegisterBrowserTool registers the browser tool in the global registry
-// Called from registry.go init() to ensure proper initialization order
+// RegisterBrowserTool registers the browser tool in the global registry.
+// Called from main.go when operator mode is enabled and provider is not Anthropic.
 func RegisterBrowserTool() {
 	registry := GetGlobalRegistry()
 	registry.RegisterTool(&BrowserTool{})

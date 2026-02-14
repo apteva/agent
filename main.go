@@ -315,6 +315,7 @@ var (
 	veniceProvider      *providers.VeniceProvider
 	moonshotProvider    *providers.MoonshotProvider
 	togetherProvider    *providers.TogetherProvider
+	mistralProvider     *providers.MistralProvider
 	db                  *sql.DB
 	messageSaver        threads.MessageSaver
 	memoryManager       *memory.MemoryManager
@@ -2249,6 +2250,14 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		processor = openaiProc
 		model = &llmConfig.Model
+	case "mistral":
+		if !mistralProvider.IsConfigured() {
+			http.Error(w, "MISTRAL_API_KEY not set", http.StatusInternalServerError)
+			return
+		}
+		provider = mistralProvider
+		processor = &stream.OpenAIProcessor{} // Mistral uses OpenAI-compatible format
+		model = &llmConfig.Model
 	default:
 		http.Error(w, "Unsupported provider: "+llmConfig.Provider, http.StatusBadRequest)
 		return
@@ -3555,6 +3564,7 @@ func main() {
 	veniceProvider = providers.NewVeniceProvider()
 	moonshotProvider = providers.NewMoonshotProvider()
 	togetherProvider = providers.NewTogetherProvider()
+	mistralProvider = providers.NewMistralProvider()
 	messageSaver = threads.NewDatabaseMessageSaver(db)
 
 	// Initialize request tracker for cancellation support
@@ -3580,6 +3590,10 @@ func main() {
 	// Register operator session tools (only if operator is enabled)
 	if agentConfig.Operator != nil && agentConfig.Operator.Enabled {
 		tools.RegisterOperatorSessionTools()
+		// Register browser tool for non-Anthropic providers (Anthropic uses native computer tool)
+		if agentConfig.LLM.Provider != "anthropic" {
+			tools.RegisterBrowserTool()
+		}
 		log.Printf("🖥️ Operator tools enabled")
 	}
 
@@ -3755,6 +3769,15 @@ func main() {
 	handlerConfig.SetFilesystemCallback(UpdateFileSystem)
 	handlerConfig.SetTelemetryCallback(UpdateTelemetry)
 	handlerConfig.SetTasksCallback(UpdateTasks)
+	handlerConfig.SetOperatorCallback(func() error {
+		cfg := config.GetConfig()
+		operatorConfig := cfg.Get().Operator
+		if operatorConfig != nil && operatorConfig.Enabled {
+			operator.InitProvider(operatorConfig)
+			log.Printf("🖥️  Browser provider re-initialized via config update")
+		}
+		return nil
+	})
 
 	mux := http.NewServeMux()
 
