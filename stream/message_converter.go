@@ -25,6 +25,11 @@ func ConvertDatabaseMessageToStreamMessageWithMetadata(role string, content inte
 			msg.ReasoningContent = reasoning
 			log.Printf("🧠 Loaded reasoning_content from metadata: %d chars", len(reasoning))
 		}
+		// Extract reasoning_details from metadata (for MiniMax M2.5)
+		if details, ok := metadata["reasoning_details"].([]interface{}); ok && len(details) > 0 {
+			msg.ReasoningDetails = details
+			log.Printf("🧠 Loaded reasoning_details from metadata: %d entries", len(details))
+		}
 	}
 
 	switch v := content.(type) {

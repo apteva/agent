@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -212,6 +213,11 @@ func (c *StdioMCPClient) nextID() int {
 
 // sendRequest sends a JSON-RPC request and waits for response
 func (c *StdioMCPClient) sendRequest(method string, params interface{}) (*JSONRPCResponse, error) {
+	return c.sendRequestWithContext(context.Background(), method, params)
+}
+
+// sendRequestWithContext sends a JSON-RPC request with context for cancellation
+func (c *StdioMCPClient) sendRequestWithContext(ctx context.Context, method string, params interface{}) (*JSONRPCResponse, error) {
 	id := c.nextID()
 
 	// Register per-request response channel
@@ -247,7 +253,7 @@ func (c *StdioMCPClient) sendRequest(method string, params interface{}) (*JSONRP
 		return nil, fmt.Errorf("failed to write request: %w", writeErr)
 	}
 
-	// Wait for response with timeout
+	// Wait for response with timeout and context cancellation
 	timeout := time.After(30 * time.Second)
 	for {
 		select {
@@ -256,6 +262,8 @@ func (c *StdioMCPClient) sendRequest(method string, params interface{}) (*JSONRP
 		case <-c.notificationChan:
 			// Drain notifications during non-streaming requests
 			continue
+		case <-ctx.Done():
+			return nil, fmt.Errorf("cancelled: %w", ctx.Err())
 		case <-timeout:
 			return nil, fmt.Errorf("timeout waiting for response")
 		case <-c.done:
@@ -404,6 +412,11 @@ func (c *StdioMCPClient) ListTools() ([]MCPToolDefinition, error) {
 
 // CallTool executes a tool on the server
 func (c *StdioMCPClient) CallTool(name string, arguments map[string]interface{}) (*ToolCallResult, error) {
+	return c.CallToolWithContext(context.Background(), name, arguments)
+}
+
+// CallToolWithContext executes a tool with context for cancellation
+func (c *StdioMCPClient) CallToolWithContext(ctx context.Context, name string, arguments map[string]interface{}) (*ToolCallResult, error) {
 	if !c.initialized {
 		log.Printf("🔌 MCP Stdio [%s]: Auto-initializing for tool call '%s'", c.name, name)
 		if err := c.Initialize(); err != nil {
@@ -419,7 +432,7 @@ func (c *StdioMCPClient) CallTool(name string, arguments map[string]interface{})
 	log.Printf("🔧 MCP Stdio [%s]: Calling tool '%s' (timeout=30s)", c.name, name)
 	startTime := time.Now()
 
-	resp, err := c.sendRequest("tools/call", params)
+	resp, err := c.sendRequestWithContext(ctx, "tools/call", params)
 	elapsed := time.Since(startTime)
 
 	if err != nil {
@@ -458,6 +471,11 @@ func (c *StdioMCPClient) CallTool(name string, arguments map[string]interface{})
 // This is like sendRequest but invokes the callback for each notification received
 // while waiting for the response.
 func (c *StdioMCPClient) sendRequestStreaming(method string, params interface{}, callback MCPNotificationCallback) (*JSONRPCResponse, error) {
+	return c.sendRequestStreamingWithContext(context.Background(), method, params, callback)
+}
+
+// sendRequestStreamingWithContext sends a streaming request with context for cancellation
+func (c *StdioMCPClient) sendRequestStreamingWithContext(ctx context.Context, method string, params interface{}, callback MCPNotificationCallback) (*JSONRPCResponse, error) {
 	id := c.nextID()
 
 	// Register per-request response channel
@@ -503,6 +521,8 @@ func (c *StdioMCPClient) sendRequestStreaming(method string, params interface{},
 				notification := ParseNotification(notif)
 				callback(notification)
 			}
+		case <-ctx.Done():
+			return nil, fmt.Errorf("cancelled: %w", ctx.Err())
 		case <-timeout:
 			return nil, fmt.Errorf("timeout waiting for response")
 		case <-c.done:
@@ -515,6 +535,11 @@ func (c *StdioMCPClient) sendRequestStreaming(method string, params interface{},
 // Progress and log notifications from the server are routed to the callback.
 // If callback is nil, behaves identically to CallTool.
 func (c *StdioMCPClient) CallToolStreaming(name string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
+	return c.CallToolStreamingWithContext(context.Background(), name, arguments, callback)
+}
+
+// CallToolStreamingWithContext executes a tool with streaming and context for cancellation
+func (c *StdioMCPClient) CallToolStreamingWithContext(ctx context.Context, name string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
 	if !c.initialized {
 		log.Printf("🔌 MCP Stdio [%s]: Auto-initializing for streaming tool call '%s'", c.name, name)
 		if err := c.Initialize(); err != nil {
@@ -524,7 +549,7 @@ func (c *StdioMCPClient) CallToolStreaming(name string, arguments map[string]int
 
 	// If no callback, fall back to non-streaming path
 	if callback == nil {
-		return c.CallTool(name, arguments)
+		return c.CallToolWithContext(ctx, name, arguments)
 	}
 
 	params := ToolCallParams{
@@ -538,7 +563,7 @@ func (c *StdioMCPClient) CallToolStreaming(name string, arguments map[string]int
 	log.Printf("🔧 MCP Stdio [%s]: Calling tool '%s' (streaming, timeout=30s)", c.name, name)
 	startTime := time.Now()
 
-	resp, err := c.sendRequestStreaming("tools/call", params, callback)
+	resp, err := c.sendRequestStreamingWithContext(ctx, "tools/call", params, callback)
 	elapsed := time.Since(startTime)
 
 	if err != nil {

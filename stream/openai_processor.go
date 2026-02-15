@@ -22,6 +22,9 @@ type OpenAIProcessor struct{
 	// Must be preserved in conversation history for multi-step tool calls
 	accumulatedReasoning string
 
+	// Accumulated reasoning_details for MiniMax M2.5 (structured reasoning preservation)
+	accumulatedReasoningDetails []interface{}
+
 	// Track if we're inside <think> tags (for Together AI K2.5 which embeds thinking in content)
 	inThinkTag       bool
 	startInThinkMode bool   // Remember initial setting for reset between turns
@@ -54,6 +57,7 @@ type OpenAIDelta struct {
 	Content          string           `json:"content,omitempty"`
 	ReasoningContent string           `json:"reasoning_content,omitempty"` // For thinking/reasoning models (Fireworks Kimi K2, etc.)
 	Reasoning        string           `json:"reasoning,omitempty"`         // For thinking/reasoning models (Together AI Kimi K2, etc.)
+	ReasoningDetails []interface{}    `json:"reasoning_details,omitempty"` // For MiniMax M2.5 structured reasoning
 	ToolCalls        []OpenAIToolCall `json:"tool_calls,omitempty"`
 }
 
@@ -206,6 +210,21 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 					Type:    "thinking",
 					Content: reasoningContent,
 				}, nil
+			} else if len(choice.Delta.ReasoningDetails) > 0 {
+				// Handle reasoning_details (MiniMax M2.5 with reasoning_split=true)
+				// Each entry is {"type": "reasoning.text", "text": "...", ...}
+				for _, detail := range choice.Delta.ReasoningDetails {
+					p.accumulatedReasoningDetails = append(p.accumulatedReasoningDetails, detail)
+					if detailMap, ok := detail.(map[string]interface{}); ok {
+						if text, ok := detailMap["text"].(string); ok && text != "" {
+							p.accumulatedReasoning += text
+							return &StreamEvent{
+								Type:    "thinking",
+								Content: text,
+							}, nil
+						}
+					}
+				}
 			} else if len(choice.Delta.ToolCalls) > 0 {
 				// Handle tool calls - OpenAI streams them incrementally
 				// Process ALL tool calls in the array (for parallel tool calls)
@@ -415,6 +434,18 @@ func (p *OpenAIProcessor) GetAccumulatedReasoning() string {
 // Called after the reasoning has been used for the next API call
 func (p *OpenAIProcessor) ClearAccumulatedReasoning() {
 	p.accumulatedReasoning = ""
+}
+
+// GetAccumulatedReasoningDetails returns the accumulated reasoning_details entries
+// This is used to preserve reasoning_details in conversation history for MiniMax M2.5
+func (p *OpenAIProcessor) GetAccumulatedReasoningDetails() []interface{} {
+	return p.accumulatedReasoningDetails
+}
+
+// ClearAccumulatedReasoningDetails clears the accumulated reasoning_details
+// Called after they have been attached to the assistant message for the next API call
+func (p *OpenAIProcessor) ClearAccumulatedReasoningDetails() {
+	p.accumulatedReasoningDetails = nil
 }
 
 // emitAllToolEvents creates tool_use events for all tracked tools

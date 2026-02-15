@@ -300,6 +300,7 @@ func init() {
 	globalRegistry.RegisterTool(&PingTool{}) // No-input tool for testing
 	globalRegistry.RegisterTool(&WaitToolWrapper{})
 	globalRegistry.RegisterTool(&GenerateTestImageTool{})
+	globalRegistry.RegisterTool(&GenerateTestPDFTool{})
 	globalRegistry.RegisterTool(&AnalyzeImageURLTool{})
 	// BrowserTool is registered dynamically via RegisterBrowserTool() when operator mode is enabled
 	globalRegistry.RegisterTool(&DocumentSearchTool{})

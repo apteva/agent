@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -242,6 +243,11 @@ func (m *ExternalServerManager) GetTool(fullName string) *ExternalMCPTool {
 
 // CallTool executes a tool on the appropriate external server
 func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]interface{}) (*ToolCallResult, error) {
+	return m.CallToolWithContext(context.Background(), fullName, arguments)
+}
+
+// CallToolWithContext executes a tool with context for cancellation support
+func (m *ExternalServerManager) CallToolWithContext(ctx context.Context, fullName string, arguments map[string]interface{}) (*ToolCallResult, error) {
 	m.mu.RLock()
 	tool, exists := m.tools[fullName]
 	if !exists {
@@ -269,7 +275,7 @@ func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]i
 		m.mu.RUnlock()
 		log.Printf("🌐 MCP ServerManager: Dispatching to HTTP client [%s] for tool '%s'", tool.ServerName, tool.Name)
 		startTime := time.Now()
-		result, err := client.CallTool(tool.Name, arguments)
+		result, err := client.CallToolWithContext(ctx, tool.Name, arguments)
 		elapsed := time.Since(startTime)
 		if err != nil {
 			log.Printf("❌ MCP ServerManager: HTTP [%s] tool '%s' FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)
@@ -284,7 +290,7 @@ func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]i
 		m.mu.RUnlock()
 		log.Printf("📟 MCP ServerManager: Dispatching to Stdio client [%s] for tool '%s'", tool.ServerName, tool.Name)
 		startTime := time.Now()
-		result, err := client.CallTool(tool.Name, arguments)
+		result, err := client.CallToolWithContext(ctx, tool.Name, arguments)
 		elapsed := time.Since(startTime)
 		if err != nil {
 			log.Printf("❌ MCP ServerManager: Stdio [%s] tool '%s' FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)
@@ -303,9 +309,14 @@ func (m *ExternalServerManager) CallTool(fullName string, arguments map[string]i
 // CallToolStreaming executes a tool on the appropriate external server with streaming notification support.
 // If callback is nil, falls back to CallTool.
 func (m *ExternalServerManager) CallToolStreaming(fullName string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
+	return m.CallToolStreamingWithContext(context.Background(), fullName, arguments, callback)
+}
+
+// CallToolStreamingWithContext executes a tool with streaming and context for cancellation
+func (m *ExternalServerManager) CallToolStreamingWithContext(ctx context.Context, fullName string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
 	// If no callback, use non-streaming path
 	if callback == nil {
-		return m.CallTool(fullName, arguments)
+		return m.CallToolWithContext(ctx, fullName, arguments)
 	}
 
 	m.mu.RLock()
@@ -330,7 +341,7 @@ func (m *ExternalServerManager) CallToolStreaming(fullName string, arguments map
 		m.mu.RUnlock()
 		log.Printf("🌐 MCP ServerManager: Dispatching streaming to HTTP client [%s] for tool '%s'", tool.ServerName, tool.Name)
 		startTime := time.Now()
-		result, err := client.CallToolStreaming(tool.Name, arguments, callback)
+		result, err := client.CallToolStreamingWithContext(ctx, tool.Name, arguments, callback)
 		elapsed := time.Since(startTime)
 		if err != nil {
 			log.Printf("❌ MCP ServerManager: HTTP [%s] tool '%s' streaming FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)
@@ -345,7 +356,7 @@ func (m *ExternalServerManager) CallToolStreaming(fullName string, arguments map
 		m.mu.RUnlock()
 		log.Printf("📟 MCP ServerManager: Dispatching streaming to Stdio client [%s] for tool '%s'", tool.ServerName, tool.Name)
 		startTime := time.Now()
-		result, err := client.CallToolStreaming(tool.Name, arguments, callback)
+		result, err := client.CallToolStreamingWithContext(ctx, tool.Name, arguments, callback)
 		elapsed := time.Since(startTime)
 		if err != nil {
 			log.Printf("❌ MCP ServerManager: Stdio [%s] tool '%s' streaming FAILED after %v: %v", tool.ServerName, tool.Name, elapsed, err)

@@ -142,7 +142,7 @@ func TestProcessMCPToolResult_NoImages(t *testing.T) {
 		"message": "Notification sent",
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -162,7 +162,7 @@ func TestProcessMCPToolResult_NoImages_StringInput(t *testing.T) {
 	// When input is a raw string (not a map), should return it as JSON-encoded string
 	result := "plain text result"
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -205,7 +205,7 @@ func TestProcessMCPToolResult_NoVision_NoFS_GeminiInlineData(t *testing.T) {
 		},
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "gemini-generate")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "gemini-generate")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -236,7 +236,7 @@ func TestProcessMCPToolResult_NoVision_NoFS_AnthropicFormat(t *testing.T) {
 		},
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -257,7 +257,7 @@ func TestProcessMCPToolResult_NoVision_NoFS_Base64Field(t *testing.T) {
 		"mimeType": "image/webp",
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -279,7 +279,7 @@ func TestProcessMCPToolResult_NoVision_NoFS_ImageDataField(t *testing.T) {
 		"height":     512,
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -299,7 +299,7 @@ func TestProcessMCPToolResult_NoVision_NoFS_ScreenshotField(t *testing.T) {
 		"screenshot": b64,
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -320,7 +320,7 @@ func TestProcessMCPToolResult_NoVision_NoFS_ImageField(t *testing.T) {
 		"media_type": "image/gif",
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -340,7 +340,7 @@ func TestProcessMCPToolResult_NoVision_NoFS_DataURL(t *testing.T) {
 		"url": "data:image/png;base64," + b64,
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, nil, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -377,7 +377,7 @@ func TestProcessMCPToolResult_Vision_NoFS_GeminiInlineData(t *testing.T) {
 		},
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, true, nil, "thread-1", "gemini-generate")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, true, false, nil, "thread-1", "gemini-generate")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs with no filesystem, got %v", fileIDs)
@@ -445,7 +445,7 @@ func TestProcessMCPToolResult_Vision_NoFS_AnthropicFormat(t *testing.T) {
 		},
 	}
 
-	content, _, fileIDs := ProcessMCPToolResult(result, true, nil, "thread-1", "test-tool")
+	content, _, fileIDs := ProcessMCPToolResult(result, true, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -480,7 +480,7 @@ func TestProcessMCPToolResult_Vision_NoFS_MultipleImages(t *testing.T) {
 		},
 	}
 
-	content, _, fileIDs := ProcessMCPToolResult(result, true, nil, "thread-1", "test-tool")
+	content, _, fileIDs := ProcessMCPToolResult(result, true, false, nil, "thread-1", "test-tool")
 
 	if len(fileIDs) != 0 {
 		t.Errorf("expected no fileIDs, got %v", fileIDs)
@@ -543,7 +543,7 @@ func TestProcessMCPToolResult_NoVision_FS_GeminiInlineData(t *testing.T) {
 		storedIDs: []string{"file-abc-123"},
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, fp, "thread-1", "gemini-generate")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, fp, "thread-1", "gemini-generate")
 
 	// Should have extracted file IDs
 	if len(fileIDs) != 1 {
@@ -584,7 +584,7 @@ func TestProcessMCPToolResult_NoVision_FS_DisabledProcessor(t *testing.T) {
 		storedIDs: []string{"file-xyz"},
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, fp, "thread-1", "test-tool")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, fp, "thread-1", "test-tool")
 
 	// Disabled processor should not produce file IDs
 	if len(fileIDs) != 0 {
@@ -629,7 +629,7 @@ func TestProcessMCPToolResult_Vision_FS_GeminiInlineData(t *testing.T) {
 		storedIDs: []string{"file-both-123"},
 	}
 
-	content, contentStr, fileIDs := ProcessMCPToolResult(result, true, fp, "thread-1", "gemini-generate")
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, true, false, fp, "thread-1", "gemini-generate")
 
 	// Should have file IDs from filesystem
 	if len(fileIDs) != 1 {
@@ -902,5 +902,258 @@ func TestStripBase64FromValue_Array(t *testing.T) {
 	second := arr[1].(map[string]interface{})
 	if second["text"] != "keep this" {
 		t.Error("second item text should be preserved")
+	}
+}
+
+// ============================================================
+// Document (PDF) detection tests
+// ============================================================
+
+func TestFindMediaInValue_PDF_SimpleFormat(t *testing.T) {
+	b64 := fakeBase64(200)
+	value := map[string]interface{}{
+		"data":     b64,
+		"mimeType": "application/pdf",
+	}
+
+	media := findMediaInValue(value)
+	if len(media) != 1 {
+		t.Fatalf("expected 1 media, got %d", len(media))
+	}
+	if media[0].Kind != "document" {
+		t.Errorf("expected kind=document, got %s", media[0].Kind)
+	}
+	if media[0].MimeType != "application/pdf" {
+		t.Errorf("expected application/pdf, got %s", media[0].MimeType)
+	}
+}
+
+func TestFindMediaInValue_PDF_AnthropicFormat(t *testing.T) {
+	b64 := fakeBase64(200)
+	value := map[string]interface{}{
+		"type": "document",
+		"source": map[string]interface{}{
+			"type":       "base64",
+			"media_type": "application/pdf",
+			"data":       b64,
+		},
+	}
+
+	media := findMediaInValue(value)
+	if len(media) != 1 {
+		t.Fatalf("expected 1 media, got %d", len(media))
+	}
+	if media[0].Kind != "document" {
+		t.Errorf("expected kind=document, got %s", media[0].Kind)
+	}
+}
+
+func TestFindMediaInValue_PDF_PdfDataField(t *testing.T) {
+	b64 := fakeBase64(200)
+	value := map[string]interface{}{
+		"pdf_data": b64,
+		"title":    "Test",
+	}
+
+	media := findMediaInValue(value)
+	if len(media) != 1 {
+		t.Fatalf("expected 1 media, got %d", len(media))
+	}
+	if media[0].Kind != "document" {
+		t.Errorf("expected kind=document, got %s", media[0].Kind)
+	}
+	if media[0].MimeType != "application/pdf" {
+		t.Errorf("expected application/pdf, got %s", media[0].MimeType)
+	}
+}
+
+func TestFindMediaInValue_PDF_DataURL(t *testing.T) {
+	b64 := fakeBase64(200)
+	value := map[string]interface{}{
+		"url": "data:application/pdf;base64," + b64,
+	}
+
+	media := findMediaInValue(value)
+	if len(media) != 1 {
+		t.Fatalf("expected 1 media, got %d", len(media))
+	}
+	if media[0].Kind != "document" {
+		t.Errorf("expected kind=document, got %s", media[0].Kind)
+	}
+}
+
+func TestFindMediaInValue_MixedImageAndPDF(t *testing.T) {
+	b64img := fakeBase64(200)
+	b64pdf := fakeBase64(300)
+	value := map[string]interface{}{
+		"files": []interface{}{
+			map[string]interface{}{"data": b64img, "mimeType": "image/png"},
+			map[string]interface{}{"data": b64pdf, "mimeType": "application/pdf"},
+		},
+	}
+
+	media := findMediaInValue(value)
+	if len(media) != 2 {
+		t.Fatalf("expected 2 media items, got %d", len(media))
+	}
+
+	var images, docs int
+	for _, m := range media {
+		if m.Kind == "image" {
+			images++
+		}
+		if m.Kind == "document" {
+			docs++
+		}
+	}
+	if images != 1 || docs != 1 {
+		t.Errorf("expected 1 image + 1 document, got %d images + %d documents", images, docs)
+	}
+}
+
+// ============================================================
+// ProcessMCPToolResult with document support
+// ============================================================
+
+func TestProcessMCPToolResult_DocumentSupport_PDF(t *testing.T) {
+	b64 := fakeBase64(200)
+	result := map[string]interface{}{
+		"success": true,
+		"document": map[string]interface{}{
+			"data":     b64,
+			"mimeType": "application/pdf",
+			"title":    "Test PDF",
+		},
+	}
+
+	// With document support enabled
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, true, nil, "thread-1", "pdf-tool")
+
+	if len(fileIDs) != 0 {
+		t.Errorf("expected no fileIDs, got %v", fileIDs)
+	}
+
+	// Content should be []interface{} (content blocks) when document support is on
+	blocks, ok := content.([]interface{})
+	if !ok {
+		t.Fatalf("expected content blocks, got %T", content)
+	}
+
+	// Should have 2 blocks: 1 text + 1 document
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 content blocks (1 text + 1 document), got %d", len(blocks))
+	}
+
+	// First block should be text
+	textBlock := blocks[0].(map[string]interface{})
+	if textBlock["type"] != "text" {
+		t.Errorf("expected first block type=text, got %v", textBlock["type"])
+	}
+	// Text should not contain base64
+	textContent, _ := textBlock["text"].(string)
+	assertContentStringExcludes(t, textContent, b64)
+
+	// Second block should be document
+	docBlock := blocks[1].(map[string]interface{})
+	if docBlock["type"] != "document" {
+		t.Errorf("expected second block type=document, got %v", docBlock["type"])
+	}
+	source := docBlock["source"].(map[string]interface{})
+	if source["type"] != "base64" {
+		t.Errorf("expected source type=base64, got %v", source["type"])
+	}
+	if source["data"] != b64 {
+		t.Error("document block should contain base64 data")
+	}
+	if source["media_type"] != "application/pdf" {
+		t.Errorf("expected media_type=application/pdf, got %v", source["media_type"])
+	}
+
+	// contentString should not contain base64
+	assertContentStringExcludes(t, contentStr, b64)
+}
+
+func TestProcessMCPToolResult_NoDocumentSupport_PDF_Stripped(t *testing.T) {
+	b64 := fakeBase64(200)
+	result := map[string]interface{}{
+		"document": map[string]interface{}{
+			"data":     b64,
+			"mimeType": "application/pdf",
+		},
+	}
+
+	// Without document support — should strip base64
+	content, contentStr, fileIDs := ProcessMCPToolResult(result, false, false, nil, "thread-1", "pdf-tool")
+
+	if len(fileIDs) != 0 {
+		t.Errorf("expected no fileIDs, got %v", fileIDs)
+	}
+
+	// Content should be string (no content blocks)
+	s, ok := content.(string)
+	if !ok {
+		t.Fatalf("expected string content, got %T", content)
+	}
+	assertContentStringExcludes(t, s, b64)
+	assertContentString(t, contentStr, "document_removed", "application/pdf")
+}
+
+func TestProcessMCPToolResult_VisionAndDocument_MixedContent(t *testing.T) {
+	b64img := fakeBase64(200)
+	b64pdf := fakeBase64(300)
+	result := map[string]interface{}{
+		"files": []interface{}{
+			map[string]interface{}{"data": b64img, "mimeType": "image/png"},
+			map[string]interface{}{"data": b64pdf, "mimeType": "application/pdf"},
+		},
+	}
+
+	// Both vision and document support enabled
+	content, _, _ := ProcessMCPToolResult(result, true, true, nil, "thread-1", "mixed-tool")
+
+	blocks, ok := content.([]interface{})
+	if !ok {
+		t.Fatalf("expected content blocks, got %T", content)
+	}
+
+	// Should have 3 blocks: 1 text + 1 image + 1 document
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 content blocks (1 text + 1 image + 1 document), got %d", len(blocks))
+	}
+
+	// Check types
+	textBlock := blocks[0].(map[string]interface{})
+	if textBlock["type"] != "text" {
+		t.Errorf("block 0: expected type=text, got %v", textBlock["type"])
+	}
+	imgBlock := blocks[1].(map[string]interface{})
+	if imgBlock["type"] != "image" {
+		t.Errorf("block 1: expected type=image, got %v", imgBlock["type"])
+	}
+	docBlock := blocks[2].(map[string]interface{})
+	if docBlock["type"] != "document" {
+		t.Errorf("block 2: expected type=document, got %v", docBlock["type"])
+	}
+}
+
+func TestStripBase64FromValue_PDF(t *testing.T) {
+	b64 := fakeBase64(200)
+	value := map[string]interface{}{
+		"data":     b64,
+		"mimeType": "application/pdf",
+	}
+
+	stripped := stripBase64FromValue(value)
+	strippedJSON, _ := json.Marshal(stripped)
+	s := string(strippedJSON)
+
+	if strings.Contains(s, b64) {
+		t.Error("stripped result should NOT contain base64 data")
+	}
+	if !strings.Contains(s, "document_removed") {
+		t.Error("stripped result should contain document_removed placeholder")
+	}
+	if !strings.Contains(s, "application/pdf") {
+		t.Error("stripped result should mention application/pdf")
 	}
 }

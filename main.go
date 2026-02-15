@@ -2192,7 +2192,13 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		provider = fireworksProvider
-		processor = &stream.OpenAIProcessor{} // Fireworks uses OpenAI-compatible format
+		openaiProc := &stream.OpenAIProcessor{} // Fireworks uses OpenAI-compatible format
+		// Log thinking model detection for debugging
+		modelLower := strings.ToLower(llmConfig.Model)
+		if strings.Contains(modelLower, "minimax") || strings.Contains(modelLower, "thinking") || strings.Contains(modelLower, "reasoning") {
+			log.Printf("🧠 Fireworks: thinking model detected: %s (reasoning_history will be set)", llmConfig.Model)
+		}
+		processor = openaiProc
 		model = &llmConfig.Model
 	case "xai":
 		if !xaiProvider.IsConfigured() {

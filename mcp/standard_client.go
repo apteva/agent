@@ -3,6 +3,7 @@ package mcp
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,6 +65,11 @@ func (c *StandardMCPClient) nextID() int {
 
 // doRequest sends a JSON-RPC request and returns the response
 func (c *StandardMCPClient) doRequest(method string, params interface{}) (*JSONRPCResponse, error) {
+	return c.doRequestWithContext(context.Background(), method, params)
+}
+
+// doRequestWithContext sends a JSON-RPC request with context for cancellation
+func (c *StandardMCPClient) doRequestWithContext(ctx context.Context, method string, params interface{}) (*JSONRPCResponse, error) {
 	req := JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      c.nextID(),
@@ -76,7 +82,7 @@ func (c *StandardMCPClient) doRequest(method string, params interface{}) (*JSONR
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest("POST", c.url, bytes.NewBuffer(jsonData))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -297,6 +303,11 @@ func (c *StandardMCPClient) ListTools() ([]MCPToolDefinition, error) {
 
 // CallTool executes a tool on the server
 func (c *StandardMCPClient) CallTool(name string, arguments map[string]interface{}) (*ToolCallResult, error) {
+	return c.CallToolWithContext(context.Background(), name, arguments)
+}
+
+// CallToolWithContext executes a tool with context for cancellation
+func (c *StandardMCPClient) CallToolWithContext(ctx context.Context, name string, arguments map[string]interface{}) (*ToolCallResult, error) {
 	if !c.initialized {
 		log.Printf("🔌 MCP HTTP [%s]: Auto-initializing for tool call '%s'", c.name, name)
 		if err := c.Initialize(); err != nil {
@@ -313,7 +324,7 @@ func (c *StandardMCPClient) CallTool(name string, arguments map[string]interface
 		c.name, name, c.url, c.httpClient.Timeout)
 	startTime := time.Now()
 
-	resp, err := c.doRequest("tools/call", params)
+	resp, err := c.doRequestWithContext(ctx, "tools/call", params)
 	elapsed := time.Since(startTime)
 
 	if err != nil {
@@ -481,6 +492,11 @@ func parseSSEMessages(body []byte) []json.RawMessage {
 // doRequestStreaming sends a JSON-RPC request and streams SSE responses line-by-line.
 // Notifications are routed to the callback; the final response is returned.
 func (c *StandardMCPClient) doRequestStreaming(method string, params interface{}, callback MCPNotificationCallback) (*JSONRPCResponse, error) {
+	return c.doRequestStreamingWithContext(context.Background(), method, params, callback)
+}
+
+// doRequestStreamingWithContext sends a streaming JSON-RPC request with context for cancellation
+func (c *StandardMCPClient) doRequestStreamingWithContext(ctx context.Context, method string, params interface{}, callback MCPNotificationCallback) (*JSONRPCResponse, error) {
 	req := JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      c.nextID(),
@@ -493,7 +509,7 @@ func (c *StandardMCPClient) doRequestStreaming(method string, params interface{}
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest("POST", c.url, bytes.NewBuffer(jsonData))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -600,6 +616,11 @@ func (c *StandardMCPClient) doRequestStreaming(method string, params interface{}
 // Progress and log notifications from the server are routed to the callback.
 // If callback is nil, behaves identically to CallTool.
 func (c *StandardMCPClient) CallToolStreaming(name string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
+	return c.CallToolStreamingWithContext(context.Background(), name, arguments, callback)
+}
+
+// CallToolStreamingWithContext executes a tool with streaming and context for cancellation
+func (c *StandardMCPClient) CallToolStreamingWithContext(ctx context.Context, name string, arguments map[string]interface{}, callback MCPNotificationCallback) (*ToolCallResult, error) {
 	if !c.initialized {
 		log.Printf("🔌 MCP HTTP [%s]: Auto-initializing for streaming tool call '%s'", c.name, name)
 		if err := c.Initialize(); err != nil {
@@ -609,7 +630,7 @@ func (c *StandardMCPClient) CallToolStreaming(name string, arguments map[string]
 
 	// If no callback, fall back to non-streaming path
 	if callback == nil {
-		return c.CallTool(name, arguments)
+		return c.CallToolWithContext(ctx, name, arguments)
 	}
 
 	params := ToolCallParams{
@@ -623,7 +644,7 @@ func (c *StandardMCPClient) CallToolStreaming(name string, arguments map[string]
 	log.Printf("🔧 MCP HTTP [%s]: Calling tool '%s' (streaming) → POST %s", c.name, name, c.url)
 	startTime := time.Now()
 
-	resp, err := c.doRequestStreaming("tools/call", params, callback)
+	resp, err := c.doRequestStreamingWithContext(ctx, "tools/call", params, callback)
 	elapsed := time.Since(startTime)
 
 	if err != nil {

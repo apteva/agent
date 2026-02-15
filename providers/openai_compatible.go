@@ -53,11 +53,12 @@ func needsMaxCompletionTokens(model string) bool {
 
 // isThinkingModel checks if a model is a thinking/reasoning model that benefits from
 // reasoning_history: "preserved" to maintain thinking context across tool calls.
-// This helps models like Kimi K2 Thinking properly use their reasoning to inform tool calls.
+// This helps models like Kimi K2 Thinking, MiniMax M2.5, DeepSeek R1, etc. properly
+// use their reasoning to inform tool calls.
 func isThinkingModel(model string) bool {
 	model = strings.ToLower(model)
 	// Kimi thinking models (K2 Thinking, K2.5)
-	if strings.Contains(model, "kimi") && (strings.Contains(model, "thinking") || strings.Contains(model, "k2.5") || strings.Contains(model, "k2-5")) {
+	if strings.Contains(model, "kimi") && (strings.Contains(model, "thinking") || strings.Contains(model, "k2.5") || strings.Contains(model, "k2-5") || strings.Contains(model, "k2p5") || strings.Contains(model, "k25")) {
 		return true
 	}
 	// GLM thinking models
@@ -68,7 +69,39 @@ func isThinkingModel(model string) bool {
 	if strings.Contains(model, "deepseek") && strings.Contains(model, "r1") {
 		return true
 	}
+	// MiniMax reasoning models (M2.5, etc.) — includes Fireworks "minimax-m2p5"
+	if strings.Contains(model, "minimax") {
+		return true
+	}
+	// Qwen thinking models
+	if strings.Contains(model, "qwen") && strings.Contains(model, "thinking") {
+		return true
+	}
+	// Generic: any model with "-thinking" or "-reasoning" suffix pattern
+	if strings.Contains(model, "-thinking") || strings.Contains(model, "-reasoning") {
+		return true
+	}
 	return false
+}
+
+// needsThinkTagsInContent returns true if the provider expects <think> tags in content
+// rather than a separate reasoning_content field. This is for providers that don't support
+// reasoning_history or reasoning_content natively — we reconstruct <think> tags as a safety net.
+func needsThinkTagsInContent(baseURL string, model string) bool {
+	// Fireworks/Together use reasoning_content field with reasoning_history: "preserved"
+	if strings.Contains(baseURL, "fireworks.ai") || strings.Contains(baseURL, "together.xyz") {
+		return false
+	}
+	// Direct MiniMax with reasoning_split=true uses reasoning_details
+	if strings.Contains(baseURL, "minimax") {
+		return false
+	}
+	// Moonshot Kimi uses reasoning_content natively
+	if strings.Contains(baseURL, "moonshot.ai") {
+		return false
+	}
+	// For unknown providers with thinking models, reconstruct <think> tags in content
+	return isThinkingModel(model)
 }
 
 // OpenAICompatibleProvider provides a reusable base for all OpenAI-compatible APIs
@@ -185,14 +218,32 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 					openaiMsg := OpenAIMessage{
 						Role: "assistant",
 					}
-					if textContent != "" {
+					// Preserve thinking content for thinking models
+					if msg.ReasoningContent != "" {
+						if needsThinkTagsInContent(p.baseURL, llmConfig.Model) {
+							// Reconstruct <think> tags in content for providers that need it
+							thinkContent := "<think>\n" + msg.ReasoningContent + "\n</think>\n"
+							if textContent != "" {
+								openaiMsg.Content = thinkContent + textContent
+							} else {
+								openaiMsg.Content = thinkContent
+							}
+							log.Printf("🧠 Reconstructed <think> tags in content: %d chars reasoning", len(msg.ReasoningContent))
+						} else {
+							if textContent != "" {
+								openaiMsg.Content = textContent
+							}
+							openaiMsg.ReasoningContent = msg.ReasoningContent
+							log.Printf("🧠 Including reasoning_content in API message: %d chars", len(msg.ReasoningContent))
+						}
+					} else if textContent != "" {
 						openaiMsg.Content = textContent
 					}
 					openaiMsg.ToolCalls = toolCalls
-					// Preserve reasoning_content for thinking models (Kimi K2, etc.)
-					if msg.ReasoningContent != "" {
-						openaiMsg.ReasoningContent = msg.ReasoningContent
-						log.Printf("🧠 Including reasoning_content in API message: %d chars", len(msg.ReasoningContent))
+					// Preserve reasoning_details for MiniMax M2.5
+					if len(msg.ReasoningDetails) > 0 {
+						openaiMsg.ReasoningDetails = msg.ReasoningDetails
+						log.Printf("🧠 Including reasoning_details in API message: %d entries", len(msg.ReasoningDetails))
 					}
 
 					openaiMessages = append(openaiMessages, openaiMsg)
@@ -250,10 +301,26 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 			Role:    msg.Role,
 			Content: translatedContent,
 		}
-		// Preserve reasoning_content for thinking models (Kimi K2, etc.)
+		// Preserve thinking content for thinking models
 		if msg.Role == "assistant" && msg.ReasoningContent != "" {
-			openaiMsg.ReasoningContent = msg.ReasoningContent
-			log.Printf("🧠 Including reasoning_content in API message: %d chars", len(msg.ReasoningContent))
+			if needsThinkTagsInContent(p.baseURL, llmConfig.Model) {
+				// Reconstruct <think> tags in content for providers that need it
+				thinkContent := "<think>\n" + msg.ReasoningContent + "\n</think>\n"
+				if contentStr, ok := translatedContent.(string); ok && contentStr != "" {
+					openaiMsg.Content = thinkContent + contentStr
+				} else {
+					openaiMsg.Content = thinkContent
+				}
+				log.Printf("🧠 Reconstructed <think> tags in content: %d chars reasoning", len(msg.ReasoningContent))
+			} else {
+				openaiMsg.ReasoningContent = msg.ReasoningContent
+				log.Printf("🧠 Including reasoning_content in API message: %d chars", len(msg.ReasoningContent))
+			}
+		}
+		// Preserve reasoning_details for MiniMax M2.5
+		if msg.Role == "assistant" && len(msg.ReasoningDetails) > 0 {
+			openaiMsg.ReasoningDetails = msg.ReasoningDetails
+			log.Printf("🧠 Including reasoning_details in API message: %d entries", len(msg.ReasoningDetails))
 		}
 		openaiMessages = append(openaiMessages, openaiMsg)
 		if msg.Role == "system" {
@@ -301,6 +368,15 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 	if (isFireworks || isTogether) && isThinkingModel(llmConfig.Model) {
 		openaiReq.ReasoningHistory = "preserved"
 		log.Printf("🧠 Using reasoning_history=preserved for thinking model: %s", llmConfig.Model)
+	}
+
+	// For direct MiniMax API: send reasoning_split=true to get structured reasoning_details
+	// This is the recommended approach for MiniMax M2.5 interleaved thinking
+	isMiniMaxDirect := strings.Contains(p.baseURL, "minimax")
+	if isMiniMaxDirect && isThinkingModel(llmConfig.Model) {
+		reasoningSplit := true
+		openaiReq.ReasoningSplit = &reasoningSplit
+		log.Printf("🧠 MiniMax direct: setting reasoning_split=true for model: %s", llmConfig.Model)
 	}
 
 	reqBody, err := json.Marshal(openaiReq)
@@ -377,11 +453,12 @@ func (p *OpenAICompatibleProvider) StreamChat(w http.ResponseWriter, message str
 	return nil
 }
 
-// hasImageBlocks checks if content blocks contain any image blocks (e.g., from browser screenshots)
-func hasImageBlocks(blocks []interface{}) bool {
+// hasMediaBlocks checks if content blocks contain any image or document blocks (e.g., from browser screenshots or PDF tools)
+func hasMediaBlocks(blocks []interface{}) bool {
 	for _, block := range blocks {
 		if blockMap, ok := block.(map[string]interface{}); ok {
-			if blockMap["type"] == "image" {
+			blockType := blockMap["type"]
+			if blockType == "image" || blockType == "document" {
 				return true
 			}
 		}
@@ -389,8 +466,14 @@ func hasImageBlocks(blocks []interface{}) bool {
 	return false
 }
 
-// convertToOpenAIMultimodal converts Anthropic-style content blocks (with images) to OpenAI multimodal format.
+// hasImageBlocks is kept for backward compatibility
+func hasImageBlocks(blocks []interface{}) bool {
+	return hasMediaBlocks(blocks)
+}
+
+// convertToOpenAIMultimodal converts Anthropic-style content blocks (with images/documents) to OpenAI multimodal format.
 // This allows vision models to actually see browser screenshots in tool results.
+// Document blocks (PDFs) are converted to text placeholders since OpenAI doesn't support native PDF processing.
 func convertToOpenAIMultimodal(blocks []interface{}) []interface{} {
 	var parts []interface{}
 	for _, block := range blocks {
@@ -420,6 +503,19 @@ func convertToOpenAIMultimodal(blocks []interface{}) []interface{} {
 					})
 				}
 			}
+		case "document":
+			// OpenAI doesn't support native PDF/document processing
+			// Convert to text placeholder instead of sending raw base64
+			mediaType := "document"
+			if source, ok := blockMap["source"].(map[string]interface{}); ok {
+				if mt, ok := source["media_type"].(string); ok {
+					mediaType = mt
+				}
+			}
+			parts = append(parts, map[string]interface{}{
+				"type": "text",
+				"text": fmt.Sprintf("[%s document provided - this provider does not support native document processing]", mediaType),
+			})
 		}
 	}
 	return parts

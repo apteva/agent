@@ -41,7 +41,7 @@ func ExecuteToolWithContext(ctx context.Context, toolName string, params map[str
 	if executor == nil {
 		return nil, fmt.Errorf("MCP executor not available")
 	}
-	return executor.executeExternalTool(toolName, params)
+	return executor.executeExternalToolWithContext(ctx, toolName, params)
 }
 
 // ExecuteToolStreamingWithContext executes an MCP tool with notification streaming support.
@@ -52,10 +52,10 @@ func ExecuteToolStreamingWithContext(ctx context.Context, toolName string, param
 	}
 
 	if callback != nil {
-		return executor.executeExternalToolStreaming(toolName, params, callback)
+		return executor.executeExternalToolStreamingWithContext(ctx, toolName, params, callback)
 	}
 
-	return executor.executeExternalTool(toolName, params)
+	return executor.executeExternalToolWithContext(ctx, toolName, params)
 }
 
 // processExternalToolResult converts a standard MCP ToolCallResult into our internal format.
@@ -152,14 +152,19 @@ func processExternalToolResult(toolName string, result *ToolCallResult) (interfa
 	}, nil
 }
 
-// executeExternalTool executes a tool on an external standard MCP server
+// executeExternalTool executes a tool on an external standard MCP server (no context)
 func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string]interface{}) (interface{}, error) {
+	return e.executeExternalToolWithContext(context.Background(), toolName, params)
+}
+
+// executeExternalToolWithContext executes a tool with context for cancellation support
+func (e *MCPToolExecutor) executeExternalToolWithContext(ctx context.Context, toolName string, params map[string]interface{}) (interface{}, error) {
 	manager := GetExternalServerManager()
 
 	log.Printf("🔧 MCP Execute: tool=%s, params_keys=%v", toolName, mapKeys(params))
 	startTime := time.Now()
 
-	result, err := manager.CallTool(toolName, params)
+	result, err := manager.CallToolWithContext(ctx, toolName, params)
 	elapsed := time.Since(startTime)
 
 	if err != nil {
@@ -171,14 +176,19 @@ func (e *MCPToolExecutor) executeExternalTool(toolName string, params map[string
 	return processExternalToolResult(toolName, result)
 }
 
-// executeExternalToolStreaming executes a tool with notification streaming.
+// executeExternalToolStreaming executes a tool with notification streaming (no context)
 func (e *MCPToolExecutor) executeExternalToolStreaming(toolName string, params map[string]interface{}, callback MCPNotificationCallback) (interface{}, error) {
+	return e.executeExternalToolStreamingWithContext(context.Background(), toolName, params, callback)
+}
+
+// executeExternalToolStreamingWithContext executes a tool with streaming and context
+func (e *MCPToolExecutor) executeExternalToolStreamingWithContext(ctx context.Context, toolName string, params map[string]interface{}, callback MCPNotificationCallback) (interface{}, error) {
 	manager := GetExternalServerManager()
 
 	log.Printf("🔧 MCP Execute (streaming): tool=%s, params_keys=%v", toolName, mapKeys(params))
 	startTime := time.Now()
 
-	result, err := manager.CallToolStreaming(toolName, params, callback)
+	result, err := manager.CallToolStreamingWithContext(ctx, toolName, params, callback)
 	elapsed := time.Since(startTime)
 
 	if err != nil {

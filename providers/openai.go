@@ -14,14 +14,16 @@ type OpenAIRequest struct {
 	Tools               []interface{}         `json:"tools,omitempty"`
 	ReasoningEffort     string                `json:"reasoning_effort,omitempty"`      // For reasoning models (o1, o3, gpt-5.x)
 	ReasoningHistory    string                `json:"reasoning_history,omitempty"`     // For thinking models (Kimi K2): "interleaved" or "preserved"
+	ReasoningSplit      *bool                 `json:"reasoning_split,omitempty"`       // For MiniMax M2.5: true for structured reasoning_details
 }
 
 type OpenAIMessage struct {
 	Role             string                   `json:"role"`
-	Content          interface{}              `json:"content,omitempty"`           // Can be string or array of content parts
-	ReasoningContent string                   `json:"reasoning_content,omitempty"` // For thinking models (Kimi K2, etc.) - MUST preserve in context
-	ToolCalls        []map[string]interface{} `json:"tool_calls,omitempty"`        // For assistant tool calls
-	ToolCallID       string                   `json:"tool_call_id,omitempty"`      // For tool role messages
+	Content          interface{}              `json:"content,omitempty"`              // Can be string or array of content parts
+	ReasoningContent string                   `json:"reasoning_content,omitempty"`    // For thinking models (Kimi K2, etc.) - MUST preserve in context
+	ReasoningDetails []interface{}            `json:"reasoning_details,omitempty"`    // For MiniMax M2.5 structured reasoning
+	ToolCalls        []map[string]interface{} `json:"tool_calls,omitempty"`           // For assistant tool calls
+	ToolCallID       string                   `json:"tool_call_id,omitempty"`         // For tool role messages
 }
 
 type OpenAIToolDef struct {

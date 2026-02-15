@@ -19,9 +19,10 @@ import (
 )
 
 type Message struct {
-	Role             string      `json:"role"`
-	Content          interface{} `json:"content"`
-	ReasoningContent string      `json:"reasoning_content,omitempty"` // For thinking models (Kimi K2, etc.) - preserved in conversation history
+	Role             string        `json:"role"`
+	Content          interface{}   `json:"content"`
+	ReasoningContent string        `json:"reasoning_content,omitempty"` // For thinking models (Kimi K2, etc.) - preserved in conversation history
+	ReasoningDetails []interface{} `json:"reasoning_details,omitempty"` // For MiniMax M2.5 structured reasoning - preserved in conversation history
 }
 
 type Provider interface {
@@ -96,6 +97,13 @@ type PendingEventChecker interface {
 type ReasoningAccumulator interface {
 	GetAccumulatedReasoning() string
 	ClearAccumulatedReasoning()
+}
+
+// ReasoningDetailsAccumulator is an optional interface for processors that accumulate
+// structured reasoning_details (MiniMax M2.5). Preserved in conversation history for multi-step tool calls.
+type ReasoningDetailsAccumulator interface {
+	GetAccumulatedReasoningDetails() []interface{}
+	ClearAccumulatedReasoningDetails()
 }
 
 // TurnResetter is an optional interface for processors that need to reset state between turns
@@ -458,6 +466,14 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 			// Clear reasoning after using it for the next API call
 			if reasoningAccum, ok := processor.(ReasoningAccumulator); ok {
 				reasoningAccum.ClearAccumulatedReasoning()
+			}
+		}
+		// Preserve reasoning_details for MiniMax M2.5
+		if detailsAccum, ok := processor.(ReasoningDetailsAccumulator); ok {
+			if details := detailsAccum.GetAccumulatedReasoningDetails(); len(details) > 0 {
+				assistantMsg.ReasoningDetails = details
+				log.Printf("🧠 Including reasoning_details in assistant message: %d entries", len(details))
+				detailsAccum.ClearAccumulatedReasoningDetails()
 			}
 		}
 		currentMessages = append(currentMessages, assistantMsg)
@@ -883,6 +899,16 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						log.Printf("🧠 Saving reasoning_content in metadata: %d chars", len(reasoning))
 					}
 				}
+				// Check for reasoning_details (MiniMax M2.5)
+				if detailsAccum, ok := processor.(ReasoningDetailsAccumulator); ok {
+					if details := detailsAccum.GetAccumulatedReasoningDetails(); len(details) > 0 {
+						if metadata == nil {
+							metadata = make(map[string]interface{})
+						}
+						metadata["reasoning_details"] = details
+						log.Printf("🧠 Saving reasoning_details in metadata: %d entries", len(details))
+					}
+				}
 
 				if err := messageSaver.SaveMessage(threadID, "assistant", toolUseContent, model, metadata); err != nil {
 					log.Printf("Error saving tool use message: %v", err)
@@ -972,9 +998,11 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						}
 					}
 					result, err := mcp.ExecuteToolStreamingWithContext(ctx, event.ToolName, event.ToolInput, mcpConfig, threadID, mcpNotifyCallback)
+					var toolContent interface{}
 					if err != nil {
 						log.Printf("Error executing MCP tool %s: %v", event.ToolName, err)
 						toolResultContent = fmt.Sprintf("Error: %s", err.Error())
+						toolContent = toolResultContent
 						isError = true
 
 						// End span with error
@@ -991,13 +1019,20 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 							WithDuration(toolStartTime)
 						eventBus.Publish(errorEvent)
 					} else {
-						// Process MCP tool result with vision/filesystem awareness
+						// Process MCP tool result with vision/filesystem/document awareness
 						visionEnabled := false
+						documentSupport := false
 						if agentCfg := config.GetConfig().Get(); agentCfg.LLM.Vision != nil {
 							visionEnabled = agentCfg.LLM.Vision.Enabled
+							// Document support: only Anthropic supports document content blocks
+							if agentCfg.LLM.Provider == "anthropic" && agentCfg.LLM.Vision.PDFConfig != nil {
+								documentSupport = agentCfg.LLM.Vision.PDFConfig.Enabled
+							}
 						}
 
-						toolContent, toolContentStr, fileIDs := ProcessMCPToolResult(result, visionEnabled, fileProcessor, threadID, event.ToolName)
+						var toolContentStr string
+						var fileIDs []string
+						toolContent, toolContentStr, fileIDs = ProcessMCPToolResult(result, visionEnabled, documentSupport, fileProcessor, threadID, event.ToolName)
 						toolResultContent = toolContentStr
 						isError = false
 
@@ -1019,35 +1054,34 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 							WithData("success", true).
 							WithDuration(toolStartTime)
 						eventBus.Publish(resultEvent)
-
-						// Save tool result — use structured content (with image blocks) if available
-						toolResultBlock := map[string]interface{}{
-							"type":        "tool_result",
-							"tool_use_id": event.ToolID,
-							"content":     toolContent, // string or []interface{} with content blocks
-							"is_error":    isError,
-						}
-						toolResultArray := []interface{}{toolResultBlock}
-						if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-							log.Printf("Error saving MCP tool result message: %v", err)
-						}
-
-						// Create tool result for conversation continuation
-						toolResult := StreamEvent{
-							Type:             "tool_result",
-							ToolID:           event.ToolID,
-							ToolName:         event.ToolName,
-							ToolInput:        event.ToolInput,
-							Content:          toolResultContent,      // String for SSE
-							ThoughtSignature: event.ThoughtSignature, // Preserve for Gemini 3
-						}
-						// Set ContentBlocks if structured content (with images) so the
-						// continuation loop feeds image blocks to the next LLM call
-						if _, isBlocks := toolContent.([]interface{}); isBlocks {
-							toolResult.ContentBlocks = toolContent
-						}
-						toolResults = append(toolResults, toolResult)
 					}
+
+					// Save tool result (both success and error cases)
+					toolResultBlock := map[string]interface{}{
+						"type":        "tool_result",
+						"tool_use_id": event.ToolID,
+						"content":     toolContent,
+						"is_error":    isError,
+					}
+					toolResultArray := []interface{}{toolResultBlock}
+					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+						log.Printf("Error saving MCP tool result message: %v", err)
+					}
+
+					// Create tool result for conversation continuation
+					toolResult := StreamEvent{
+						Type:             "tool_result",
+						ToolID:           event.ToolID,
+						ToolName:         event.ToolName,
+						ToolInput:        event.ToolInput,
+						Content:          toolResultContent,
+						ThoughtSignature: event.ThoughtSignature,
+					}
+					// Set ContentBlocks if structured content (with images)
+					if _, isBlocks := toolContent.([]interface{}); isBlocks {
+						toolResult.ContentBlocks = toolContent
+					}
+					toolResults = append(toolResults, toolResult)
 
 					// Output tool result (always string for SSE)
 					// Truncate large content for SSE — full data goes to LLM via continuation loop
@@ -1055,8 +1089,8 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					if len(sseContent) > 4000 {
 						sseContent = sseContent[:4000]
 					}
-					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
-						event.ToolID, escapeJSON(sseContent), time.Now().UnixMilli())
+					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"is_error\":%t,\"timestamp\":%d}\n\n",
+						event.ToolID, escapeJSON(sseContent), isError, time.Now().UnixMilli())
 					flusher.Flush()
 
 				} else if event.ToolName == "computer" || event.ToolName == "browser" {
@@ -1351,13 +1385,35 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				parallelResults := ExecuteCustomToolsWithContext(ctx, pendingCustomTools, threadID, taskID, streamCallback)
 
 				// Process each result: save to DB, stream to client, add to toolResults
+				// Determine vision/document support for processing tool results
+				customVisionEnabled := false
+				customDocumentSupport := false
+				if customAgentCfg := config.GetConfig().Get(); customAgentCfg.LLM.Vision != nil {
+					customVisionEnabled = customAgentCfg.LLM.Vision.Enabled
+					if customAgentCfg.LLM.Provider == "anthropic" && customAgentCfg.LLM.Vision.PDFConfig != nil {
+						customDocumentSupport = customAgentCfg.LLM.Vision.PDFConfig.Enabled
+					}
+				}
+
 				for _, result := range parallelResults {
+					var toolContent interface{}
+					var toolContentStr string
+					isError := result.Error != nil
+
+					if !isError && result.ContentBlocks != nil {
+						// Process raw result through media handler for vision/document support
+						toolContent, toolContentStr, _ = ProcessMCPToolResult(result.ContentBlocks, customVisionEnabled, customDocumentSupport, fileProcessor, threadID, result.Name)
+					} else {
+						toolContent = result.Content
+						toolContentStr = result.Content
+					}
+
 					// Save tool result message
 					toolResultBlock := map[string]interface{}{
 						"type":        "tool_result",
 						"tool_use_id": result.ID,
-						"content":     result.Content,
-						"is_error":    result.Error != nil,
+						"content":     toolContent,
+						"is_error":    isError,
 					}
 					toolResultArray := []interface{}{toolResultBlock}
 					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
@@ -1379,15 +1435,22 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						ToolID:           result.ID,
 						ToolName:         result.Name,
 						ToolInput:        result.Input,
-						Content:          result.Content,
+						Content:          toolContentStr,
 						ThoughtSignature: thoughtSig,
+					}
+					// Set ContentBlocks if structured content (with images/documents)
+					if _, isBlocks := toolContent.([]interface{}); isBlocks {
+						toolResult.ContentBlocks = toolContent
 					}
 					toolResults = append(toolResults, toolResult)
 
 					// Stream tool result to client
-					isError := result.Error != nil
+					sseContent := toolContentStr
+					if len(sseContent) > 4000 {
+						sseContent = sseContent[:4000]
+					}
 					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"is_error\":%t,\"timestamp\":%d}\n\n",
-						result.ID, escapeJSON(result.Content), isError, time.Now().UnixMilli())
+						result.ID, escapeJSON(sseContent), isError, time.Now().UnixMilli())
 					flusher.Flush()
 				}
 
@@ -1504,12 +1567,16 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						toolResultContent = fmt.Sprintf("Error: %v", err)
 						toolContent = toolResultContent
 					} else {
-						// Process MCP tool result with vision/filesystem awareness
+						// Process MCP tool result with vision/filesystem/document awareness
 						visionEnabled := false
+						documentSupport := false
 						if agentCfg.LLM.Vision != nil {
 							visionEnabled = agentCfg.LLM.Vision.Enabled
+							if agentCfg.LLM.Provider == "anthropic" && agentCfg.LLM.Vision.PDFConfig != nil {
+								documentSupport = agentCfg.LLM.Vision.PDFConfig.Enabled
+							}
 						}
-						toolContent, toolResultContent, _ = ProcessMCPToolResult(result, visionEnabled, fileProcessor, threadID, event.ToolName)
+						toolContent, toolResultContent, _ = ProcessMCPToolResult(result, visionEnabled, documentSupport, fileProcessor, threadID, event.ToolName)
 					}
 
 					// Save tool result — use structured content if available
