@@ -84,12 +84,41 @@ func isThinkingModel(model string) bool {
 	return false
 }
 
+// getReasoningHistoryForModel returns the appropriate reasoning_history value for a model on Fireworks.
+// Different models support different values:
+//   - Kimi K2: supports disabled/interleaved/preserved (default: preserved)
+//   - MiniMax M2/M2.5: supports disabled/interleaved only (NO preserved)
+//   - GLM-4.7: supports disabled/interleaved/preserved (default: interleaved)
+//   - GLM-4.6 and older: supports disabled/interleaved only
+//   - Others: default to interleaved (safest)
+func getReasoningHistoryForModel(model string) string {
+	model = strings.ToLower(model)
+	// Kimi K2 models default to preserved and support it
+	if strings.Contains(model, "kimi") {
+		return "preserved"
+	}
+	// MiniMax does NOT support preserved — only disabled/interleaved
+	if strings.Contains(model, "minimax") {
+		return "interleaved"
+	}
+	// GLM-4.7 supports preserved
+	if strings.Contains(model, "glm") && (strings.Contains(model, "4.7") || strings.Contains(model, "4p7")) {
+		return "preserved"
+	}
+	// Default: interleaved is the safest option supported by all thinking models
+	return "interleaved"
+}
+
 // needsThinkTagsInContent returns true if the provider expects <think> tags in content
 // rather than a separate reasoning_content field. This is for providers that don't support
 // reasoning_history or reasoning_content natively — we reconstruct <think> tags as a safety net.
 func needsThinkTagsInContent(baseURL string, model string) bool {
-	// Fireworks/Together use reasoning_content field with reasoning_history: "preserved"
-	if strings.Contains(baseURL, "fireworks.ai") || strings.Contains(baseURL, "together.xyz") {
+	// Fireworks uses reasoning_content field with reasoning_history
+	if strings.Contains(baseURL, "fireworks.ai") {
+		return false
+	}
+	// Together AI uses "reasoning" field natively for thinking models
+	if strings.Contains(baseURL, "together.xyz") {
 		return false
 	}
 	// Direct MiniMax with reasoning_split=true uses reasoning_details
@@ -102,6 +131,21 @@ func needsThinkTagsInContent(baseURL string, model string) bool {
 	}
 	// For unknown providers with thinking models, reconstruct <think> tags in content
 	return isThinkingModel(model)
+}
+
+// shouldStripReasoningBetweenTurns returns true if reasoning_content should be removed
+// from assistant messages that precede a new user turn (not during tool call loops).
+// DeepSeek's API returns 400 if reasoning_content is present in older turns.
+// Fireworks with reasoning_history handles this server-side, so we don't strip.
+func shouldStripReasoningBetweenTurns(baseURL string, model string) bool {
+	model = strings.ToLower(model)
+	// DeepSeek native API: MUST remove reasoning_content between user turns
+	if strings.Contains(baseURL, "deepseek.com") && strings.Contains(model, "deepseek") {
+		return true
+	}
+	// Fireworks handles it via reasoning_history parameter — no stripping needed
+	// Together, MiniMax, Moonshot — reasoning should be preserved
+	return false
 }
 
 // OpenAICompatibleProvider provides a reusable base for all OpenAI-compatible APIs
@@ -177,10 +221,38 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 	}
 
 	// Translate messages to OpenAI format
+	// For providers that need reasoning stripped between user turns (DeepSeek),
+	// identify which assistant messages precede a user turn (vs tool loop)
+	stripReasoning := shouldStripReasoningBetweenTurns(p.baseURL, llmConfig.Model)
 	translator := &OpenAITranslator{}
 	var openaiMessages []OpenAIMessage
 	var hasSystemMessage bool
-	for _, msg := range messages {
+	for i, msg := range messages {
+		// Strip reasoning_content from assistant messages that precede a user turn
+		// (not during tool call loops where the next message is role:tool/tool_result)
+		if stripReasoning && msg.Role == "assistant" && msg.ReasoningContent != "" {
+			// Check if this is followed by a user message (not a tool result)
+			if i+1 < len(messages) && messages[i+1].Role == "user" {
+				// Check if the next user message is NOT a tool_result
+				isToolResult := false
+				if blocks, ok := messages[i+1].Content.([]interface{}); ok {
+					for _, block := range blocks {
+						if blockMap, ok := block.(map[string]interface{}); ok {
+							if blockMap["type"] == "tool_result" {
+								isToolResult = true
+								break
+							}
+						}
+					}
+				}
+				if !isToolResult {
+					msg.ReasoningContent = "" // Strip between user turns
+					msg.ReasoningDetails = nil
+					log.Printf("🧠 Stripped reasoning_content from assistant message before user turn (DeepSeek compat)")
+				}
+			}
+		}
+		msg := msg // shadow to avoid modifying the original slice
 		// Handle tool-related messages specially for OpenAI format
 		if msg.Role == "assistant" {
 			// Check if this is a tool_use message
@@ -240,6 +312,11 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 						openaiMsg.Content = textContent
 					}
 					openaiMsg.ToolCalls = toolCalls
+					// Ensure content is explicitly set (not omitted) for tool_calls messages
+					// Some strict APIs require "content": null or "content": "" alongside tool_calls
+					if openaiMsg.Content == nil {
+						openaiMsg.Content = ""
+					}
 					// Preserve reasoning_details for MiniMax M2.5
 					if len(msg.ReasoningDetails) > 0 {
 						openaiMsg.ReasoningDetails = msg.ReasoningDetails
@@ -361,14 +438,16 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 		openaiReq.MaxTokens = llmConfig.MaxTokens
 	}
 
-	// For thinking models on Fireworks/Together (and other compatible APIs), use preserved reasoning history
-	// This ensures the model's thinking is preserved across tool calls, improving tool argument quality
+	// For thinking models on Fireworks, set appropriate reasoning_history per model
+	// Together AI does NOT support reasoning_history parameter (tool calling + reasoning are mutually exclusive)
 	isFireworks := strings.Contains(p.baseURL, "fireworks.ai")
 	isTogether := strings.Contains(p.baseURL, "together.xyz")
-	if (isFireworks || isTogether) && isThinkingModel(llmConfig.Model) {
-		openaiReq.ReasoningHistory = "preserved"
-		log.Printf("🧠 Using reasoning_history=preserved for thinking model: %s", llmConfig.Model)
+	if isFireworks && isThinkingModel(llmConfig.Model) {
+		rh := getReasoningHistoryForModel(llmConfig.Model)
+		openaiReq.ReasoningHistory = rh
+		log.Printf("🧠 Fireworks: using reasoning_history=%s for model: %s", rh, llmConfig.Model)
 	}
+	_ = isTogether // Together doesn't support reasoning_history
 
 	// For direct MiniMax API: send reasoning_split=true to get structured reasoning_details
 	// This is the recommended approach for MiniMax M2.5 interleaved thinking

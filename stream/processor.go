@@ -746,6 +746,10 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	// Pending custom tools for parallel execution
 	var pendingCustomTools []ToolCall
 
+	// Collect all tool_use blocks to save as ONE consolidated assistant message
+	// (instead of per-tool_use saves which create broken history for parallel tool calls)
+	var pendingToolUseBlocks []map[string]interface{}
+
 	// Send start event and thread_id immediately for all providers
 	// This ensures the client gets the thread_id before any content
 	if !threadIDSent {
@@ -853,23 +857,19 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					log.Printf("🖥️  COMPUTER TOOL - Received from LLM: tool=%s, id=%s, input=%s", event.ToolName, event.ToolID, string(inputJSON))
 				}
 
-				// Save the assistant message with text content if we have any
+				// Capture pre-tool text content if we have any
 				if assistantContent != "" {
-					if err := messageSaver.SaveMessage(threadID, "assistant", assistantContent, model, nil); err != nil {
-						log.Printf("Error saving assistant message: %v", err)
-					}
 					// Store this content for including with tool_use in next iteration
 					preToolContent = assistantContent
 					assistantContent = "" // Reset for content after tool use
 				}
 
-				// Save tool use message as an array of content blocks (required by Anthropic)
-				// Ensure input is preserved even if empty
+				// Collect tool_use block for consolidated DB save (don't save individually)
+				// This prevents broken history for parallel tool calls
 				var inputValue interface{}
 				if event.ToolInput != nil {
 					inputValue = event.ToolInput
 				} else {
-					// Always use empty map instead of nil
 					inputValue = map[string]interface{}{}
 					log.Printf("Tool use %s has nil input, using empty map", event.ToolName)
 				}
@@ -881,38 +881,14 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					"input": inputValue,
 				}
 
-				// DEBUG: Log what we're saving to database
+				// DEBUG: Log what we're collecting
 				if event.ToolName == "computer" || event.ToolName == "browser" {
 					blockJSON, _ := json.Marshal(toolUseBlock)
-					log.Printf("🖥️  COMPUTER TOOL - Saving to DB: %s", string(blockJSON))
+					log.Printf("🖥️  COMPUTER TOOL - Collecting for DB: %s", string(blockJSON))
 				}
 
-				// Wrap in array for assistant messages
-				toolUseContent := []interface{}{toolUseBlock}
-
-				// Check if processor has accumulated reasoning content (for thinking models like Kimi K2)
-				var metadata map[string]interface{}
-				if reasoningAccum, ok := processor.(ReasoningAccumulator); ok {
-					// Peek at accumulated reasoning (don't clear it yet - we need it for the API call)
-					if reasoning := reasoningAccum.GetAccumulatedReasoning(); reasoning != "" {
-						metadata = map[string]interface{}{"reasoning_content": reasoning}
-						log.Printf("🧠 Saving reasoning_content in metadata: %d chars", len(reasoning))
-					}
-				}
-				// Check for reasoning_details (MiniMax M2.5)
-				if detailsAccum, ok := processor.(ReasoningDetailsAccumulator); ok {
-					if details := detailsAccum.GetAccumulatedReasoningDetails(); len(details) > 0 {
-						if metadata == nil {
-							metadata = make(map[string]interface{})
-						}
-						metadata["reasoning_details"] = details
-						log.Printf("🧠 Saving reasoning_details in metadata: %d entries", len(details))
-					}
-				}
-
-				if err := messageSaver.SaveMessage(threadID, "assistant", toolUseContent, model, metadata); err != nil {
-					log.Printf("Error saving tool use message: %v", err)
-				}
+				pendingToolUseBlocks = append(pendingToolUseBlocks, toolUseBlock)
+				log.Printf("📝 Collected tool_use block: %s (id=%s), total pending: %d", event.ToolName, event.ToolID, len(pendingToolUseBlocks))
 
 				// Output tool use event (use dynamic display name since we have full input)
 				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
@@ -1350,6 +1326,42 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				flusher.Flush()
 			}
 
+			// C2: Save consolidated assistant message BEFORE tool execution/stop
+			if event.Type == "stop" && len(pendingToolUseBlocks) > 0 {
+				var contentBlocks []interface{}
+				if preToolContent != "" {
+					contentBlocks = append(contentBlocks, map[string]interface{}{
+						"type": "text",
+						"text": preToolContent,
+					})
+				}
+				for _, block := range pendingToolUseBlocks {
+					contentBlocks = append(contentBlocks, block)
+				}
+				// Collect reasoning metadata
+				var metadata map[string]interface{}
+				if ra, ok := processor.(ReasoningAccumulator); ok {
+					if reasoning := ra.GetAccumulatedReasoning(); reasoning != "" {
+						metadata = map[string]interface{}{"reasoning_content": reasoning}
+					}
+				}
+				if rda, ok := processor.(ReasoningDetailsAccumulator); ok {
+					if details := rda.GetAccumulatedReasoningDetails(); len(details) > 0 {
+						if metadata == nil {
+							metadata = make(map[string]interface{})
+						}
+						metadata["reasoning_details"] = details
+					}
+				}
+
+				if err := messageSaver.SaveMessage(threadID, "assistant", contentBlocks, model, metadata); err != nil {
+					log.Printf("Error saving consolidated assistant message: %v", err)
+				} else {
+					log.Printf("📝 Saved consolidated assistant message with %d blocks", len(contentBlocks))
+				}
+				pendingToolUseBlocks = nil
+			}
+
 			// Execute pending custom tools in parallel before breaking on stop
 			if event.Type == "stop" && len(pendingCustomTools) > 0 {
 				log.Printf("🔀 Executing %d pending custom tools in parallel before stop", len(pendingCustomTools))
@@ -1496,17 +1508,15 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				toolInputs[event.ToolID] = event.ToolInput
 				toolNames[event.ToolID] = event.ToolName
 
-				// Save tool use message
-				toolUseBlock := map[string]interface{}{
+				// Collect tool_use block for consolidated DB save (don't save individually)
+				drainToolUseBlock := map[string]interface{}{
 					"type":  "tool_use",
 					"id":    event.ToolID,
 					"name":  event.ToolName,
 					"input": event.ToolInput,
 				}
-				toolUseContent := []interface{}{toolUseBlock}
-				if err := messageSaver.SaveMessage(threadID, "assistant", toolUseContent, model, nil); err != nil {
-					log.Printf("Error saving tool use message: %v", err)
-				}
+				pendingToolUseBlocks = append(pendingToolUseBlocks, drainToolUseBlock)
+				log.Printf("📝 Collected drained tool_use block: %s (id=%s), total pending: %d", event.ToolName, event.ToolID, len(pendingToolUseBlocks))
 
 				// Stream tool_use event (use dynamic display name since we have full input)
 				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
@@ -1639,6 +1649,50 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				}
 			}
 		}
+	}
+
+	// C3: Merge any unexecuted custom tools from main loop into drained list
+	// (happens when stop event is consumed by drain phase instead of main loop)
+	if len(pendingCustomTools) > 0 {
+		log.Printf("🔀 Merging %d unexecuted main-loop custom tools into drain list", len(pendingCustomTools))
+		drainedCustomTools = append(pendingCustomTools, drainedCustomTools...)
+		pendingCustomTools = nil
+	}
+
+	// C2: Save consolidated assistant message if not already saved
+	// (fallback for when stop was consumed by drain phase or stream ended without stop)
+	if len(pendingToolUseBlocks) > 0 {
+		var contentBlocks []interface{}
+		if preToolContent != "" {
+			contentBlocks = append(contentBlocks, map[string]interface{}{
+				"type": "text",
+				"text": preToolContent,
+			})
+		}
+		for _, block := range pendingToolUseBlocks {
+			contentBlocks = append(contentBlocks, block)
+		}
+		var metadata map[string]interface{}
+		if ra, ok := processor.(ReasoningAccumulator); ok {
+			if reasoning := ra.GetAccumulatedReasoning(); reasoning != "" {
+				metadata = map[string]interface{}{"reasoning_content": reasoning}
+			}
+		}
+		if rda, ok := processor.(ReasoningDetailsAccumulator); ok {
+			if details := rda.GetAccumulatedReasoningDetails(); len(details) > 0 {
+				if metadata == nil {
+					metadata = make(map[string]interface{})
+				}
+				metadata["reasoning_details"] = details
+			}
+		}
+
+		if err := messageSaver.SaveMessage(threadID, "assistant", contentBlocks, model, metadata); err != nil {
+			log.Printf("Error saving consolidated assistant message: %v", err)
+		} else {
+			log.Printf("📝 Saved consolidated assistant message with %d blocks (after drain)", len(contentBlocks))
+		}
+		pendingToolUseBlocks = nil
 	}
 
 	// Execute drained custom tools in parallel

@@ -106,12 +106,11 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 		return nil, err
 	}
 
-	// Debug: log raw JSON for chunks to see structure (for thinking model debugging)
-	if len(openaiData.Choices) > 0 && len(jsonStr) < 500 {
+	// Log first reasoning chunk per stream as sample (avoid per-token log spam)
+	if len(openaiData.Choices) > 0 && p.accumulatedReasoning == "" && len(jsonStr) < 500 {
 		delta := openaiData.Choices[0].Delta
-		// Log if we see any reasoning fields OR if this looks like it could have reasoning/think tags
-		if delta.ReasoningContent != "" || delta.Reasoning != "" || strings.Contains(jsonStr, "reason") || strings.Contains(jsonStr, "think") {
-			log.Printf("🧠 DEBUG raw: %s", jsonStr)
+		if delta.ReasoningContent != "" || delta.Reasoning != "" || len(delta.ReasoningDetails) > 0 {
+			log.Printf("🧠 First reasoning chunk: %s", jsonStr)
 		}
 	}
 
@@ -213,17 +212,26 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 			} else if len(choice.Delta.ReasoningDetails) > 0 {
 				// Handle reasoning_details (MiniMax M2.5 with reasoning_split=true)
 				// Each entry is {"type": "reasoning.text", "text": "...", ...}
+				// Accumulate ALL entries and emit events for each (queue extras in pendingToolUse)
+				var detailEvents []*StreamEvent
 				for _, detail := range choice.Delta.ReasoningDetails {
 					p.accumulatedReasoningDetails = append(p.accumulatedReasoningDetails, detail)
 					if detailMap, ok := detail.(map[string]interface{}); ok {
 						if text, ok := detailMap["text"].(string); ok && text != "" {
 							p.accumulatedReasoning += text
-							return &StreamEvent{
+							detailEvents = append(detailEvents, &StreamEvent{
 								Type:    "thinking",
 								Content: text,
-							}, nil
+							})
 						}
 					}
+				}
+				if len(detailEvents) > 0 {
+					// Queue extra events if multiple details had text
+					if len(detailEvents) > 1 {
+						p.pendingToolUse = append(p.pendingToolUse, detailEvents[1:]...)
+					}
+					return detailEvents[0], nil
 				}
 			} else if len(choice.Delta.ToolCalls) > 0 {
 				// Handle tool calls - OpenAI streams them incrementally
@@ -299,6 +307,31 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 // processContentWithThinkTags handles content that may contain <think>...</think> tags
 // Together AI K2.5 embeds thinking in content this way instead of using a separate reasoning field
 func (p *OpenAIProcessor) processContentWithThinkTags(content string) (*StreamEvent, error) {
+	// Fast path: if not in think mode and content has no angle brackets, skip tag processing entirely
+	// This avoids getPartialTagSuffix() overhead for models that don't use think tags (MiniMax, etc.)
+	if !p.inThinkTag && !p.startInThinkMode && p.thinkBuffer == "" && !strings.ContainsAny(content, "<>") {
+		return &StreamEvent{
+			Type:    "content",
+			Content: content,
+		}, nil
+	}
+
+	// Prepend any buffered content from a previous tag transition or partial tag
+	if p.thinkBuffer != "" {
+		content = p.thinkBuffer + content
+		p.thinkBuffer = ""
+	}
+
+	// Check for partial tags at the end of content that might span chunks
+	// Buffer them for the next call to avoid missing split tags
+	if partial := getPartialTagSuffix(content); partial != "" {
+		p.thinkBuffer = partial
+		content = content[:len(content)-len(partial)]
+		if content == "" {
+			return nil, nil // Wait for more data
+		}
+	}
+
 	// Check for </think> tag - this marks the end of thinking
 	if strings.Contains(content, "</think>") {
 		parts := strings.SplitN(content, "</think>", 2)
@@ -316,10 +349,12 @@ func (p *OpenAIProcessor) processContentWithThinkTags(content string) (*StreamEv
 				p.accumulatedReasoning += thinkContent
 			}
 
-			// If there's content after </think>, queue it and emit thinking first
+			// If there's content after </think>, queue it as a pending event
 			if afterThink != "" {
-				// Queue the after-think content to emit next
-				p.thinkBuffer = afterThink
+				p.pendingToolUse = append(p.pendingToolUse, &StreamEvent{
+					Type:    "content",
+					Content: afterThink,
+				})
 			}
 
 			// Emit the final thinking chunk (if any)
@@ -330,14 +365,11 @@ func (p *OpenAIProcessor) processContentWithThinkTags(content string) (*StreamEv
 				}, nil
 			}
 
-			// If no thinking content but we have buffered content, emit it
-			if p.thinkBuffer != "" {
-				buffered := p.thinkBuffer
-				p.thinkBuffer = ""
-				return &StreamEvent{
-					Type:    "content",
-					Content: buffered,
-				}, nil
+			// If no thinking content but we have queued after-think content, emit it
+			if len(p.pendingToolUse) > 0 {
+				event := p.pendingToolUse[0]
+				p.pendingToolUse = p.pendingToolUse[1:]
+				return event, nil
 			}
 			return nil, nil
 		}
@@ -354,10 +386,15 @@ func (p *OpenAIProcessor) processContentWithThinkTags(content string) (*StreamEv
 
 		p.inThinkTag = true
 
-		// If there's content before <think>, emit it as content first
+		// If there's content before <think>, emit it first, queue thinking content
 		if beforeThink != "" {
-			// Queue the thinking content
-			p.thinkBuffer = afterThink
+			if afterThink != "" {
+				p.accumulatedReasoning += afterThink
+				p.pendingToolUse = append(p.pendingToolUse, &StreamEvent{
+					Type:    "thinking",
+					Content: afterThink,
+				})
+			}
 			return &StreamEvent{
 				Type:    "content",
 				Content: beforeThink,
@@ -375,14 +412,6 @@ func (p *OpenAIProcessor) processContentWithThinkTags(content string) (*StreamEv
 		return nil, nil
 	}
 
-	// Check if we have buffered content from a previous tag transition
-	if p.thinkBuffer != "" {
-		buffered := p.thinkBuffer
-		p.thinkBuffer = ""
-		// Combine with current content
-		content = buffered + content
-	}
-
 	// If we're inside think tags, emit as thinking
 	if p.inThinkTag {
 		p.accumulatedReasoning += content
@@ -397,6 +426,28 @@ func (p *OpenAIProcessor) processContentWithThinkTags(content string) (*StreamEv
 		Type:    "content",
 		Content: content,
 	}, nil
+}
+
+// partialTagSuffixes is checked from longest to shortest to find partial <think>/<\/think> at chunk boundaries
+var partialTagSuffixes = []string{
+	"</think", "</thin", "</thi", "</th", "</t",
+	"<think", "<thin", "<thi", "<th", "<t",
+	"</", "<",
+}
+
+// getPartialTagSuffix checks if content ends with a partial <think> or </think> tag
+// Returns the partial suffix that should be buffered for the next chunk
+func getPartialTagSuffix(content string) string {
+	for _, suffix := range partialTagSuffixes {
+		if strings.HasSuffix(content, suffix) {
+			// For bare "<", skip if it's part of a complete tag
+			if suffix == "<" && (strings.HasSuffix(content, "<think>") || strings.HasSuffix(content, "</think>")) {
+				continue
+			}
+			return suffix
+		}
+	}
+	return ""
 }
 
 func (p *OpenAIProcessor) IsComplete(line string) bool {
@@ -416,12 +467,14 @@ func (p *OpenAIProcessor) ResetForNewTurn() {
 	p.hasStarted = false
 	p.inThinkTag = p.startInThinkMode // Reset to initial think mode setting
 	p.thinkBuffer = ""
-	// Don't clear accumulatedReasoning - it's accumulated across the entire conversation
+	p.pendingContent = ""  // Clear stale content from previous turn
+	p.pendingUsage = nil   // Clear stale usage from previous turn
+	// Don't clear accumulatedReasoning - it's managed by ClearAccumulatedReasoning after use
 }
 
 // HasPendingEvents returns true if there are queued events waiting to be emitted
 func (p *OpenAIProcessor) HasPendingEvents() bool {
-	return len(p.pendingToolUse) > 0
+	return len(p.pendingToolUse) > 0 || p.pendingUsage != nil
 }
 
 // GetAccumulatedReasoning returns the accumulated reasoning content without clearing it
