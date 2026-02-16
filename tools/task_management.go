@@ -671,15 +671,18 @@ Task ID: %s
 Title: %s
 Description: %s
 
+IMPORTANT: You ARE the task execution — do NOT call execute_task or get_task.
+Your job is to perform the work described above using your available tools (search, fetch, generate content, etc.).
+
 INSTRUCTIONS:
 1. Run autonomously - DO NOT ask questions. Make your best judgment.
-2. Use available tools to complete the task. Be resourceful.
+2. Perform the work described in the task title and description using available tools.
 3. Keep your text responses SHORT - just status updates like "Generating article...", "Fetching data...", "Processing complete."
 4. NO verbose explanations or full sentences - save tokens. Only output brief progress indicators.
 5. When done: call update_task with task_id="%s" and status="completed" with brief results.
 6. On failure: call update_task with task_id="%s" and status="failed" with error.
 
-Execute now.`,
+Begin.`,
 		taskID, title, description, taskID, taskID)
 
 	// Get current trace for parent linkage
@@ -1071,15 +1074,18 @@ Task ID: %s
 Title: %s
 Description: %s
 
+IMPORTANT: You ARE the task execution — do NOT call execute_task or get_task.
+Your job is to perform the work described above using your available tools (search, fetch, generate content, etc.).
+
 INSTRUCTIONS:
 1. Run autonomously - DO NOT ask questions. Make your best judgment.
-2. Use available tools to complete the task. Be resourceful.
+2. Perform the work described in the task title and description using available tools.
 3. Keep your text responses SHORT - just status updates like "Generating article...", "Fetching data...", "Processing complete."
 4. NO verbose explanations or full sentences - save tokens. Only output brief progress indicators.
 5. When done: call update_task with task_id="%s" and status="completed" with brief results.
 6. On failure: call update_task with task_id="%s" and status="failed" with error.
 
-Execute now.`,
+Begin.`,
 		taskID, title, description, taskID, taskID)
 
 	// Get current trace for parent linkage

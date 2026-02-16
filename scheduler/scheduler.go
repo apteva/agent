@@ -366,12 +366,13 @@ func (s *Scheduler) callAgent() {
 
 INSTRUCTIONS:
 1. Check for pending tasks using list_tasks with status="pending"
-2. For each pending task where execute_at or next_run is in the past or now, execute it using execute_task
-3. After a recurring task completes successfully, schedule its next occurrence:
+2. For each pending task where execute_at or next_run is in the past or now, execute it using execute_task with sync=true so you wait for the task to complete before proceeding
+3. Do NOT poll with get_task — sync=true already waits for completion
+4. After a recurring task completes successfully, schedule its next occurrence:
    - Use create_task with the same title, description, and recurrence pattern
    - The system will automatically calculate the next_run based on the recurrence
-4. Do NOT ask questions - make your best judgment and proceed
-5. Provide a brief summary of what was done
+5. Do NOT ask questions - make your best judgment and proceed
+6. Provide a brief summary of what was done
 
 Begin now.`
 
