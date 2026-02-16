@@ -341,13 +341,36 @@ type CircuitBreakerConfig struct {
 
 type RealtimeConfig struct {
 	Enabled      bool   `json:"enabled"`
-	Provider     string `json:"provider"`       // "openai" or "gemini" (default: openai)
+	Provider     string `json:"provider"`       // "openai", "gemini", or "standard" (default: openai)
 	Model        string `json:"model"`          // OpenAI: "gpt-4o-realtime-preview", "gpt-4o-realtime-preview-2024-12-17"
 	GeminiModel  string `json:"gemini_model"`   // Gemini: "gemini-2.0-flash-exp"
 	Voice        string `json:"voice"`          // OpenAI: "alloy", "ash", "ballad", "coral", "sage", "verse"
 	GeminiVoice  string `json:"gemini_voice"`   // Gemini: "Aoede", "Charon", "Fenrir", "Kore", "Puck"
 	VADType      string `json:"vad_type"`       // "semantic_vad" or "server_vad"
 	GoogleSearch bool   `json:"google_search"`  // Gemini: enable Google Search grounding
+
+	// Standard voice mode: STT + Core LLM + TTS (any provider)
+	STT *STTConfig `json:"stt,omitempty"`
+	TTS *TTSConfig `json:"tts,omitempty"`
+}
+
+// STTConfig configures the speech-to-text provider for standard voice mode
+type STTConfig struct {
+	Provider string `json:"provider"`         // "whisper" (default), extensible
+	Model    string `json:"model"`            // "whisper-1" (default)
+	Language string `json:"language"`         // Optional language hint (e.g., "en")
+	BaseURL  string `json:"base_url,omitempty"` // Custom API base URL
+}
+
+// TTSConfig configures the text-to-speech provider for standard voice mode
+type TTSConfig struct {
+	Provider   string  `json:"provider"`              // "elevenlabs" (default), extensible
+	Voice      string  `json:"voice"`                 // Voice ID or name
+	Model      string  `json:"model"`                 // TTS model (e.g., "eleven_turbo_v2_5")
+	Speed      float64 `json:"speed,omitempty"`       // Playback speed multiplier
+	SampleRate int     `json:"sample_rate,omitempty"` // Output sample rate (default: 24000)
+	Stability  float64 `json:"stability,omitempty"`   // Voice stability (0-1)
+	Similarity float64 `json:"similarity,omitempty"`  // Voice similarity boost (0-1)
 }
 
 type TelemetryConfig struct {

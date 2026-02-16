@@ -318,6 +318,7 @@
                                     <select id="voiceProviderSelect" onchange="updateVoiceOptions()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                                         <option value="openai">OpenAI Realtime</option>
                                         <option value="gemini">Google Gemini</option>
+                                        <option value="standard">Standard (STT + LLM + TTS)</option>
                                     </select>
                                 </div>
                                 <div>
@@ -2036,12 +2037,14 @@
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Provider</label>
-                                        <select id="realtimeProvider" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                        <select id="realtimeProvider" onchange="updateRealtimeProviderUI()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
                                             <option value="openai">OpenAI Realtime</option>
                                             <option value="gemini">Google Gemini Live</option>
+                                            <option value="standard">Standard (STT + LLM + TTS)</option>
                                         </select>
+                                        <p class="text-xs text-slate-500 mt-1" id="realtimeProviderHint"></p>
                                     </div>
-                                    <div>
+                                    <div id="realtimeVadRow">
                                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">VAD Type</label>
                                         <select id="realtimeVadType" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
                                             <option value="semantic_vad">Semantic VAD (recommended)</option>
@@ -2050,58 +2053,135 @@
                                         <p class="text-xs text-slate-500 mt-1">Voice activity detection mode</p>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4 mt-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">OpenAI Model</label>
-                                        <select id="realtimeModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
-                                            <option value="gpt-realtime">gpt-realtime (GA, recommended)</option>
-                                            <option value="gpt-realtime-mini">gpt-realtime-mini (faster)</option>
-                                            <option value="gpt-4o-realtime-preview-2025-06-03">gpt-4o-realtime-preview-2025-06-03</option>
-                                            <option value="gpt-4o-realtime-preview-2024-12-17">gpt-4o-realtime-preview-2024-12-17</option>
-                                        </select>
+                                <!-- OpenAI / Gemini specific settings -->
+                                <div id="realtimeNativeSettings">
+                                    <div class="grid grid-cols-2 gap-4 mt-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">OpenAI Model</label>
+                                            <select id="realtimeModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="gpt-realtime">gpt-realtime (GA, recommended)</option>
+                                                <option value="gpt-realtime-mini">gpt-realtime-mini (faster)</option>
+                                                <option value="gpt-4o-realtime-preview-2025-06-03">gpt-4o-realtime-preview-2025-06-03</option>
+                                                <option value="gpt-4o-realtime-preview-2024-12-17">gpt-4o-realtime-preview-2024-12-17</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gemini Model</label>
+                                            <select id="realtimeGeminiModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="gemini-2.5-flash-native-audio-preview-12-2025">gemini-2.5-flash (Dec 2025)</option>
+                                                <option value="gemini-2.5-flash-native-audio-preview-09-2025">gemini-2.5-flash (Sep 2025)</option>
+                                                <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gemini Model</label>
-                                        <select id="realtimeGeminiModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
-                                            <option value="gemini-2.5-flash-native-audio-preview-12-2025">gemini-2.5-flash (Dec 2025)</option>
-                                            <option value="gemini-2.5-flash-native-audio-preview-09-2025">gemini-2.5-flash (Sep 2025)</option>
-                                            <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>
-                                        </select>
+                                    <div class="grid grid-cols-2 gap-4 mt-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">OpenAI Voice</label>
+                                            <select id="realtimeVoice" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="alloy">Alloy</option>
+                                                <option value="ash">Ash</option>
+                                                <option value="ballad">Ballad</option>
+                                                <option value="cedar">Cedar</option>
+                                                <option value="coral">Coral</option>
+                                                <option value="echo">Echo</option>
+                                                <option value="marin">Marin</option>
+                                                <option value="sage">Sage</option>
+                                                <option value="shimmer">Shimmer</option>
+                                                <option value="verse">Verse</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gemini Voice</label>
+                                            <select id="realtimeGeminiVoice" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="Aoede">Aoede</option>
+                                                <option value="Charon">Charon</option>
+                                                <option value="Fenrir">Fenrir</option>
+                                                <option value="Kore">Kore</option>
+                                                <option value="Puck">Puck</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4">
+                                        <label class="flex items-center gap-2">
+                                            <input type="checkbox" id="realtimeGoogleSearch" class="w-4 h-4 rounded border-slate-300">
+                                            <span class="text-sm text-slate-700 dark:text-slate-300">Enable Google Search (Gemini only)</span>
+                                        </label>
+                                        <p class="text-xs text-slate-500 mt-1">Allow Gemini to use Google Search for grounding responses</p>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4 mt-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">OpenAI Voice</label>
-                                        <select id="realtimeVoice" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
-                                            <option value="alloy">Alloy</option>
-                                            <option value="ash">Ash</option>
-                                            <option value="ballad">Ballad</option>
-                                            <option value="cedar">Cedar</option>
-                                            <option value="coral">Coral</option>
-                                            <option value="echo">Echo</option>
-                                            <option value="marin">Marin</option>
-                                            <option value="sage">Sage</option>
-                                            <option value="shimmer">Shimmer</option>
-                                            <option value="verse">Verse</option>
-                                        </select>
+
+                                <!-- Standard voice mode settings (STT + LLM + TTS) -->
+                                <div id="realtimeStandardSettings" class="hidden">
+                                    <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                        <p class="text-sm text-blue-700 dark:text-blue-300">
+                                            Standard mode uses your configured LLM provider with separate STT and TTS services.
+                                            Works with any provider (Anthropic, OpenAI, Gemini, Groq, Fireworks, etc.)
+                                        </p>
                                     </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gemini Voice</label>
-                                        <select id="realtimeGeminiVoice" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
-                                            <option value="Aoede">Aoede</option>
-                                            <option value="Charon">Charon</option>
-                                            <option value="Fenrir">Fenrir</option>
-                                            <option value="Kore">Kore</option>
-                                            <option value="Puck">Puck</option>
-                                        </select>
+                                    <div class="grid grid-cols-2 gap-4 mt-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">STT Provider</label>
+                                            <select id="realtimeSTTProvider" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="elevenlabs">ElevenLabs Scribe</option>
+                                                <option value="whisper">OpenAI Whisper</option>
+                                            </select>
+                                            <p class="text-xs text-slate-500 mt-1">Speech-to-text engine</p>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">STT Model</label>
+                                            <select id="realtimeSTTModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="scribe_v2">Scribe v2 (recommended)</option>
+                                                <option value="scribe_v1">Scribe v1</option>
+                                                <option value="whisper-1">Whisper-1</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="mt-4">
-                                    <label class="flex items-center gap-2">
-                                        <input type="checkbox" id="realtimeGoogleSearch" class="w-4 h-4 rounded border-slate-300">
-                                        <span class="text-sm text-slate-700 dark:text-slate-300">Enable Google Search (Gemini only)</span>
-                                    </label>
-                                    <p class="text-xs text-slate-500 mt-1">Allow Gemini to use Google Search for grounding responses</p>
+                                    <div class="grid grid-cols-2 gap-4 mt-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">TTS Provider</label>
+                                            <select id="realtimeTTSProvider" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="elevenlabs">ElevenLabs</option>
+                                            </select>
+                                            <p class="text-xs text-slate-500 mt-1">Text-to-speech engine</p>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">TTS Voice</label>
+                                            <select id="realtimeTTSVoice" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="21m00Tcm4TlvDq8ikWAM">Rachel (default)</option>
+                                                <option value="EXAVITQu4vr4xnSDxMaL">Bella</option>
+                                                <option value="ErXwobaYiN019PkySvjV">Antoni</option>
+                                                <option value="MF3mGyEYCl7XYWbV9V6O">Elli</option>
+                                                <option value="TxGEqnHWrfWFTfGW9XjX">Josh</option>
+                                                <option value="VR6AewLTigWG4xSOukaG">Arnold</option>
+                                                <option value="pNInz6obpgDQGcFmaJgB">Adam</option>
+                                                <option value="yoZ06aMxZJJ28mfd3POQ">Sam</option>
+                                                <option value="custom">Custom Voice ID...</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 hidden" id="realtimeTTSCustomVoiceRow">
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Custom Voice ID</label>
+                                        <input type="text" id="realtimeTTSCustomVoice" placeholder="ElevenLabs voice ID" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                        <p class="text-xs text-slate-500 mt-1">Paste your ElevenLabs voice ID from the Voice Library</p>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4 mt-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">TTS Model</label>
+                                            <select id="realtimeTTSModel" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                                <option value="eleven_flash_v2_5">Flash v2.5 (~75ms, fastest)</option>
+                                                <option value="eleven_flash_v2">Flash v2 (English only)</option>
+                                                <option value="eleven_turbo_v2_5">Turbo v2.5 (~250ms)</option>
+                                                <option value="eleven_turbo_v2">Turbo v2</option>
+                                                <option value="eleven_v3">v3 Expressive (highest quality)</option>
+                                                <option value="eleven_multilingual_v2">Multilingual v2</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Language</label>
+                                            <input type="text" id="realtimeSTTLanguage" placeholder="auto-detect" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                            <p class="text-xs text-slate-500 mt-1">ISO code (e.g. "en") or leave blank</p>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="mt-4 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
                                     <p class="text-sm text-slate-600 dark:text-slate-400">

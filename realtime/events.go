@@ -34,8 +34,9 @@ type AudioDeltaData struct {
 
 // TranscriptData contains transcription information
 type TranscriptData struct {
-	Role    string `json:"role"`    // "user" or "assistant"
-	Content string `json:"content"` // Transcribed text
+	Role    string `json:"role"`              // "user" or "assistant"
+	Content string `json:"content"`           // Transcribed text
+	Partial bool   `json:"partial,omitempty"` // True for interim/partial transcripts
 }
 
 // ToolCallData contains tool invocation information

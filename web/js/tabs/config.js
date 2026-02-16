@@ -13,6 +13,56 @@ function updateBrowserProviderUI() {
     document.getElementById('providerChromeSettings').classList.toggle('hidden', provider !== 'chrome');
 }
 
+// Show/hide realtime provider-specific settings
+function updateRealtimeProviderUI() {
+    const provider = document.getElementById('realtimeProvider').value;
+    const isStandard = provider === 'standard';
+
+    // Toggle native (OpenAI/Gemini) vs standard (STT+LLM+TTS) sections
+    const nativeSettings = document.getElementById('realtimeNativeSettings');
+    const standardSettings = document.getElementById('realtimeStandardSettings');
+    const vadRow = document.getElementById('realtimeVadRow');
+
+    if (nativeSettings) nativeSettings.classList.toggle('hidden', isStandard);
+    if (standardSettings) standardSettings.classList.toggle('hidden', !isStandard);
+    if (vadRow) vadRow.classList.toggle('hidden', isStandard);
+
+    // Update hint text
+    const hint = document.getElementById('realtimeProviderHint');
+    if (hint) {
+        if (isStandard) {
+            hint.textContent = 'Uses your configured LLM + ElevenLabs for STT/TTS. Requires ELEVENLABS_API_KEY.';
+        } else if (provider === 'gemini') {
+            hint.textContent = 'Requires GEMINI_API_KEY environment variable.';
+        } else {
+            hint.textContent = 'Requires OPENAI_API_KEY environment variable.';
+        }
+    }
+
+    // Handle custom voice ID visibility
+    const ttsVoiceSelect = document.getElementById('realtimeTTSVoice');
+    if (ttsVoiceSelect) {
+        ttsVoiceSelect.onchange = () => {
+            const customRow = document.getElementById('realtimeTTSCustomVoiceRow');
+            if (customRow) customRow.classList.toggle('hidden', ttsVoiceSelect.value !== 'custom');
+        };
+    }
+
+    // Update STT model options based on STT provider
+    const sttProviderSelect = document.getElementById('realtimeSTTProvider');
+    if (sttProviderSelect) {
+        sttProviderSelect.onchange = () => {
+            const sttModel = document.getElementById('realtimeSTTModel');
+            if (!sttModel) return;
+            if (sttProviderSelect.value === 'whisper') {
+                sttModel.innerHTML = '<option value="whisper-1">Whisper-1</option>';
+            } else {
+                sttModel.innerHTML = '<option value="scribe_v2">Scribe v2 (recommended)</option><option value="scribe_v1">Scribe v1</option>';
+            }
+        };
+    }
+}
+
 // Load available providers and models from API
 async function loadProviders() {
     try {
@@ -348,6 +398,30 @@ async function loadConfig() {
         document.getElementById('realtimeVadType').value = rt.vad_type || 'semantic_vad';
         document.getElementById('realtimeGoogleSearch').checked = rt.google_search || false;
 
+        // Load Standard voice STT/TTS settings
+        const stt = rt.stt || {};
+        const tts = rt.tts || {};
+        document.getElementById('realtimeSTTProvider').value = stt.provider || 'elevenlabs';
+        document.getElementById('realtimeSTTModel').value = stt.model || 'scribe_v2';
+        document.getElementById('realtimeSTTLanguage').value = stt.language || '';
+        document.getElementById('realtimeTTSProvider').value = tts.provider || 'elevenlabs';
+        document.getElementById('realtimeTTSModel').value = tts.model || 'eleven_turbo_v2_5';
+
+        // Load TTS voice - check if it matches a preset or is custom
+        const ttsVoice = tts.voice || '21m00Tcm4TlvDq8ikWAM';
+        const ttsVoiceSelect = document.getElementById('realtimeTTSVoice');
+        const presetMatch = Array.from(ttsVoiceSelect.options).find(o => o.value === ttsVoice);
+        if (presetMatch) {
+            ttsVoiceSelect.value = ttsVoice;
+        } else {
+            ttsVoiceSelect.value = 'custom';
+            document.getElementById('realtimeTTSCustomVoice').value = ttsVoice;
+            document.getElementById('realtimeTTSCustomVoiceRow').classList.remove('hidden');
+        }
+
+        // Show/hide provider-specific sections
+        updateRealtimeProviderUI();
+
         // Load Context & Summarization settings
         const ctx = currentConfig.context || {};
         const compaction = ctx.compaction || {};
@@ -631,19 +705,38 @@ async function saveFeatureConfig(feature) {
             break;
 
         case 'realtime':
-            updates = {
-                realtime: {
-                    ...currentConfig?.realtime,
-                    enabled: document.getElementById('toggleRealtime').checked,
-                    provider: document.getElementById('realtimeProvider').value || 'openai',
-                    model: document.getElementById('realtimeModel').value || 'gpt-realtime',
-                    gemini_model: document.getElementById('realtimeGeminiModel').value || undefined,
-                    voice: document.getElementById('realtimeVoice').value || 'alloy',
-                    gemini_voice: document.getElementById('realtimeGeminiVoice').value || 'Kore',
-                    vad_type: document.getElementById('realtimeVadType').value || 'semantic_vad',
-                    google_search: document.getElementById('realtimeGoogleSearch').checked
-                }
+            const realtimeProvider = document.getElementById('realtimeProvider').value || 'openai';
+            const realtimeUpdate = {
+                ...currentConfig?.realtime,
+                enabled: document.getElementById('toggleRealtime').checked,
+                provider: realtimeProvider,
+                model: document.getElementById('realtimeModel').value || 'gpt-realtime',
+                gemini_model: document.getElementById('realtimeGeminiModel').value || undefined,
+                voice: document.getElementById('realtimeVoice').value || 'alloy',
+                gemini_voice: document.getElementById('realtimeGeminiVoice').value || 'Kore',
+                vad_type: document.getElementById('realtimeVadType').value || 'semantic_vad',
+                google_search: document.getElementById('realtimeGoogleSearch').checked
             };
+
+            // Include STT/TTS config when standard provider is selected
+            if (realtimeProvider === 'standard') {
+                let ttsVoice = document.getElementById('realtimeTTSVoice').value;
+                if (ttsVoice === 'custom') {
+                    ttsVoice = document.getElementById('realtimeTTSCustomVoice').value || '21m00Tcm4TlvDq8ikWAM';
+                }
+                realtimeUpdate.stt = {
+                    provider: document.getElementById('realtimeSTTProvider').value || 'elevenlabs',
+                    model: document.getElementById('realtimeSTTModel').value || 'scribe_v2',
+                    language: document.getElementById('realtimeSTTLanguage').value || undefined
+                };
+                realtimeUpdate.tts = {
+                    provider: document.getElementById('realtimeTTSProvider').value || 'elevenlabs',
+                    voice: ttsVoice,
+                    model: document.getElementById('realtimeTTSModel').value || 'eleven_turbo_v2_5'
+                };
+            }
+
+            updates = { realtime: realtimeUpdate };
             break;
 
         case 'reflection':

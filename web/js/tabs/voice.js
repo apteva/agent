@@ -14,6 +14,7 @@ let voiceIsPlaying = false;
 let voiceNextPlayTime = 0; // For gapless scheduling
 let voicePlaybackContext = null; // Separate context for playback at 24kHz
 
+
 // Voice options for each provider
 const OPENAI_VOICES = [
     { value: 'alloy', label: 'Alloy' },
@@ -36,13 +37,31 @@ const GEMINI_VOICES = [
     { value: 'Puck', label: 'Puck' }
 ];
 
+const ELEVENLABS_VOICES = [
+    { value: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel' },
+    { value: 'EXAVITQu4vr4xnSDxMaL', label: 'Bella' },
+    { value: 'ErXwobaYiN019PkySvjV', label: 'Antoni' },
+    { value: 'MF3mGyEYCl7XYWbV9V6O', label: 'Elli' },
+    { value: 'TxGEqnHWrfWFTfGW9XjX', label: 'Josh' },
+    { value: 'VR6AewLTigWG4xSOukaG', label: 'Arnold' },
+    { value: 'pNInz6obpgDQGcFmaJgB', label: 'Adam' },
+    { value: 'yoZ06aMxZJJ28mfd3POQ', label: 'Sam' }
+];
+
 function updateVoiceOptions(selectedVoice) {
     const providerSelect = document.getElementById('voiceProviderSelect');
     const voiceSelect = document.getElementById('voiceSelect');
     if (!providerSelect || !voiceSelect) return;
 
     const provider = providerSelect.value;
-    const voices = provider === 'gemini' ? GEMINI_VOICES : OPENAI_VOICES;
+    let voices;
+    if (provider === 'standard') {
+        voices = ELEVENLABS_VOICES;
+    } else if (provider === 'gemini') {
+        voices = GEMINI_VOICES;
+    } else {
+        voices = OPENAI_VOICES;
+    }
 
     // Clear and repopulate
     voiceSelect.innerHTML = '';
@@ -58,7 +77,9 @@ function updateVoiceOptions(selectedVoice) {
         voiceSelect.value = selectedVoice;
     } else if (voiceConfig) {
         // Use config values
-        if (provider === 'gemini' && voiceConfig.gemini_voice) {
+        if (provider === 'standard' && voiceConfig.tts?.voice) {
+            voiceSelect.value = voiceConfig.tts.voice;
+        } else if (provider === 'gemini' && voiceConfig.gemini_voice) {
             voiceSelect.value = voiceConfig.gemini_voice;
         } else if (voiceConfig.voice) {
             voiceSelect.value = voiceConfig.voice;
@@ -85,11 +106,19 @@ async function initVoiceTab() {
             // Update status panel provider display
             const providerDisplay = document.getElementById('voiceProvider');
             if (providerDisplay) {
-                providerDisplay.textContent = provider === 'gemini' ? 'Gemini' : 'OpenAI';
+                const providerLabels = { openai: 'OpenAI', gemini: 'Gemini', standard: 'Standard' };
+                providerDisplay.textContent = providerLabels[provider] || provider;
             }
 
             // Update voice options based on provider, then set voice
-            const voice = provider === 'gemini' ? rt.gemini_voice : rt.voice;
+            let voice;
+            if (provider === 'standard') {
+                voice = rt.tts?.voice;
+            } else if (provider === 'gemini') {
+                voice = rt.gemini_voice;
+            } else {
+                voice = rt.voice;
+            }
             updateVoiceOptions(voice);
         }
     } catch (e) {
@@ -147,7 +176,8 @@ async function startVoiceSession() {
 
         voiceWs.onopen = () => {
             document.getElementById('voiceStatus').textContent = 'Connected';
-            document.getElementById('voiceProvider').textContent = provider === 'openai' ? 'OpenAI' : 'Gemini';
+            const providerLabels = { openai: 'OpenAI', gemini: 'Gemini', standard: 'Standard' };
+            document.getElementById('voiceProvider').textContent = providerLabels[provider] || provider;
 
             // Send initial message to trigger session creation
             // Server waits for first message to detect format (JSON vs binary)
@@ -210,13 +240,22 @@ async function handleVoiceMessage(msg) {
 
         case 'transcript':
             if (msg.data) {
-                addVoiceLogEntry(msg.data.role, msg.data.content);
+                if (msg.data.partial) {
+                    // Update partial transcript in-place (real-time typing indicator)
+                    updatePartialTranscript(msg.data.content);
+                } else {
+                    // Final/committed transcript — clear any partial and add log entry
+                    clearPartialTranscript();
+                    addVoiceLogEntry(msg.data.role, msg.data.content);
+                }
             }
             break;
 
         case 'tool_call':
             if (msg.data) {
                 addVoiceLogEntry('system', `Calling tool: ${msg.data.name}`);
+                // Reset audio scheduling so there's a natural break during tool execution
+                resetAudioPlayback();
             }
             break;
 
@@ -224,6 +263,8 @@ async function handleVoiceMessage(msg) {
             if (msg.data) {
                 const status = msg.data.error ? 'failed' : 'completed';
                 addVoiceLogEntry('system', `Tool ${status}: ${msg.data.call_id}`);
+                // Reset again so post-tool audio starts fresh, not queued after pre-tool audio
+                resetAudioPlayback();
             }
             break;
 
@@ -271,7 +312,7 @@ async function startAudioCapture() {
 
             const inputData = e.inputBuffer.getChannelData(0);
 
-            // Resample to 16kHz for Gemini
+            // Resample to 16kHz
             const resampledData = resampleAudio(inputData, nativeSampleRate, 16000);
             const int16Data = float32ToInt16(resampledData);
             const base64Data = int16ToBase64(int16Data);
@@ -283,6 +324,7 @@ async function startAudioCapture() {
                     chunk: base64Data
                 }
             }));
+
         };
 
         source.connect(voiceProcessor);
@@ -340,6 +382,7 @@ function stopVoiceSession() {
 function stopVoiceSessionInternal() {
     voiceIsRecording = false;
     stopDurationTimer();
+
 
     if (voiceProcessor) {
         voiceProcessor.disconnect();
@@ -400,16 +443,13 @@ function sendVoiceText() {
         return;
     }
 
-    // Send text message
+    // Send text message (server will echo back as transcript event)
     voiceWs.send(JSON.stringify({
         type: 'text',
         data: {
             content: text
         }
     }));
-
-    // Add to log as user message
-    addVoiceLogEntry('user', text);
 
     // Clear input
     input.value = '';
@@ -440,4 +480,26 @@ function addVoiceLogEntry(role, text) {
         const count = parseInt(countEl.textContent) + 1;
         countEl.textContent = count;
     }
+}
+
+function updatePartialTranscript(text) {
+    const log = document.getElementById('voiceLog');
+    if (!log) return;
+
+    // Find or create the partial transcript element
+    let partial = log.querySelector('.voice-partial-transcript');
+    if (!partial) {
+        partial = document.createElement('div');
+        partial.className = 'mb-2 text-blue-400 dark:text-blue-300 italic voice-partial-transcript';
+        log.appendChild(partial);
+    }
+    partial.innerHTML = `<span class="font-semibold">user:</span> ${escapeHtml(text)}...`;
+    log.scrollTop = log.scrollHeight;
+}
+
+function clearPartialTranscript() {
+    const log = document.getElementById('voiceLog');
+    if (!log) return;
+    const partial = log.querySelector('.voice-partial-transcript');
+    if (partial) partial.remove();
 }

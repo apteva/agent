@@ -121,6 +121,8 @@ func (s *RealtimeServer) HandleWebSocket(w http.ResponseWriter, r *http.Request)
 	switch provider {
 	case "gemini":
 		adapter, adapterErr = NewGeminiRealtimeAdapter(session, s.messageSaver, s.eventBus)
+	case "standard":
+		adapter, adapterErr = NewStandardVoiceAdapter(session, s.messageSaver, s.eventBus)
 	default: // "openai"
 		adapter, adapterErr = NewOpenAIRealtimeAdapter(session, s.messageSaver, s.eventBus)
 	}

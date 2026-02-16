@@ -113,8 +113,13 @@ func BuildSystemPromptWithMCP(llmConfig config.LLMConfig, agentName, agentDescri
 
 // BuildSystemPromptWithConfig builds the complete system prompt with all configuration context
 func BuildSystemPromptWithConfig(llmConfig config.LLMConfig, agentName, agentDescription string, mcpConfig *config.MCPConfig, tasksConfig *config.TasksConfig, schedulerConfig *config.SchedulerConfig, system interface{}, availableAgents []config.AgentInfo) string {
-	// Get current time and date
+	// Get current time and date from system timezone (automatic)
 	now := time.Now()
+	timezoneName, _ := now.Zone()
+	// Try to get IANA name (e.g. "Europe/Berlin") from the location
+	if locName := now.Location().String(); locName != "" && locName != "Local" {
+		timezoneName = locName
+	}
 	currentTime := now.Format("Monday, January 2, 2006 at 3:04 PM MST")
 
 	// Start with base system prompt from config
@@ -127,19 +132,24 @@ func BuildSystemPromptWithConfig(llmConfig config.LLMConfig, agentName, agentDes
 	systemPrompt := fmt.Sprintf(`%s
 
 Current date and time: %s
+Your server timezone: %s — this is YOUR clock. Do NOT assume any other timezone. If your timezone is UTC, you are NOT in a US timezone. Always be aware of the difference between your timezone and the user's local time if they mention one.
 Agent name: %s
 Agent description: %s
 
 Important instructions:
-1. Always consider the current date and time when relevant to the conversation.
+1. You run in the %s timezone. All times you see and generate are in %s unless explicitly stated otherwise. When a user asks "what time is it", answer with YOUR timezone and clarify it. When scheduling, use %s. Never silently assume the user is in the same timezone as you.
 2. ALWAYS explain what you are going to do before executing any tool. For example, say "I'll check your tasks for you" before using list_tasks, or "Let me search for that information" before using web_search.
 3. Be transparent about the tools you're using to help the user understand the process.
 4. NEVER expose credential IDs, API keys, or other sensitive identifiers in your chat responses. Use them only internally when calling tools. If a user asks about credentials, explain what services are available without revealing the actual IDs.
 5. After receiving tool results, you MUST provide a text response to the user.`,
 		basePrompt,
 		currentTime,
+		timezoneName,
 		agentName,
 		agentDescription,
+		timezoneName,
+		timezoneName,
+		timezoneName,
 	)
 
 	// Add agent identity/callback URL if public_url is configured
