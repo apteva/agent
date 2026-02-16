@@ -212,7 +212,7 @@ func TestStreamingWithMessageSaver(t *testing.T) {
 
 		err := stream.UnifiedToolConversationWithBuiltins(
 			recorder, provider, processor, []stream.Message{},
-			customTools, builtinTools, saver, threadID, &model, nil,
+			customTools, builtinTools, saver, threadID, &model, nil, "",
 		)
 		AssertNil(t, err)
 
@@ -247,7 +247,7 @@ func TestStreamingWithMessageSaver(t *testing.T) {
 
 		err := stream.UnifiedToolConversationWithBuiltins(
 			recorder, provider, processor, []stream.Message{},
-			[]tools.ToolDefinition{}, []interface{}{}, saver, threadID, nil, nil,
+			[]tools.ToolDefinition{}, []interface{}{}, saver, threadID, nil, nil, "",
 		)
 		AssertNotNil(t, err)
 		AssertContains(t, err.Error(), "provider connection failed")
@@ -374,7 +374,7 @@ func TestConcurrentStreaming(t *testing.T) {
 				recorder := httptest.NewRecorder()
 				err := stream.UnifiedToolConversationWithBuiltins(
 					recorder, provider, processor, []stream.Message{},
-					[]tools.ToolDefinition{}, []interface{}{}, saver, threadID, nil, nil,
+					[]tools.ToolDefinition{}, []interface{}{}, saver, threadID, nil, nil, "",
 				)
 
 				if err != nil {

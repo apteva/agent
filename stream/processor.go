@@ -750,6 +750,37 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	// (instead of per-tool_use saves which create broken history for parallel tool calls)
 	var pendingToolUseBlocks []map[string]interface{}
 
+	// Deferred tool result saves: inline tool results (MCP, $web_search, computer, server tools)
+	// must be saved to DB AFTER the consolidated assistant message, not before.
+	// Otherwise the DB has: tool_result, assistant(tool_use) — wrong order that breaks providers.
+	var consolidatedSaved bool
+	var deferredToolResultSaves [][]interface{}
+
+	saveOrDeferToolResult := func(toolResultArray []interface{}, label string) {
+		if consolidatedSaved || len(pendingToolUseBlocks) == 0 {
+			// Safe: consolidated already saved, or no pending tool_use blocks
+			if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
+				log.Printf("Error saving %s tool result message: %v", label, err)
+			}
+		} else {
+			// Defer: consolidated not yet saved, tool result must come after it
+			deferredToolResultSaves = append(deferredToolResultSaves, toolResultArray)
+			log.Printf("📦 Deferred %s tool result save — waiting for consolidated assistant save", label)
+		}
+	}
+
+	flushDeferredToolResults := func() {
+		if len(deferredToolResultSaves) > 0 {
+			for _, arr := range deferredToolResultSaves {
+				if err := messageSaver.SaveMessage(threadID, "user", arr, nil, nil); err != nil {
+					log.Printf("Error saving deferred tool result: %v", err)
+				}
+			}
+			log.Printf("📤 Flushed %d deferred tool result saves", len(deferredToolResultSaves))
+			deferredToolResultSaves = nil
+		}
+	}
+
 	// Send start event and thread_id immediately for all providers
 	// This ensures the client gets the thread_id before any content
 	if !threadIDSent {
@@ -911,9 +942,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						"content":     toolResultContent,
 					}
 					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving $web_search tool result message: %v", err)
-					}
+					saveOrDeferToolResult(toolResultArray, "$web_search")
 
 					// Create tool result for conversation continuation
 					toolResult := StreamEvent{
@@ -1040,9 +1069,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						"is_error":    isError,
 					}
 					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving MCP tool result message: %v", err)
-					}
+					saveOrDeferToolResult(toolResultArray, "MCP")
 
 					// Create tool result for conversation continuation
 					toolResult := StreamEvent{
@@ -1165,9 +1192,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 
 					// Wrap in array for proper format
 					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving computer tool result message: %v", err)
-					}
+					saveOrDeferToolResult(toolResultArray, "computer")
 
 					// Create tool result for conversation continuation
 					toolResult := StreamEvent{
@@ -1251,9 +1276,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				}
 				// Wrap in array for proper format
 				toolResultArray := []interface{}{toolResultBlock}
-				if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-					log.Printf("Error saving tool result message: %v", err)
-				}
+				saveOrDeferToolResult(toolResultArray, "server/tool_result")
 
 				// Create tool result for conversation continuation
 				toolResult := StreamEvent{
@@ -1360,6 +1383,8 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					log.Printf("📝 Saved consolidated assistant message with %d blocks", len(contentBlocks))
 				}
 				pendingToolUseBlocks = nil
+				consolidatedSaved = true
+				flushDeferredToolResults()
 			}
 
 			// Execute pending custom tools in parallel before breaking on stop
@@ -1531,16 +1556,14 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					inputJSON, _ := json.Marshal(event.ToolInput)
 					toolResultContent := string(inputJSON)
 
-					// Save and stream result immediately
+					// Save tool result (deferred if consolidated not yet saved)
 					toolResultBlock := map[string]interface{}{
 						"type":        "tool_result",
 						"tool_use_id": event.ToolID,
 						"content":     toolResultContent,
 					}
 					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving tool result message: %v", err)
-					}
+					saveOrDeferToolResult(toolResultArray, "$web_search/drain")
 					toolResult := StreamEvent{
 						Type:             "tool_result",
 						ToolID:           event.ToolID,
@@ -1589,16 +1612,14 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						toolContent, toolResultContent, _ = ProcessMCPToolResult(result, visionEnabled, documentSupport, fileProcessor, threadID, event.ToolName)
 					}
 
-					// Save tool result — use structured content if available
+					// Save tool result — use structured content if available (deferred if consolidated not yet saved)
 					toolResultBlock := map[string]interface{}{
 						"type":        "tool_result",
 						"tool_use_id": event.ToolID,
 						"content":     toolContent,
 					}
 					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving tool result message: %v", err)
-					}
+					saveOrDeferToolResult(toolResultArray, "MCP/drain")
 					toolResult := StreamEvent{
 						Type:             "tool_result",
 						ToolID:           event.ToolID,
@@ -1631,9 +1652,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 						"content":     toolResultContent,
 					}
 					toolResultArray := []interface{}{toolResultBlock}
-					if err := messageSaver.SaveMessage(threadID, "user", toolResultArray, nil, nil); err != nil {
-						log.Printf("Error saving tool result message: %v", err)
-					}
+					saveOrDeferToolResult(toolResultArray, "unknown/drain")
 					toolResult := StreamEvent{
 						Type:             "tool_result",
 						ToolID:           event.ToolID,
@@ -1693,6 +1712,8 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 			log.Printf("📝 Saved consolidated assistant message with %d blocks (after drain)", len(contentBlocks))
 		}
 		pendingToolUseBlocks = nil
+		consolidatedSaved = true
+		flushDeferredToolResults()
 	}
 
 	// Execute drained custom tools in parallel

@@ -986,6 +986,7 @@ func (m *MemoryManager) callOpenAICompatibleAPI(prompt, model, provider string) 
 		},
 	}
 
+
 	jsonData, err := json.Marshal(req)
 	if err != nil {
 		return "", err

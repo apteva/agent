@@ -218,7 +218,7 @@ func (s *Summarizer) callAnthropicAPI(prompt string) (string, error) {
 func (s *Summarizer) callOpenAICompatibleAPI(prompt string) (string, error) {
 	requestBody := map[string]interface{}{
 		"model":      s.model,
-		"max_tokens": 300,
+		"max_tokens": 2000,
 		"stream":     false,
 		"temperature": 0.0,
 		"messages": []map[string]interface{}{
@@ -226,6 +226,7 @@ func (s *Summarizer) callOpenAICompatibleAPI(prompt string) (string, error) {
 			{"role": "user", "content": prompt},
 		},
 	}
+
 
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
