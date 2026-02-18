@@ -69,6 +69,17 @@ func InitProvider(operatorConfig *config.OperatorConfig) BrowserProvider {
 			log.Printf("⚠️  Chrome provider selected but no debug URL configured, falling back to browserengine")
 			activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
 		}
+	case "browserapi":
+		if operatorConfig.BrowserAPI != nil && operatorConfig.BrowserAPI.APIKey != "" {
+			baseURL := operatorConfig.BrowserAPI.BaseURL
+			if baseURL == "" {
+				baseURL = "https://api.browserengine.co"
+			}
+			activeProvider = NewBrowserAPIProvider(baseURL, operatorConfig.BrowserAPI.APIKey)
+		} else {
+			log.Printf("⚠️  BrowserAPI provider selected but no API key configured, falling back to browserengine")
+			activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
+		}
 	default: // "browserengine" or unknown
 		activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
 	}
@@ -150,7 +161,7 @@ func getTestMode(operatorConfig *config.OperatorConfig) bool {
 }
 
 // CreateSessionWithData creates a new session and returns both the session ID and full response data
-func CreateSessionWithData(agentID string, initialURL string) (string, map[string]interface{}, error) {
+func CreateSessionWithData(agentID string, initialURL string, proxyEnabled bool, proxyCountry string) (string, map[string]interface{}, error) {
 	cfg := config.GetConfig()
 	operatorConfig := cfg.Get().Operator
 
@@ -167,7 +178,8 @@ func CreateSessionWithData(agentID string, initialURL string) (string, map[strin
 		InitialURL:     initialURL,
 		ViewportWidth:  operatorConfig.DisplayWidth,
 		ViewportHeight: operatorConfig.DisplayHeight,
-		Proxy:          true,
+		Proxy:          proxyEnabled,
+		ProxyCountry:   proxyCountry,
 		TestMode:       getTestMode(operatorConfig),
 	}
 
@@ -235,8 +247,8 @@ func CreateSessionWithData(agentID string, initialURL string) (string, map[strin
 }
 
 // GetOrCreateSession gets existing session or creates a new one
-func GetOrCreateSession(agentID string, initialURL string) (string, error) {
-	sessionID, _, err := CreateSessionWithData(agentID, initialURL)
+func GetOrCreateSession(agentID string, initialURL string, proxyEnabled bool, proxyCountry string) (string, error) {
+	sessionID, _, err := CreateSessionWithData(agentID, initialURL, proxyEnabled, proxyCountry)
 	return sessionID, err
 }
 
@@ -271,8 +283,15 @@ func executeCommand(ctx context.Context, session *BrowserSession, cmdType string
 	return executeRESTCommand(ctx, session.ID, cmdType, params)
 }
 
-// executeRESTCommand sends a command via REST HTTP to the virtual browser service
+// executeRESTCommand sends a command via REST HTTP to the virtual browser service.
+// If the active provider is browserapi, it routes through the API gateway instead.
 func executeRESTCommand(ctx context.Context, sessionID string, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
+	// If active provider is browserapi, use its own command execution (with auth + billing)
+	provider := getProvider()
+	if apiProvider, ok := provider.(*BrowserAPIProvider); ok {
+		return apiProvider.ExecuteCommand(ctx, sessionID, cmdType, params)
+	}
+
 	cfg := config.GetConfig()
 	operatorConfig := cfg.Get().Operator
 

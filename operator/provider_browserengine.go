@@ -30,6 +30,9 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 		"test_mode":   opts.TestMode,
 		"proxy":       opts.Proxy,
 	}
+	if opts.ProxyCountry != "" {
+		sessionData["proxy_country"] = opts.ProxyCountry
+	}
 
 	if opts.ViewportWidth > 0 && opts.ViewportHeight > 0 {
 		sessionData["viewport"] = map[string]interface{}{

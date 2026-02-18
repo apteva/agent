@@ -221,11 +221,13 @@ type MemoryConfig struct {
 
 type OperatorConfig struct {
 	Enabled           bool     `json:"enabled"`
-	BrowserProvider   string   `json:"browser_provider"`      // "browserengine" (default), "browserbase", "steel", "chrome"
+	BrowserProvider   string   `json:"browser_provider"`      // "browserengine" (default), "browserbase", "steel", "chrome", "browserapi"
 	VirtualBrowser    string   `json:"virtual_browser"`       // BrowserEngine service URL (e.g., http://localhost:8098)
 	TestMode          *bool    `json:"test_mode,omitempty"`   // Use test mode (nil = use global test_mode)
 	DisplayWidth      int      `json:"display_width"`         // 1024
 	DisplayHeight     int      `json:"display_height"`        // 768
+	Proxy        *bool  `json:"proxy,omitempty"`         // Enable proxy (nil = true for backward compat)
+	ProxyCountry string `json:"proxy_country,omitempty"` // Default proxy country ISO 3166-1 alpha-2 code (e.g., "US", "GB", "DE")
 	AllowedDomains []string `json:"allowed_domains,omitempty"`
 	BlockedDomains []string `json:"blocked_domains,omitempty"`
 
@@ -233,6 +235,7 @@ type OperatorConfig struct {
 	Browserbase *BrowserbaseProviderConfig `json:"browserbase,omitempty"`
 	Steel       *SteelProviderConfig       `json:"steel,omitempty"`
 	Chrome      *ChromeProviderConfig      `json:"chrome,omitempty"`
+	BrowserAPI  *BrowserAPIProviderConfig  `json:"browser_api,omitempty"`
 }
 
 // BrowserbaseProviderConfig holds Browserbase connection settings
@@ -250,6 +253,12 @@ type SteelProviderConfig struct {
 // ChromeProviderConfig holds raw Chrome CDP connection settings
 type ChromeProviderConfig struct {
 	DebugURL string `json:"debug_url"` // e.g., "ws://localhost:9222" or "http://localhost:9222"
+}
+
+// BrowserAPIProviderConfig holds Browser API gateway connection settings
+type BrowserAPIProviderConfig struct {
+	BaseURL string `json:"base_url"` // Default: "https://api.browserengine.co"
+	APIKey  string `json:"api_key"`  // X-API-Key header value
 }
 
 type ContextConfig struct {
@@ -283,7 +292,7 @@ type FileSystemConfig struct {
 
 type AgentsConfig struct {
 	Enabled          bool              `json:"enabled"`
-	Mode             string            `json:"mode,omitempty"`               // "coordinator" | "worker" (default: "coordinator")
+	Mode             string            `json:"mode,omitempty"`               // "peer" | "coordinator" | "worker" (default: "peer")
 	Group            string            `json:"group,omitempty"`              // Discovery group name (e.g., "production", "staging")
 	DiscoveryMethod  string            `json:"discovery_method,omitempty"`   // "file" | "mdns" | "ssdp" | "manual" (default: "file")
 	FileRegistryPath string            `json:"file_registry_path,omitempty"` // Path for file-based discovery (default: "/tmp/apteva-agents")
@@ -295,14 +304,33 @@ type AgentsConfig struct {
 	RefreshInterval  string            `json:"refresh_interval,omitempty"`   // Discovery refresh interval (default: "10s")
 }
 
-// IsWorkerMode returns true if this agent is in worker mode (receive-only)
+// IsWorkerMode returns true if this agent is in worker mode (receive-only, cannot call other agents)
 func (c *AgentsConfig) IsWorkerMode() bool {
 	return c.Mode == "worker"
 }
 
+// IsPeerMode returns true if this agent is in peer mode (can call and be called by other agents)
+// Peer mode is the default — any agent can collaborate with any other agent,
+// with guardrails (call chain, max depth, TTL, circuit breaker) preventing loops.
+func (c *AgentsConfig) IsPeerMode() bool {
+	return c.Mode == "" || c.Mode == "peer"
+}
+
 // IsCoordinatorMode returns true if this agent can call other agents
 func (c *AgentsConfig) IsCoordinatorMode() bool {
-	return c.Mode == "" || c.Mode == "coordinator"
+	return c.Mode == "coordinator"
+}
+
+// CanCallAgents returns true if this agent is allowed to call other agents
+// Both peer and coordinator modes can call; only worker mode cannot.
+func (c *AgentsConfig) CanCallAgents() bool {
+	return !c.IsWorkerMode()
+}
+
+// CanDiscoverAgents returns true if this agent should actively discover peers
+// Both peer and coordinator modes discover; worker mode only registers itself.
+func (c *AgentsConfig) CanDiscoverAgents() bool {
+	return !c.IsWorkerMode()
 }
 
 type AgentInfo struct {

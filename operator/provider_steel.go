@@ -42,8 +42,13 @@ func (p *SteelProvider) CreateSession(ctx context.Context, opts SessionOptions) 
 		}
 	}
 
-	// Note: Steel proxies require a paid plan. Don't send useProxy by default.
-	// Users on paid plans can enable this via config if needed.
+	// Steel proxies require a paid plan. Only send when explicitly enabled.
+	if opts.Proxy {
+		body["useProxy"] = true
+		if opts.ProxyCountry != "" {
+			body["proxyCountry"] = strings.ToLower(opts.ProxyCountry)
+		}
+	}
 
 	jsonData, err := json.Marshal(body)
 	if err != nil {

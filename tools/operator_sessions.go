@@ -17,7 +17,9 @@ func SetPendingURL(url string) {
 
 // CreateOperatorSession creates a new operator session for a given URL
 // If sessionID is provided, it reuses that existing session instead of creating a new one
-func CreateOperatorSession(url, name, sessionID string) map[string]interface{} {
+// proxy: nil = use config default (true if unset), ptr to bool for explicit override
+// proxyCountry: empty = use config default, non-empty = override
+func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountry string) map[string]interface{} {
 	cfg := config.GetConfig()
 	operatorConfig := cfg.Get().Operator
 
@@ -31,6 +33,18 @@ func CreateOperatorSession(url, name, sessionID string) map[string]interface{} {
 	// Set default name if not provided
 	if name == "" {
 		name = fmt.Sprintf("Session for %s", url)
+	}
+
+	// Resolve proxy settings: tool param > config > default (true)
+	proxyEnabled := true
+	if proxy != nil {
+		proxyEnabled = *proxy
+	} else if operatorConfig.Proxy != nil {
+		proxyEnabled = *operatorConfig.Proxy
+	}
+
+	if proxyCountry == "" {
+		proxyCountry = operatorConfig.ProxyCountry
 	}
 
 	agentID := cfg.Get().ID
@@ -70,7 +84,7 @@ func CreateOperatorSession(url, name, sessionID string) map[string]interface{} {
 	operator.SetPendingURL(url)
 
 	// Actually create the session on the virtual browser service
-	newSessionID, sessionData, err := operator.CreateSessionWithData(agentID, url)
+	newSessionID, sessionData, err := operator.CreateSessionWithData(agentID, url, proxyEnabled, proxyCountry)
 	if err != nil {
 		log.Printf("Failed to create operator session: %v", err)
 		return map[string]interface{}{
@@ -216,6 +230,14 @@ func (t *CreateOperatorSessionToolWrapper) InputSchema() map[string]interface{} 
 				"type":        "string",
 				"description": "Existing session ID to reuse instead of creating a new one. If provided, skips session creation on browser service.",
 			},
+			"proxy": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Enable proxy for this session. Defaults to true. Set to false to disable proxy.",
+			},
+			"proxy_country": map[string]interface{}{
+				"type":        "string",
+				"description": "ISO 3166-1 alpha-2 country code for proxy geolocation (e.g., \"US\", \"GB\", \"DE\", \"JP\"). Routes traffic through a proxy in the specified country.",
+			},
 		},
 	}
 }
@@ -224,7 +246,15 @@ func (t *CreateOperatorSessionToolWrapper) Execute(params map[string]interface{}
 	url, _ := params["url"].(string)
 	name, _ := params["name"].(string)
 	sessionID, _ := params["session_id"].(string)
-	return CreateOperatorSession(url, name, sessionID), nil
+	proxyCountry, _ := params["proxy_country"].(string)
+
+	// proxy is optional — nil means "use default"
+	var proxy *bool
+	if p, ok := params["proxy"].(bool); ok {
+		proxy = &p
+	}
+
+	return CreateOperatorSession(url, name, sessionID, proxy, proxyCountry), nil
 }
 
 // ListOperatorSessionsToolWrapper wraps the list operator sessions function

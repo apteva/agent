@@ -26,6 +26,7 @@ type SessionOptions struct {
 	ViewportWidth  int
 	ViewportHeight int
 	Proxy          bool
+	ProxyCountry   string // ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "DE")
 	TestMode       bool
 }
 

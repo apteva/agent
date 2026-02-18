@@ -46,6 +46,19 @@ func (p *BrowserbaseProvider) CreateSession(ctx context.Context, opts SessionOpt
 		}
 	}
 
+	// Browserbase proxy with optional geolocation
+	if opts.Proxy {
+		proxyConfig := map[string]interface{}{
+			"type": "browserbase",
+		}
+		if opts.ProxyCountry != "" {
+			proxyConfig["geolocation"] = map[string]interface{}{
+				"country": strings.ToUpper(opts.ProxyCountry),
+			}
+		}
+		body["proxies"] = []interface{}{proxyConfig}
+	}
+
 	jsonData, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal browserbase request: %w", err)
