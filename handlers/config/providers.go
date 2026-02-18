@@ -29,6 +29,7 @@ func GetProviders() []ProviderInfo {
 			Name: "Anthropic (Claude)",
 			Models: []ProviderModel{
 				{Value: "claude-opus-4-6", Label: "Claude Opus 4.6 (Most Capable)", Recommended: true},
+				{Value: "claude-sonnet-4-6", Label: "Claude Sonnet 4.6"},
 				{Value: "claude-sonnet-4-5", Label: "Claude Sonnet 4.5"},
 				{Value: "claude-haiku-4-5", Label: "Claude Haiku 4.5 (Fast)"},
 			},

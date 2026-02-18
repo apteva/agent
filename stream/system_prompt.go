@@ -32,6 +32,7 @@ func BuildTaskManagementContext(tasksConfig *config.TasksConfig, schedulerConfig
 		context.WriteString("- Scheduled tasks (with execute_at or recurrence) will be automatically executed at their scheduled times\n")
 		context.WriteString("- You do NOT need to manually execute scheduled tasks - they will run automatically when due\n")
 		context.WriteString("- Recurring tasks will continue to run at their specified intervals (e.g., every 5 minutes, daily, weekly)\n")
+		context.WriteString("- IMPORTANT: When creating a scheduled or recurring task, do NOT immediately execute it with execute_task. Just create it and let the scheduler handle it. Only execute a task immediately if the user explicitly asks you to run it now.\n")
 	} else {
 		context.WriteString("- Automated scheduler is DISABLED\n")
 		context.WriteString("- Tasks with execute_at times will NOT be automatically executed\n")
@@ -42,6 +43,7 @@ func BuildTaskManagementContext(tasksConfig *config.TasksConfig, schedulerConfig
 	// Explain auto-execute behavior (only for immediate tasks without schedule)
 	if tasksConfig.AutoExecute {
 		context.WriteString("- Auto-execute is ENABLED: immediate tasks (without execute_at) will run immediately upon creation\n")
+		context.WriteString("- For scheduled/recurring tasks, auto-execute does NOT apply — the scheduler handles them. Do NOT call execute_task after creating them.\n")
 	} else {
 		context.WriteString("- Auto-execute is DISABLED: immediate tasks (without execute_at) require explicit execution via execute_task tool\n")
 		context.WriteString("- NOTE: This does NOT affect scheduled or recurring tasks - those still run automatically when due\n")
