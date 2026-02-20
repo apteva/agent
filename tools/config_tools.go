@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 
 	"github.com/apteva/agent/config"
 )
@@ -192,210 +191,6 @@ func (t *ConfigSetTool) Execute(params map[string]interface{}) (interface{}, err
 	}, nil
 }
 
-// ToolsSearchTool allows the agent to discover available tools and skills
-type ToolsSearchTool struct {
-	MCPToolsProvider func() []ToolInfo   // Function to get MCP tools
-	SkillsProvider   func() []SkillInfo  // Function to get available skills
-}
-
-// ToolInfo represents a tool's metadata for search results
-type ToolInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Category    string `json:"category"`
-	Source      string `json:"source"` // "builtin", "mcp", "registered"
-}
-
-// SkillInfo represents a skill's metadata for search results
-type SkillInfo struct {
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name"`
-	Description string   `json:"description"`
-	Category    string   `json:"category"`
-	Tools       []string `json:"tools"` // MCP tools this skill references
-	Icon        string   `json:"icon,omitempty"`
-}
-
-func (t *ToolsSearchTool) Name() string {
-	return "tools_search"
-}
-
-func (t *ToolsSearchTool) DisplayName() string {
-	return "Search Tools"
-}
-
-func (t *ToolsSearchTool) Description() string {
-	return `Search available tools and skills. Use this to discover what tools and skills can be enabled.
-- query: Search term to filter by name or description
-- category: Filter by category ("builtin", "mcp", "skill", "file", "web", "data", etc.)
-
-Example: tools_search({"query": "slack"}) or tools_search({"category": "skill"})`
-}
-
-func (t *ToolsSearchTool) InputSchema() map[string]interface{} {
-	return map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"query": map[string]interface{}{
-				"type":        "string",
-				"description": "Search term to filter tools and skills",
-			},
-			"category": map[string]interface{}{
-				"type":        "string",
-				"description": "Filter by category: builtin, mcp, skill, file, web, data",
-			},
-		},
-	}
-}
-
-func (t *ToolsSearchTool) Execute(params map[string]interface{}) (interface{}, error) {
-	query := ""
-	if q, ok := params["query"].(string); ok {
-		query = strings.ToLower(q)
-	}
-	category := ""
-	if c, ok := params["category"].(string); ok {
-		category = strings.ToLower(c)
-	}
-
-	var results []ToolInfo
-
-	// Get registered tools from global registry
-	registry := GetGlobalRegistry()
-	for _, toolDef := range registry.ListTools() {
-		info := ToolInfo{
-			Name:        toolDef.Name,
-			Description: toolDef.Description,
-			Category:    categorizeBuiltinTool(toolDef.Name),
-			Source:      "builtin",
-		}
-
-		if matchesSearch(info, query, category) {
-			results = append(results, info)
-		}
-	}
-
-	// Get MCP tools if provider is set
-	if t.MCPToolsProvider != nil {
-		mcpTools := t.MCPToolsProvider()
-		for _, tool := range mcpTools {
-			if matchesSearch(tool, query, category) {
-				results = append(results, tool)
-			}
-		}
-	}
-
-	// Add common builtin tools that might not be registered
-	commonBuiltins := []ToolInfo{
-		{Name: "web_search", Description: "Search the web for information", Category: "web", Source: "builtin"},
-		{Name: "web_fetch", Description: "Fetch content from a URL", Category: "web", Source: "builtin"},
-		{Name: "file_read", Description: "Read file contents", Category: "file", Source: "builtin"},
-		{Name: "file_write", Description: "Write content to a file", Category: "file", Source: "builtin"},
-		{Name: "file_list", Description: "List directory contents", Category: "file", Source: "builtin"},
-		{Name: "grep", Description: "Search file contents with pattern matching", Category: "file", Source: "builtin"},
-		{Name: "sql_query", Description: "Execute SQL queries on databases", Category: "data", Source: "builtin"},
-	}
-
-	for _, tool := range commonBuiltins {
-		// Check if already in results
-		found := false
-		for _, r := range results {
-			if r.Name == tool.Name {
-				found = true
-				break
-			}
-		}
-		if !found && matchesSearch(tool, query, category) {
-			results = append(results, tool)
-		}
-	}
-
-	// Get skills if provider is set and category allows
-	var skillResults []SkillInfo
-	if t.SkillsProvider != nil && (category == "" || category == "skill") {
-		skills := t.SkillsProvider()
-		for _, skill := range skills {
-			if matchesSkillSearch(skill, query) {
-				skillResults = append(skillResults, skill)
-			}
-		}
-	}
-
-	return map[string]interface{}{
-		"tools":       results,
-		"skills":      skillResults,
-		"tools_count": len(results),
-		"skills_count": len(skillResults),
-		"query":       query,
-	}, nil
-}
-
-func matchesSkillSearch(skill SkillInfo, query string) bool {
-	if query == "" {
-		return true
-	}
-	nameLower := strings.ToLower(skill.Name)
-	displayLower := strings.ToLower(skill.DisplayName)
-	descLower := strings.ToLower(skill.Description)
-	return strings.Contains(nameLower, query) ||
-		strings.Contains(displayLower, query) ||
-		strings.Contains(descLower, query)
-}
-
-func matchesSearch(tool ToolInfo, query, category string) bool {
-	// Filter by category first
-	if category != "" {
-		if category == "mcp" && tool.Source != "mcp" {
-			return false
-		}
-		if category == "builtin" && tool.Source != "builtin" {
-			return false
-		}
-		if category != "mcp" && category != "builtin" {
-			if !strings.Contains(strings.ToLower(tool.Category), category) {
-				return false
-			}
-		}
-	}
-
-	// Then filter by query
-	if query != "" {
-		nameLower := strings.ToLower(tool.Name)
-		descLower := strings.ToLower(tool.Description)
-		if !strings.Contains(nameLower, query) && !strings.Contains(descLower, query) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func categorizeBuiltinTool(name string) string {
-	name = strings.ToLower(name)
-	if strings.Contains(name, "file") || strings.Contains(name, "read") || strings.Contains(name, "write") {
-		return "file"
-	}
-	if strings.Contains(name, "web") || strings.Contains(name, "http") || strings.Contains(name, "fetch") {
-		return "web"
-	}
-	if strings.Contains(name, "sql") || strings.Contains(name, "database") || strings.Contains(name, "query") {
-		return "data"
-	}
-	if strings.Contains(name, "task") {
-		return "task"
-	}
-	if strings.Contains(name, "memory") {
-		return "memory"
-	}
-	if strings.Contains(name, "agent") || strings.Contains(name, "call") {
-		return "agent"
-	}
-	if strings.Contains(name, "browser") || strings.Contains(name, "operator") {
-		return "browser"
-	}
-	return "general"
-}
-
 // GetSetupModeSystemPromptPrefix returns the prefix to inject when in setup mode
 func GetSetupModeSystemPromptPrefix(cfg *config.AgentConfig) string {
 	// Marshal config to JSON for display
@@ -428,19 +223,16 @@ func GetSetupModeSystemPromptPrefix(cfg *config.AgentConfig) string {
 	configJSON, _ := json.MarshalIndent(configSummary, "", "  ")
 
 	return fmt.Sprintf(`=== SETUP MODE ===
-You are in SETUP MODE. You can configure yourself based on user requests.
+You are a setup wizard. Help the user configure you through conversation.
 
-YOUR CURRENT CONFIGURATION:
+CURRENT CONFIG:
 %s
 
-AVAILABLE TOOLS:
-- config_set: Update your configuration (system_prompt, tools, builtin_tools, mcp_tools, skills, setup_mode)
-- tools_search: Search for available tools and skills to enable
-
-INSTRUCTIONS:
-1. Use tools_search to discover available tools and skills
-2. Use config_set to update your configuration (e.g., enable skills: {"skills": ["slack-workflows"]})
-3. When done configuring, use config_set({"setup_mode": false}) to exit setup mode
+RULES:
+- Ask one question at a time. Keep it conversational.
+- ACTIVELY USE YOUR TOOLS to explore what's available — list MCP servers, call tools to discover accounts/pages/channels, browse connected services. Show the user what you find and let them pick.
+- Based on answers, use config_set to update system_prompt, tools, and skills.
+- When done, call config_set({"setup_mode": false}) to finish.
 
 === END SETUP MODE ===
 
@@ -448,12 +240,8 @@ INSTRUCTIONS:
 }
 
 // RegisterConfigTools registers the config tools with the global registry
-func RegisterConfigTools(mcpToolsProvider func() []ToolInfo, skillsProvider func() []SkillInfo) {
+func RegisterConfigTools() {
 	registry := GetGlobalRegistry()
 	registry.RegisterTool(&ConfigSetTool{})
-	registry.RegisterTool(&ToolsSearchTool{
-		MCPToolsProvider: mcpToolsProvider,
-		SkillsProvider:   skillsProvider,
-	})
-	log.Printf("✅ Config tools registered: config_set, tools_search")
+	log.Printf("✅ Config tools registered: config_set")
 }
