@@ -220,22 +220,32 @@ type MemoryConfig struct {
 }
 
 type OperatorConfig struct {
-	Enabled           bool     `json:"enabled"`
-	BrowserProvider   string   `json:"browser_provider"`      // "browserengine" (default), "browserbase", "steel", "chrome", "browserapi"
-	VirtualBrowser    string   `json:"virtual_browser"`       // BrowserEngine service URL (e.g., http://localhost:8098)
-	TestMode          *bool    `json:"test_mode,omitempty"`   // Use test mode (nil = use global test_mode)
-	DisplayWidth      int      `json:"display_width"`         // 1024
-	DisplayHeight     int      `json:"display_height"`        // 768
+	Enabled         bool     `json:"enabled"`
+	BrowserProvider string   `json:"browser_provider"`      // "browserengine" (default), "browserbase", "steel", "cdp"
+	TestMode        *bool    `json:"test_mode,omitempty"`   // Use test mode (nil = use global test_mode)
+	DisplayWidth    int      `json:"display_width"`         // 1024
+	DisplayHeight   int      `json:"display_height"`        // 768
 	Proxy        *bool  `json:"proxy,omitempty"`         // Enable proxy (nil = true for backward compat)
 	ProxyCountry string `json:"proxy_country,omitempty"` // Default proxy country ISO 3166-1 alpha-2 code (e.g., "US", "GB", "DE")
 	AllowedDomains []string `json:"allowed_domains,omitempty"`
 	BlockedDomains []string `json:"blocked_domains,omitempty"`
 
 	// Provider-specific configs (only the active provider's config is used)
-	Browserbase *BrowserbaseProviderConfig `json:"browserbase,omitempty"`
-	Steel       *SteelProviderConfig       `json:"steel,omitempty"`
-	Chrome      *ChromeProviderConfig      `json:"chrome,omitempty"`
-	BrowserAPI  *BrowserAPIProviderConfig  `json:"browser_api,omitempty"`
+	BrowserEngine *BrowserEngineProviderConfig `json:"browserengine,omitempty"`
+	Browserbase   *BrowserbaseProviderConfig   `json:"browserbase,omitempty"`
+	Steel         *SteelProviderConfig         `json:"steel,omitempty"`
+	CDP           *CDPProviderConfig           `json:"cdp,omitempty"`
+}
+
+// CDPProviderConfig holds direct CDP connection settings
+type CDPProviderConfig struct {
+	URL string `json:"url"` // e.g., "ws://localhost:9222" or "http://5.75.128.19:9222"
+}
+
+// BrowserEngineProviderConfig holds BrowserEngine cloud service settings
+type BrowserEngineProviderConfig struct {
+	BaseURL string `json:"base_url"` // Default: "https://api.browserengine.co"
+	APIKey  string `json:"api_key"`  // X-API-Key header value
 }
 
 // BrowserbaseProviderConfig holds Browserbase connection settings
@@ -248,17 +258,6 @@ type BrowserbaseProviderConfig struct {
 type SteelProviderConfig struct {
 	APIKey  string `json:"api_key"`
 	BaseURL string `json:"base_url"` // Default: "https://api.steel.dev"
-}
-
-// ChromeProviderConfig holds raw Chrome CDP connection settings
-type ChromeProviderConfig struct {
-	DebugURL string `json:"debug_url"` // e.g., "ws://localhost:9222" or "http://localhost:9222"
-}
-
-// BrowserAPIProviderConfig holds Browser API gateway connection settings
-type BrowserAPIProviderConfig struct {
-	BaseURL string `json:"base_url"` // Default: "https://api.browserengine.co"
-	APIKey  string `json:"api_key"`  // X-API-Key header value
 }
 
 type ContextConfig struct {
@@ -551,14 +550,13 @@ func (c *Config) loadDefaults() {
 			DocumentImportance: 0.5,
 		},
 		Operator: &OperatorConfig{
-			Enabled:           false, // Disabled by default, enable via config
-			BrowserProvider:   "browserengine",
-			VirtualBrowser:    "http://localhost:8098",
-			TestMode:          nil, // nil = use global test_mode
-			DisplayWidth:      1024,
-			DisplayHeight:     768,
-			AllowedDomains: []string{},
-			BlockedDomains: []string{},
+			Enabled:         false, // Disabled by default, enable via config
+			BrowserProvider: "browserengine",
+			TestMode:        nil, // nil = use global test_mode
+			DisplayWidth:    1024,
+			DisplayHeight:   768,
+			AllowedDomains:  []string{},
+			BlockedDomains:  []string{},
 		},
 		Context: &ContextConfig{
 			MaxMessages: 30, // Keep last 30 messages by default

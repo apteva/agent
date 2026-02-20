@@ -10,16 +10,20 @@ import (
 	"strings"
 )
 
-// BrowserEngineProvider implements BrowserProvider for our BrowserEngine service.
-// It uses REST HTTP for session creation/destruction.
-// Command execution stays in operator.go via executeRESTCommand.
+// BrowserEngineProvider implements BrowserProvider for the BrowserEngine cloud service.
+// Routes through the API with authentication, billing, and usage tracking.
 type BrowserEngineProvider struct {
-	BaseURL string // e.g., "http://localhost:8098"
+	BaseURL string // e.g., "https://api.browserengine.co"
+	APIKey  string // X-API-Key header value
 }
 
 // NewBrowserEngineProvider creates a new BrowserEngineProvider.
-func NewBrowserEngineProvider(baseURL string) *BrowserEngineProvider {
-	return &BrowserEngineProvider{BaseURL: baseURL}
+func NewBrowserEngineProvider(baseURL, apiKey string) *BrowserEngineProvider {
+	baseURL = strings.TrimRight(baseURL, "/")
+	return &BrowserEngineProvider{
+		BaseURL: baseURL,
+		APIKey:  apiKey,
+	}
 }
 
 func (p *BrowserEngineProvider) Name() string { return "browserengine" }
@@ -27,11 +31,6 @@ func (p *BrowserEngineProvider) Name() string { return "browserengine" }
 func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionOptions) (*BrowserSession, error) {
 	sessionData := map[string]interface{}{
 		"initial_url": opts.InitialURL,
-		"test_mode":   opts.TestMode,
-		"proxy":       opts.Proxy,
-	}
-	if opts.ProxyCountry != "" {
-		sessionData["proxy_country"] = opts.ProxyCountry
 	}
 
 	if opts.ViewportWidth > 0 && opts.ViewportHeight > 0 {
@@ -39,6 +38,24 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 			"width":  opts.ViewportWidth,
 			"height": opts.ViewportHeight,
 		}
+	}
+
+	if opts.TestMode || opts.Proxy {
+		browserSettings := map[string]interface{}{}
+		if opts.TestMode {
+			browserSettings["test_mode"] = true
+		}
+		sessionData["browser_settings"] = browserSettings
+	}
+
+	if opts.Proxy {
+		proxyData := map[string]interface{}{
+			"enabled": true,
+		}
+		if opts.ProxyCountry != "" {
+			proxyData["country"] = opts.ProxyCountry
+		}
+		sessionData["proxy"] = proxyData
 	}
 
 	jsonData, err := json.Marshal(sessionData)
@@ -52,12 +69,13 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 		return nil, fmt.Errorf("failed to create session request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", p.APIKey)
 
-	log.Printf("Creating BrowserEngine session at %s with data: %s", url, string(jsonData))
+	log.Printf("Creating BrowserEngine session at %s", url)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make session request: %w", err)
+		return nil, fmt.Errorf("BrowserEngine request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -70,42 +88,38 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 		return nil, fmt.Errorf("BrowserEngine returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
+	var gatewayResp struct {
+		Success bool                   `json:"success"`
+		Data    map[string]interface{} `json:"data"`
+		Error   string                 `json:"error"`
+	}
+	if err := json.Unmarshal(body, &gatewayResp); err != nil {
 		return nil, fmt.Errorf("failed to parse session response: %w", err)
 	}
 
-	sessionID, ok := result["id"].(string)
+	if !gatewayResp.Success {
+		return nil, fmt.Errorf("BrowserEngine session creation failed: %s", gatewayResp.Error)
+	}
+
+	data := gatewayResp.Data
+	sessionID, ok := data["id"].(string)
 	if !ok {
-		return nil, fmt.Errorf("invalid session id in response")
+		return nil, fmt.Errorf("no session ID in BrowserEngine response")
 	}
 
 	session := &BrowserSession{
 		ID:       sessionID,
 		Provider: "browserengine",
-		Metadata: result,
+		Metadata: data,
 	}
 
-	// Extract optional URLs (only prepend BaseURL if they're relative paths)
-	if streamURL, ok := result["stream_url"].(string); ok {
-		if strings.HasPrefix(streamURL, "http://") || strings.HasPrefix(streamURL, "https://") {
-			session.StreamURL = streamURL
-		} else {
-			session.StreamURL = fmt.Sprintf("%s%s", p.BaseURL, streamURL)
-		}
+	if streamURL, ok := data["stream_url"].(string); ok && streamURL != "" {
+		session.StreamURL = streamURL
 	}
-	if viewURL, ok := result["view_url"].(string); ok {
-		if strings.HasPrefix(viewURL, "http://") || strings.HasPrefix(viewURL, "https://") {
-			session.ViewURL = viewURL
-		} else {
-			session.ViewURL = fmt.Sprintf("%s%s", p.BaseURL, viewURL)
-		}
+	if viewURL, ok := data["debug_url"].(string); ok && viewURL != "" {
+		session.ViewURL = viewURL
 	}
-	if targetID, ok := result["target_id"].(string); ok {
-		session.TargetID = targetID
-	}
-	// Forward-compatible: if BrowserEngine returns CDP URL in future
-	if connectURL, ok := result["connect_url"].(string); ok {
+	if connectURL, ok := data["connect_url"].(string); ok && connectURL != "" {
 		session.ConnectURL = connectURL
 	}
 
@@ -119,13 +133,75 @@ func (p *BrowserEngineProvider) DestroySession(ctx context.Context, sessionID st
 	if err != nil {
 		return fmt.Errorf("failed to create cleanup request: %w", err)
 	}
+	req.Header.Set("X-API-Key", p.APIKey)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		// Don't fail on cleanup errors
 		log.Printf("Failed to destroy BrowserEngine session %s: %v", sessionID, err)
 		return nil
 	}
 	resp.Body.Close()
+
+	log.Printf("Destroyed BrowserEngine session %s", sessionID)
 	return nil
+}
+
+// ExecuteCommand sends a command through the BrowserEngine API.
+func (p *BrowserEngineProvider) ExecuteCommand(ctx context.Context, sessionID, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
+	commandData := map[string]interface{}{
+		"type":   cmdType,
+		"params": params,
+	}
+
+	jsonData, err := json.Marshal(commandData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal command data: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/sessions/%s/commands", p.BaseURL, sessionID)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create command request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", p.APIKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("BrowserEngine command failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read command response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("BrowserEngine command error (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	var gatewayResp struct {
+		Success bool                   `json:"success"`
+		Data    map[string]interface{} `json:"data"`
+		Error   string                 `json:"error"`
+	}
+	if err := json.Unmarshal(body, &gatewayResp); err != nil {
+		return nil, fmt.Errorf("failed to parse command response: %w", err)
+	}
+
+	if !gatewayResp.Success {
+		return nil, fmt.Errorf("BrowserEngine command failed: %s", gatewayResp.Error)
+	}
+
+	if gatewayResp.Data != nil {
+		return map[string]interface{}{
+			"success": true,
+			"data":    gatewayResp.Data,
+		}, nil
+	}
+
+	return map[string]interface{}{
+		"success": true,
+	}, nil
 }

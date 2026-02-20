@@ -48,8 +48,8 @@ func InitProvider(operatorConfig *config.OperatorConfig) BrowserProvider {
 				operatorConfig.Browserbase.ProjectID,
 			)
 		} else {
-			log.Printf("⚠️  Browserbase provider selected but no API key configured, falling back to browserengine")
-			activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
+			log.Printf("⚠️  Browserbase provider selected but no API key configured")
+			activeProvider = nil
 		}
 	case "steel":
 		if operatorConfig.Steel != nil && operatorConfig.Steel.APIKey != "" {
@@ -59,32 +59,32 @@ func InitProvider(operatorConfig *config.OperatorConfig) BrowserProvider {
 			}
 			activeProvider = NewSteelProvider(operatorConfig.Steel.APIKey, baseURL)
 		} else {
-			log.Printf("⚠️  Steel provider selected but no API key configured, falling back to browserengine")
-			activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
+			log.Printf("⚠️  Steel provider selected but no API key configured")
+			activeProvider = nil
 		}
-	case "chrome":
-		if operatorConfig.Chrome != nil && operatorConfig.Chrome.DebugURL != "" {
-			activeProvider = NewChromeProvider(operatorConfig.Chrome.DebugURL)
+	case "cdp":
+		if operatorConfig.CDP != nil && operatorConfig.CDP.URL != "" {
+			activeProvider = NewCDPProvider(operatorConfig.CDP.URL)
 		} else {
-			log.Printf("⚠️  Chrome provider selected but no debug URL configured, falling back to browserengine")
-			activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
+			log.Printf("⚠️  CDP provider selected but no URL configured")
+			activeProvider = nil
 		}
-	case "browserapi":
-		if operatorConfig.BrowserAPI != nil && operatorConfig.BrowserAPI.APIKey != "" {
-			baseURL := operatorConfig.BrowserAPI.BaseURL
+	default: // "browserengine" or unknown
+		if operatorConfig.BrowserEngine != nil && operatorConfig.BrowserEngine.APIKey != "" {
+			baseURL := operatorConfig.BrowserEngine.BaseURL
 			if baseURL == "" {
 				baseURL = "https://api.browserengine.co"
 			}
-			activeProvider = NewBrowserAPIProvider(baseURL, operatorConfig.BrowserAPI.APIKey)
+			activeProvider = NewBrowserEngineProvider(baseURL, operatorConfig.BrowserEngine.APIKey)
 		} else {
-			log.Printf("⚠️  BrowserAPI provider selected but no API key configured, falling back to browserengine")
-			activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
+			log.Printf("⚠️  BrowserEngine provider selected but no API key configured")
+			activeProvider = nil
 		}
-	default: // "browserengine" or unknown
-		activeProvider = NewBrowserEngineProvider(operatorConfig.VirtualBrowser)
 	}
 
-	log.Printf("🖥️  Browser provider initialized: %s", activeProvider.Name())
+	if activeProvider != nil {
+		log.Printf("🖥️  Browser provider initialized: %s", activeProvider.Name())
+	}
 	return activeProvider
 }
 
@@ -92,6 +92,59 @@ func getProvider() BrowserProvider {
 	providerMu.RLock()
 	defer providerMu.RUnlock()
 	return activeProvider
+}
+
+// GetStatus returns the current operator/browser provider status for the debug UI.
+func GetStatus() map[string]interface{} {
+	cfg := config.GetConfig()
+	operatorConfig := cfg.Get().Operator
+
+	status := map[string]interface{}{
+		"enabled": false,
+	}
+
+	if operatorConfig == nil {
+		return status
+	}
+
+	status["enabled"] = operatorConfig.Enabled
+	status["browser_provider"] = operatorConfig.BrowserProvider
+	status["display_width"] = operatorConfig.DisplayWidth
+	status["display_height"] = operatorConfig.DisplayHeight
+
+	providerMu.RLock()
+	provider := activeProvider
+	providerMu.RUnlock()
+
+	if provider != nil {
+		status["provider_name"] = provider.Name()
+		status["provider_ready"] = true
+	} else {
+		status["provider_ready"] = false
+	}
+
+	// Check for active session
+	agentID := cfg.Get().ID
+	if session, ok := agentSessions.Load(agentID); ok {
+		s := session.(*BrowserSession)
+		sessionInfo := map[string]interface{}{
+			"id":       s.ID,
+			"provider": s.Provider,
+		}
+		if s.StreamURL != "" {
+			sessionInfo["stream_url"] = s.StreamURL
+		}
+		if s.ViewURL != "" {
+			sessionInfo["view_url"] = s.ViewURL
+		}
+		if s.ConnectURL != "" {
+			sessionInfo["has_cdp"] = true
+		}
+		sessionInfo["cdp_connected"] = s.IsConnectedCDP()
+		status["active_session"] = sessionInfo
+	}
+
+	return status
 }
 
 // SetPendingURL stores a URL to be used when creating the next browser session
@@ -135,12 +188,19 @@ func InitBrowserSession() {
 	// Initialize the browser provider
 	provider := InitProvider(operatorConfig)
 
-	log.Printf("Operator mode enabled using provider: %s", provider.Name())
+	if provider != nil {
+		log.Printf("Operator mode enabled using provider: %s", provider.Name())
+	} else {
+		log.Printf("Operator mode enabled but no provider configured (missing API key?)")
+	}
 
 	eventBus := events.GetEventBus()
+	providerName := "none"
+	if provider != nil {
+		providerName = provider.Name()
+	}
 	browserEvent := events.NewEvent("browser", "operator_enabled", events.LevelInfo).
-		WithData("browser_provider", provider.Name()).
-		WithData("virtual_browser", operatorConfig.VirtualBrowser).
+		WithData("browser_provider", providerName).
 		WithData("test_mode", getTestMode(operatorConfig))
 	eventBus.Publish(browserEvent)
 }
@@ -283,22 +343,21 @@ func executeCommand(ctx context.Context, session *BrowserSession, cmdType string
 	return executeRESTCommand(ctx, session.ID, cmdType, params)
 }
 
-// executeRESTCommand sends a command via REST HTTP to the virtual browser service.
-// If the active provider is browserapi, it routes through the API gateway instead.
+// executeRESTCommand sends a command via REST HTTP to the browser provider.
+// BrowserEngine provider has its own ExecuteCommand with auth; others use the provider's base URL.
 func executeRESTCommand(ctx context.Context, sessionID string, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
-	// If active provider is browserapi, use its own command execution (with auth + billing)
+	// Use the active provider's command execution (with auth + billing)
 	provider := getProvider()
-	if apiProvider, ok := provider.(*BrowserAPIProvider); ok {
-		return apiProvider.ExecuteCommand(ctx, sessionID, cmdType, params)
+	if beProvider, ok := provider.(*BrowserEngineProvider); ok {
+		return beProvider.ExecuteCommand(ctx, sessionID, cmdType, params)
 	}
 
-	cfg := config.GetConfig()
-	operatorConfig := cfg.Get().Operator
+	// For other providers (browserbase, steel), commands go through CDP not REST
+	return nil, fmt.Errorf("REST command execution not supported for provider %s (use CDP)", provider.Name())
+}
 
-	if operatorConfig == nil || !operatorConfig.Enabled {
-		return nil, fmt.Errorf("operator mode is not enabled")
-	}
-
+// executeRESTCommandLegacy is kept for reference but should not be called.
+func executeRESTCommandLegacy(ctx context.Context, sessionID string, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
 	commandData := map[string]interface{}{
 		"type":   cmdType,
 		"params": params,
@@ -309,7 +368,7 @@ func executeRESTCommand(ctx context.Context, sessionID string, cmdType string, p
 		return nil, fmt.Errorf("failed to marshal command data: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/sessions/%s/commands", operatorConfig.VirtualBrowser, sessionID)
+	url := fmt.Sprintf("https://api.browserengine.co/sessions/%s/commands", sessionID)
 
 	log.Printf("🔧 ExecuteRESTCommand: POST %s with payload: %s", url, string(jsonData))
 

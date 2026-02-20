@@ -35,72 +35,96 @@
 <body class="bg-slate-50 dark:bg-slate-900 font-sans text-slate-900 dark:text-slate-100 min-h-screen no-animate">
     <div class="flex h-screen">
         <!-- Sidebar -->
-        <aside class="w-64 bg-slate-950 text-white flex flex-col">
+        <aside class="sidebar w-60 text-white flex flex-col">
             <!-- Logo -->
-            <div class="px-5 py-4 border-b border-slate-800">
-                <h1 class="text-lg font-semibold flex items-center gap-2">
-                    <span>🤖</span> Agent Debug
-                </h1>
-                <p class="text-sm text-slate-400">v<span id="agentVersion">1.0.0</span></p>
+            <div class="px-5 py-5 border-b border-white/5">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                        <svg class="w-4.5 h-4.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"/></svg>
+                    </div>
+                    <div>
+                        <h1 class="text-sm font-semibold text-white">Apteva Agent</h1>
+                        <p class="text-[10px] text-slate-500 font-mono">v<span id="agentVersion">1.0.0</span></p>
+                    </div>
+                </div>
             </div>
 
             <!-- Navigation -->
-            <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
-                <button onclick="switchTab(event, 'chat')" class="tab-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors bg-slate-800 text-white">
-                    <span>💬</span> Chat
+            <nav class="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
+                <div class="nav-section-label">Main</div>
+                <button onclick="switchTab(event, 'chat')" class="tab-btn active w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium bg-slate-800 text-white">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z"/></svg>
+                    Chat
                 </button>
-                <button onclick="switchTab(event, 'voice')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>🎙️</span> Voice Chat
+                <button onclick="switchTab(event, 'voice')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"/></svg>
+                    Voice
                 </button>
-                <button onclick="switchTab(event, 'threads')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>🧵</span> Threads
-                </button>
-                <button onclick="switchTab(event, 'tasks')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>📋</span> Tasks
-                </button>
-                <button onclick="switchTab(event, 'subscriptions')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>📨</span> Subscriptions
-                </button>
-                <button onclick="switchTab(event, 'memories')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>🧠</span> Memories
-                </button>
-                <button onclick="switchTab(event, 'scheduler')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>⏰</span> Scheduler
-                </button>
-                <button onclick="switchTab(event, 'files')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>📁</span> Files
-                </button>
-                <button onclick="switchTab(event, 'mcp')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>🔌</span> MCP
-                </button>
-                <button onclick="switchTab(event, 'skills')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>🎯</span> Skills
+                <button onclick="switchTab(event, 'threads')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"/></svg>
+                    Threads
                 </button>
 
-                <div class="border-t border-slate-700 my-3"></div>
+                <div class="nav-section-label mt-3">Automation</div>
+                <button onclick="switchTab(event, 'tasks')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                    Tasks
+                </button>
+                <button onclick="switchTab(event, 'scheduler')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                    Scheduler
+                </button>
+                <button onclick="switchTab(event, 'subscriptions')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/></svg>
+                    Subscriptions
+                </button>
 
-                <button onclick="switchTab(event, 'config')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>⚙️</span> Config
+                <div class="nav-section-label mt-3">Knowledge</div>
+                <button onclick="switchTab(event, 'memories')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a23.838 23.838 0 0 0-1.012 5.434c2.535.887 4.942 2.048 7.188 3.456a81.393 81.393 0 0 0-7.188-3.456 23.7 23.7 0 0 1 1.012-5.434Zm15.482 0a23.838 23.838 0 0 1 1.012 5.434c-2.535.887-4.942 2.048-7.188 3.456a81.3 81.3 0 0 1 7.188-3.456 23.7 23.7 0 0 0-1.012-5.434ZM12 2.25a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75Z"/></svg>
+                    Memories
                 </button>
-                <button onclick="switchTab(event, 'system')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>📊</span> System
+                <button onclick="switchTab(event, 'files')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/></svg>
+                    Files
                 </button>
-                <button onclick="switchTab(event, 'events')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>📡</span> Events
+                <button onclick="switchTab(event, 'skills')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z"/></svg>
+                    Skills
                 </button>
-                <button onclick="switchTab(event, 'tracing')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>🔍</span> Tracing
+                <button onclick="switchTab(event, 'mcp')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/></svg>
+                    MCP
                 </button>
-                <button onclick="switchTab(event, 'usage')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors text-slate-300 hover:bg-slate-800 hover:text-white">
-                    <span>💰</span> Usage
+
+                <div class="nav-section-label mt-3">System</div>
+                <button onclick="switchTab(event, 'config')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                    Config
+                </button>
+                <button onclick="switchTab(event, 'system')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 0 1-3-3m3 3a3 3 0 1 0 0 6h13.5a3 3 0 1 0 0-6m-16.5-3a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3m-19.5 0a4.5 4.5 0 0 1 .9-2.7L5.737 5.1a3.375 3.375 0 0 1 2.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 0 1 .9 2.7m0 0a3 3 0 0 1-3 3m0 3h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Zm-3 6h.008v.008h-.008v-.008Zm0-6h.008v.008h-.008v-.008Z"/></svg>
+                    System
+                </button>
+                <button onclick="switchTab(event, 'events')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
+                    Events
+                </button>
+                <button onclick="switchTab(event, 'tracing')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605"/></svg>
+                    Tracing
+                </button>
+                <button onclick="switchTab(event, 'usage')" class="tab-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left text-[13px] font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200">
+                    <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>
+                    Usage
                 </button>
             </nav>
 
             <!-- Status -->
-            <div class="p-4 border-t border-slate-700">
-                <div class="flex items-center gap-2 text-sm">
+            <div class="px-4 py-3 border-t border-white/5">
+                <div class="flex items-center gap-2 text-xs">
                     <span class="status-dot online" id="statusDot"></span>
-                    <span class="text-slate-300" id="statusText">Connected</span>
+                    <span class="text-slate-400" id="statusText">Connected</span>
                 </div>
             </div>
         </aside>
@@ -108,20 +132,20 @@
         <!-- Main Content -->
         <main class="flex-1 overflow-hidden flex flex-col">
             <!-- Top Bar -->
-            <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex justify-between items-center">
+            <header class="top-bar bg-white/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/50 px-6 py-3 flex justify-between items-center">
                 <div>
-                    <h2 class="text-lg font-semibold" id="pageTitle">Voice Chat</h2>
-                    <p class="text-sm text-slate-500" id="pageDescription">Real-time voice interaction</p>
+                    <h2 class="text-base font-semibold" id="pageTitle">Chat</h2>
+                    <p class="text-xs text-slate-400" id="pageDescription">Conversation interface</p>
                 </div>
-                <div class="flex items-center gap-3">
-                    <button onclick="refreshCurrentTab()" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                        🔄 Refresh
+                <div class="flex items-center gap-1">
+                    <button onclick="refreshCurrentTab()" class="header-btn text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white" title="Refresh">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
                     </button>
-                    <button onclick="showApiKeyModal()" id="apiKeyButton" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="Configure API Key">
-                        🔑
+                    <button onclick="showApiKeyModal()" id="apiKeyButton" class="header-btn text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white" title="API Key">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z"/></svg>
                     </button>
-                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="px-3 py-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                        🌙
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="header-btn text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white" title="Toggle theme">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/></svg>
                     </button>
                 </div>
             </header>
@@ -136,8 +160,8 @@
                             <!-- Chat Messages -->
                             <div id="chatMessages" class="flex-1 min-h-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden flex flex-col">
                                 <div class="flex-1 overflow-y-auto p-4 space-y-4" id="chatMessagesContainer">
-                                    <div class="text-center text-slate-400 py-12">
-                                        <div class="text-4xl mb-3">💬</div>
+                                    <div class="empty-state">
+                                        <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/></svg>
                                         <p>Start a conversation with the agent</p>
                                     </div>
                                 </div>
@@ -162,7 +186,7 @@
                                             class="px-3 py-3 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
                                             title="Attach image or PDF"
                                         >
-                                            📎
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"/></svg>
                                         </button>
                                         <input
                                             type="text"
@@ -205,7 +229,7 @@
                                         </div>
                                     </label>
                                     <button onclick="clearChatThread()" class="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
-                                        🗑️ Clear Chat
+                                        Clear Chat
                                     </button>
                                 </div>
                             </div>
@@ -217,10 +241,10 @@
                                 <div class="flex items-center gap-2">
                                     <span id="rawChunksCount" class="text-xs text-slate-500">0 chunks</span>
                                     <button onclick="copyAllChunks()" class="px-2 py-1 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded transition-colors" title="Copy all chunks">
-                                        📋 Copy All
+                                        Copy All
                                     </button>
                                     <button onclick="exportChunksJSON()" class="px-2 py-1 text-xs text-green-500 hover:text-green-700 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors" title="Export as JSON">
-                                        💾 Export
+                                        Export
                                     </button>
                                     <button onclick="clearRawChunks()" class="px-2 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors">
                                         Clear
@@ -289,20 +313,20 @@
                 <!-- Voice Tab -->
                 <div id="voice" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Status</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Status</div>
                             <div class="text-2xl font-bold" id="voiceStatus">Ready</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Session Duration</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Session Duration</div>
                             <div class="text-2xl font-bold" id="voiceDuration">0:00</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Messages</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Messages</div>
                             <div class="text-2xl font-bold" id="voiceMessages">0</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Provider</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Provider</div>
                             <div class="text-2xl font-bold" id="voiceProvider">OpenAI</div>
                         </div>
                     </div>
@@ -339,10 +363,10 @@
                                 </div>
                                 <div class="flex gap-3 pt-2">
                                     <button onclick="startVoiceSession()" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium">
-                                        🎙️ Start Session
+                                        Start Session
                                     </button>
                                     <button onclick="stopVoiceSession()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium">
-                                        ⏹️ Stop
+                                        Stop
                                     </button>
                                 </div>
                                 <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
@@ -374,20 +398,20 @@
                 <!-- Threads Tab -->
                 <div id="threads" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Threads</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Total Threads</div>
                             <div class="text-2xl font-bold" id="threadsTotal">0</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Active Today</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Active Today</div>
                             <div class="text-2xl font-bold" id="threadsToday">0</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Messages</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Total Messages</div>
                             <div class="text-2xl font-bold" id="threadsMessages">0</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Avg per Thread</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Avg per Thread</div>
                             <div class="text-2xl font-bold" id="threadsAvg">0</div>
                         </div>
                     </div>
@@ -397,13 +421,13 @@
                         <div class="col-span-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
                                 <h3 class="font-semibold text-slate-800 dark:text-slate-100">Threads</h3>
-                                <button onclick="loadThreads()" class="px-2 py-1 text-sm bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg transition-colors">
-                                    🔄
+                                <button onclick="loadThreads()" class="action-btn action-btn-primary" title="Refresh">
+                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                                 </button>
                             </div>
                             <div id="threadsList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[600px] overflow-y-auto">
-                                <div class="text-center py-12 text-slate-400">
-                                    <div class="text-4xl mb-3">🧵</div>
+                                <div class="empty-state">
+                                    <div class="flex justify-center mb-3"><div class="spinner"></div></div>
                                     <p>Loading threads...</p>
                                 </div>
                             </div>
@@ -420,8 +444,8 @@
                                 </div>
                             </div>
                             <div id="threadMessages" class="p-4 max-h-[600px] overflow-y-auto">
-                                <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-                                    <div class="text-4xl mb-3">💬</div>
+                                <div class="empty-state">
+                                    <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"/></svg>
                                     <p>Click a thread to view messages</p>
                                 </div>
                             </div>
@@ -432,29 +456,29 @@
                 <!-- Tasks Tab -->
                 <div id="tasks" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-5 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Tasks</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Total Tasks</div>
                             <div class="text-2xl font-bold" id="tasksTotal">0</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Completed</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Completed</div>
                             <div class="text-2xl font-bold" id="tasksCompleted">0</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Pending</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Pending</div>
                             <div class="text-2xl font-bold" id="tasksPending">0</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Running</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Running</div>
                             <div class="text-2xl font-bold" id="tasksRunning">0</div>
                         </div>
-                        <div class="gradient-red rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Failed</div>
+                        <div class="stat-card stat-card-danger">
+                            <div class="stat-label">Failed</div>
                             <div class="text-2xl font-bold" id="tasksFailed">0</div>
                         </div>
                     </div>
 
-                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                    <div class="filter-bar">
                         <select id="taskStatusFilter" onchange="loadTasks()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
                             <option value="">All Statuses</option>
                             <option value="pending">Pending</option>
@@ -463,7 +487,7 @@
                             <option value="failed">Failed</option>
                         </select>
                         <button onclick="loadTasks()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                            🔄 Refresh
+                            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Refresh
                         </button>
                     </div>
 
@@ -472,8 +496,8 @@
                             <h3 class="font-semibold text-slate-800 dark:text-slate-100">Task Queue</h3>
                         </div>
                         <div id="tasksList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
-                            <div class="text-center py-12 text-slate-400">
-                                <div class="text-4xl mb-3">📋</div>
+                            <div class="empty-state">
+                                <div class="flex justify-center mb-3"><div class="spinner"></div></div>
                                 <p>Loading tasks...</p>
                             </div>
                         </div>
@@ -483,33 +507,33 @@
                 <!-- Memories Tab -->
                 <div id="memories" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-6 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Total</div>
                             <div class="text-2xl font-bold" id="memTotal">0</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Facts</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Facts</div>
                             <div class="text-2xl font-bold" id="memFacts">0</div>
                         </div>
-                        <div class="bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Preferences</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Preferences</div>
                             <div class="text-2xl font-bold" id="memPrefs">0</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Instructions</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Instructions</div>
                             <div class="text-2xl font-bold" id="memInstrs">0</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Context</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Context</div>
                             <div class="text-2xl font-bold" id="memContext">0</div>
                         </div>
-                        <div class="gradient-teal rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Documents</div>
+                        <div class="stat-card stat-card-teal">
+                            <div class="stat-label">Documents</div>
                             <div class="text-2xl font-bold" id="memDocs">0</div>
                         </div>
                     </div>
 
-                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                    <div class="filter-bar">
                         <select id="memoryThreadFilter" onchange="loadMemories()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
                             <option value="">All Threads</option>
                         </select>
@@ -523,15 +547,15 @@
                         </select>
                         <select id="memorySourceFilter" onchange="loadMemories()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
                             <option value="">All Sources</option>
-                            <option value="chat">💬 Chat</option>
-                            <option value="file">📄 File</option>
-                            <option value="manual">✏️ Manual</option>
+                            <option value="chat">Chat</option>
+                            <option value="file">File</option>
+                            <option value="manual">Manual</option>
                         </select>
                         <button onclick="loadMemories()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                            🔄 Refresh
+                            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Refresh
                         </button>
                         <button onclick="clearAllMemories()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors ml-auto">
-                            🗑️ Clear All
+                            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Clear All
                         </button>
                     </div>
 
@@ -541,8 +565,8 @@
                             <span class="text-sm text-slate-500" id="memoryStatusText"></span>
                         </div>
                         <div id="memoriesList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
-                            <div class="text-center py-12 text-slate-400">
-                                <div class="text-4xl mb-3">🧠</div>
+                            <div class="empty-state">
+                                <div class="flex justify-center mb-3"><div class="spinner"></div></div>
                                 <p>Loading memories...</p>
                             </div>
                         </div>
@@ -552,20 +576,20 @@
                 <!-- Scheduler Tab -->
                 <div id="scheduler" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Status</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Status</div>
                             <div class="text-2xl font-bold" id="schedulerStatus">Stopped</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Scheduled Jobs</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Scheduled Jobs</div>
                             <div class="text-2xl font-bold" id="schedulerJobs">0</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Executions Today</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Executions Today</div>
                             <div class="text-2xl font-bold" id="schedulerExecs">0</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Next Run</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Next Run</div>
                             <div class="text-2xl font-bold" id="schedulerNext">-</div>
                         </div>
                     </div>
@@ -578,14 +602,14 @@
                             <div class="p-5 space-y-4">
                                 <div class="flex gap-3">
                                     <button onclick="startScheduler()" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium">
-                                        ▶️ Start
+                                        Start
                                     </button>
                                     <button onclick="stopScheduler()" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium">
-                                        ⏹️ Stop
+                                        Stop
                                     </button>
                                 </div>
                                 <button onclick="triggerScheduler()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
-                                    ⚡ Trigger Now
+                                    Trigger Now
                                 </button>
                             </div>
                         </div>
@@ -606,25 +630,25 @@
                 <!-- Files Tab -->
                 <div id="files" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Files</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Total Files</div>
                             <div class="text-2xl font-bold" id="filesTotal">0</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Size</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Total Size</div>
                             <div class="text-2xl font-bold" id="filesTotalSize">0 B</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Images</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Images</div>
                             <div class="text-2xl font-bold" id="filesImages">0</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Documents</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Documents</div>
                             <div class="text-2xl font-bold" id="filesDocs">0</div>
                         </div>
                     </div>
 
-                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                    <div class="filter-bar">
                         <select id="fileTypeFilter" onchange="loadFiles()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
                             <option value="">All Types</option>
                             <option value="image">Images</option>
@@ -632,15 +656,15 @@
                             <option value="audio">Audio</option>
                         </select>
                         <button onclick="loadFiles()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                            🔄 Refresh
+                            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Refresh
                         </button>
                         <button onclick="cleanupFiles()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors">
-                            🧹 Cleanup
+                            Cleanup
                         </button>
                         <div class="flex-1"></div>
                         <input type="file" id="fileUploadInput" onchange="uploadFile()" class="hidden" multiple>
                         <button onclick="document.getElementById('fileUploadInput').click()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors">
-                            📤 Upload File
+                            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg> Upload
                         </button>
                     </div>
 
@@ -649,8 +673,8 @@
                             <h3 class="font-semibold text-slate-800 dark:text-slate-100">Stored Files</h3>
                         </div>
                         <div id="filesList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
-                            <div class="text-center py-12 text-slate-400">
-                                <div class="text-4xl mb-3">📁</div>
+                            <div class="empty-state">
+                                <div class="flex justify-center mb-3"><div class="spinner"></div></div>
                                 <p>Loading files...</p>
                             </div>
                         </div>
@@ -828,7 +852,7 @@
                     <!-- Test Webhook -->
                     <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700">
-                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">🧪 Test Webhook Event</h3>
+                            <h3 class="font-semibold text-slate-800 dark:text-slate-100">Test Webhook Event</h3>
                             <p class="text-sm text-slate-500">Send a simulated webhook event to test subscriptions</p>
                         </div>
                         <div class="p-5">
@@ -856,7 +880,7 @@
                             </div>
                             <div class="flex items-center gap-3">
                                 <button onclick="sendTestWebhook()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium">
-                                    📤 Send Test Webhook
+                                    Send Test Webhook
                                 </button>
                                 <div id="webhookTestResult" class="text-sm"></div>
                             </div>
@@ -1031,7 +1055,7 @@
                                 <p class="text-xs text-slate-500 mt-1">The core instructions that define the agent's behavior and personality.</p>
                             </div>
                             <button onclick="saveConfig()" class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
-                                💾 Save Basic Config
+                                Save Basic Config
                             </button>
                         </div>
                     </div>
@@ -1040,7 +1064,7 @@
                     <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('tools')">
                             <div class="flex items-center gap-3">
-                                <span class="text-xl">🔧</span>
+                                <span class="section-icon bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17l-5.1 3.03.96-5.58L3.24 8.7l5.6-.82 2.58-5.08 2.58 5.08 5.6.82-4.04 3.92.96 5.58z"/></svg></span>
                                 <div>
                                     <h3 class="font-semibold text-slate-800 dark:text-slate-100">Tools Configuration</h3>
                                     <p class="text-sm text-slate-500">Enable/disable agent tools</p>
@@ -1056,21 +1080,21 @@
                                     <label class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
                                         <input type="checkbox" id="toolWebSearch" class="rounded border-slate-300" onchange="updateToolsConfig()">
                                         <div>
-                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">🔍 Web Search</span>
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">Web Search</span>
                                             <p class="text-xs text-slate-500">Search the web</p>
                                         </div>
                                     </label>
                                     <label class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
                                         <input type="checkbox" id="toolWebFetch" class="rounded border-slate-300" onchange="updateToolsConfig()">
                                         <div>
-                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">🌐 Web Fetch</span>
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">Web Fetch</span>
                                             <p class="text-xs text-slate-500">Fetch web pages</p>
                                         </div>
                                     </label>
                                     <label class="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600">
                                         <input type="checkbox" id="toolComputer" class="rounded border-slate-300" onchange="updateToolsConfig()">
                                         <div>
-                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">🖥️ Computer Use</span>
+                                            <span class="text-sm font-medium text-slate-700 dark:text-slate-200">Computer Use</span>
                                             <p class="text-xs text-slate-500">Browser automation</p>
                                         </div>
                                     </label>
@@ -1121,7 +1145,7 @@
                             </div>
 
                             <button onclick="saveToolsConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
-                                💾 Save Tools Configuration
+                                Save Tools Configuration
                             </button>
                         </div>
                     </div>
@@ -1130,7 +1154,7 @@
                     <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm mb-6">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('toolLoading')">
                             <div class="flex items-center gap-3">
-                                <span class="text-xl">⚡</span>
+                                <span class="section-icon bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg></span>
                                 <div>
                                     <h3 class="font-semibold text-slate-800 dark:text-slate-100">Tool Loading</h3>
                                     <p class="text-sm text-slate-500">On-demand tool loading to reduce token usage</p>
@@ -1207,7 +1231,7 @@
                             </div>
 
                             <button onclick="saveToolLoadingConfig()" class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
-                                💾 Save Tool Loading Config
+                                Save Tool Loading Config
                             </button>
                         </div>
                     </div>
@@ -1218,7 +1242,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('memory')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">🧠</span>
+                                    <span class="section-icon bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Memory System</h3>
                                         <p class="text-sm text-slate-500">Long-term memory and RAG</p>
@@ -1323,7 +1347,7 @@
                                     </div>
                                 </div>
                                 <button onclick="saveFeatureConfig('memory')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Memory Settings
+                                    Save Memory Settings
                                 </button>
                             </div>
                         </div>
@@ -1332,7 +1356,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('filesystem')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">📁</span>
+                                    <span class="section-icon bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">File System</h3>
                                         <p class="text-sm text-slate-500">File storage and management</p>
@@ -1380,7 +1404,7 @@
                                     <input type="text" id="fsAllowedTypes" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="image/*,application/pdf,text/*">
                                 </div>
                                 <button onclick="saveFeatureConfig('filesystem')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Filesystem Settings
+                                    Save Filesystem Settings
                                 </button>
                             </div>
                         </div>
@@ -1389,7 +1413,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('tasks')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">📋</span>
+                                    <span class="section-icon bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Task System</h3>
                                         <p class="text-sm text-slate-500">Background tasks and queue</p>
@@ -1433,7 +1457,7 @@
                                     </div>
                                 </div>
                                 <button onclick="saveFeatureConfig('tasks')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Tasks Settings
+                                    Save Tasks Settings
                                 </button>
                             </div>
                         </div>
@@ -1442,7 +1466,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('scheduler')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">⏰</span>
+                                    <span class="section-icon bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Scheduler</h3>
                                         <p class="text-sm text-slate-500">Cron jobs and scheduled tasks</p>
@@ -1474,7 +1498,7 @@
                                     </div>
                                 </div>
                                 <button onclick="saveFeatureConfig('scheduler')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Scheduler Settings
+                                    Save Scheduler Settings
                                 </button>
                             </div>
                         </div>
@@ -1483,7 +1507,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('reflection')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">🪞</span>
+                                    <span class="section-icon bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Self-Reflection</h3>
                                         <p class="text-sm text-slate-500">Periodic self-review and learning</p>
@@ -1532,10 +1556,10 @@
                                 </div>
                                 <div class="flex gap-2">
                                     <button onclick="saveFeatureConfig('reflection')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                        💾 Save Reflection Settings
+                                        Save Reflection Settings
                                     </button>
                                     <button onclick="triggerReflection()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
-                                        🪞 Trigger Now
+                                        Trigger Now
                                     </button>
                                 </div>
                             </div>
@@ -1545,7 +1569,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('mcp')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">🔌</span>
+                                    <span class="section-icon bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">MCP Integration</h3>
                                         <p class="text-sm text-slate-500">Model Context Protocol servers</p>
@@ -1576,7 +1600,7 @@
                                 <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
                                     <div class="flex items-center justify-between mb-3">
                                         <div>
-                                            <h4 class="font-medium text-slate-700 dark:text-slate-300">🔌 External MCP Servers</h4>
+                                            <h4 class="font-medium text-slate-700 dark:text-slate-300">External MCP Servers</h4>
                                             <p class="text-xs text-slate-500">Connect to remote MCP servers (Composio, Smithery, custom)</p>
                                         </div>
                                         <button onclick="toggleAddExternalServer()" id="btnAddExternalServer" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-1">
@@ -1646,7 +1670,7 @@
 
                                 <!-- MCP Resources Section -->
                                 <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
-                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">📚 MCP Resources</h4>
+                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">MCP Resources</h4>
                                     <p class="text-xs text-slate-500 mb-3">Sync resources from MCP servers into memory for semantic retrieval (RAG)</p>
 
                                     <!-- Enabled Resources (servers to sync from) -->
@@ -1743,7 +1767,7 @@
 
                                 <!-- MCP Webhooks Section -->
                                 <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
-                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">📨 MCP Webhooks</h4>
+                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">MCP Webhooks</h4>
                                     <p class="text-xs text-slate-500 mb-3">Enable webhook events from MCP servers. The agent can subscribe to specific events in the Subscriptions tab.</p>
 
                                     <!-- Enabled Webhook Servers -->
@@ -1751,7 +1775,7 @@
                                         <div class="flex items-center justify-between mb-2">
                                             <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Enabled Webhook Servers</label>
                                             <button onclick="refreshAvailableWebhookServers()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-600 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 rounded text-xs">
-                                                🔄 Refresh
+                                                Refresh
                                             </button>
                                         </div>
                                         <div id="mcpEnabledWebhooks" class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg min-h-[60px]">
@@ -1769,7 +1793,7 @@
 
                                 <!-- MCP Credentials Section -->
                                 <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-600">
-                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">🔑 MCP Credentials</h4>
+                                    <h4 class="font-medium text-slate-700 dark:text-slate-300 mb-3">MCP Credentials</h4>
                                     <p class="text-xs text-slate-500 mb-3">Credentials for authenticating with MCP servers (e.g., Stripe, GitHub). Loaded from backend.</p>
 
                                     <!-- Credentials List -->
@@ -1777,7 +1801,7 @@
                                         <div class="flex items-center justify-between mb-2">
                                             <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Available Credentials</label>
                                             <button onclick="refreshCredentials()" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-600 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 rounded text-xs">
-                                                🔄 Refresh
+                                                Refresh
                                             </button>
                                         </div>
                                         <div id="mcpCredentialsList" class="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg min-h-[60px] max-h-[200px] overflow-y-auto">
@@ -1810,7 +1834,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('operator')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">🖥️</span>
+                                    <span class="section-icon bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Operator Mode</h3>
                                         <p class="text-sm text-slate-500">Computer use and browser automation</p>
@@ -1825,52 +1849,66 @@
                                 </div>
                             </div>
                             <div class="p-5 hidden" id="operatorSettings">
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Browser Provider</label>
-                                        <select id="operatorBrowserProvider" onchange="updateBrowserProviderUI()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
-                                            <option value="browserengine">BrowserEngine</option>
-                                            <option value="browserbase">Browserbase</option>
-                                            <option value="steel">Steel.dev</option>
-                                            <option value="chrome">Chrome DevTools</option>
-                                        </select>
-                                        <p class="text-xs text-slate-500 mt-1">BrowserEngine: REST proxy. Others: direct CDP WebSocket.</p>
+                                <!-- Operator Status -->
+                                <div id="operatorStatusPanel" class="mb-4 p-3 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span id="operatorStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+                                            <span id="operatorStatusText" class="text-sm text-slate-600 dark:text-slate-300">Not configured</span>
+                                        </div>
+                                        <button onclick="refreshOperatorStatus()" class="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">Refresh</button>
                                     </div>
+                                    <div id="operatorSessionInfo" class="mt-2 text-xs text-slate-500 hidden"></div>
                                 </div>
-                                <!-- Self provider settings -->
-                                <div class="mt-4" id="providerBrowserEngineSettings">
+                                <!-- Provider Selection -->
+                                <div>
+                                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Browser Provider</label>
+                                    <select id="operatorBrowserProvider" onchange="updateBrowserProviderUI()" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
+                                        <option value="browserengine">BrowserEngine</option>
+                                        <option value="browserbase">Browserbase</option>
+                                        <option value="steel">Steel.dev</option>
+                                        <option value="cdp">Direct CDP</option>
+                                    </select>
+                                </div>
+                                <!-- BrowserEngine provider settings -->
+                                <div class="grid grid-cols-2 gap-4 mt-3" id="providerBrowserEngineSettings">
                                     <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Virtual Browser URL</label>
-                                        <input type="text" id="operatorBrowserUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="http://localhost:8098">
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">API Key</label>
+                                        <input type="password" id="operatorBrowserEngineApiKey" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="be_...">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Base URL</label>
+                                        <input type="text" id="operatorBrowserEngineBaseUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="https://api.browserengine.co">
                                     </div>
                                 </div>
                                 <!-- Browserbase provider settings -->
-                                <div class="grid grid-cols-2 gap-4 mt-4 hidden" id="providerBrowserbaseSettings">
+                                <div class="grid grid-cols-2 gap-4 mt-3 hidden" id="providerBrowserbaseSettings">
                                     <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Browserbase API Key</label>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">API Key</label>
                                         <input type="password" id="operatorBrowserbaseApiKey" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="bb_live_...">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Browserbase Project ID</label>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Project ID</label>
                                         <input type="text" id="operatorBrowserbaseProjectId" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="Optional">
                                     </div>
                                 </div>
                                 <!-- Steel provider settings -->
-                                <div class="grid grid-cols-2 gap-4 mt-4 hidden" id="providerSteelSettings">
+                                <div class="grid grid-cols-2 gap-4 mt-3 hidden" id="providerSteelSettings">
                                     <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Steel API Key</label>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">API Key</label>
                                         <input type="password" id="operatorSteelApiKey" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="steel_...">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Steel Base URL</label>
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Base URL</label>
                                         <input type="text" id="operatorSteelBaseUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="https://api.steel.dev">
                                     </div>
                                 </div>
-                                <!-- Chrome provider settings -->
-                                <div class="mt-4 hidden" id="providerChromeSettings">
+                                <!-- CDP provider settings -->
+                                <div class="mt-3 hidden" id="providerCDPSettings">
                                     <div>
-                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Chrome Debug URL</label>
-                                        <input type="text" id="operatorChromeDebugUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="http://localhost:9222">
+                                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">CDP URL</label>
+                                        <input type="text" id="operatorCDPUrl" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="ws://localhost:9222 or http://5.75.128.19:9222">
+                                        <p class="text-xs text-slate-500 mt-1">Connect directly to any browser with Chrome DevTools Protocol enabled</p>
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4 mt-4">
@@ -1892,7 +1930,7 @@
                                     <input type="text" id="operatorBlockedDomains" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm" placeholder="malware.com, phishing.com">
                                 </div>
                                 <button onclick="saveFeatureConfig('operator')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Operator Settings
+                                    Save Operator Settings
                                 </button>
                             </div>
                         </div>
@@ -1901,7 +1939,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('agents')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">🤝</span>
+                                    <div class="section-icon" style="background: #eff6ff; color: #3b82f6;"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Multi-Agent Communication</h3>
                                         <p class="text-sm text-slate-500">Agent discovery and coordination</p>
@@ -1920,10 +1958,11 @@
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mode</label>
                                         <select id="agentsMode" onchange="updateAgentsModeStatus(this.value)" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100 text-sm">
-                                            <option value="coordinator">Coordinator (can call agents)</option>
+                                            <option value="peer">Peer (call & be called)</option>
+                                            <option value="coordinator">Coordinator (call & be called)</option>
                                             <option value="worker">Worker (receive-only)</option>
                                         </select>
-                                        <p class="text-xs text-slate-500 mt-1">Coordinator: discovers & calls other agents. Worker: only receives calls.</p>
+                                        <p class="text-xs text-slate-500 mt-1">Peer: all agents collaborate freely. Worker: only receives calls.</p>
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Discovery Group</label>
@@ -1953,12 +1992,12 @@
 
                                 <div class="mt-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
                                     <div class="flex items-center gap-2 text-sm">
-                                        <span id="agentsModeIcon">🎯</span>
+                                        <span id="agentsModeIcon"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><circle cx="12" cy="12" r="6" stroke-width="2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></span>
                                         <span id="agentsModeStatus" class="text-slate-600 dark:text-slate-300">Mode: Coordinator</span>
                                     </div>
                                 </div>
                                 <button onclick="saveFeatureConfig('agents')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Agent Settings
+                                    Save Agent Settings
                                 </button>
                             </div>
                         </div>
@@ -1967,7 +2006,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('telemetry')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">📡</span>
+                                    <span class="section-icon bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg></span>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Telemetry</h3>
                                         <p class="text-sm text-slate-500">Usage tracking and analytics</p>
@@ -2010,7 +2049,7 @@
                                     <p class="text-xs text-slate-500 mt-1">Filter events by category: SYSTEM, CHAT, TOOL, DATABASE, MCP, SCHEDULER, LLM, TASK, MEMORY, AGENT, ERROR</p>
                                 </div>
                                 <button onclick="saveFeatureConfig('telemetry')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Telemetry Settings
+                                    Save Telemetry Settings
                                 </button>
                             </div>
                         </div>
@@ -2019,7 +2058,7 @@
                         <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                             <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('realtime')">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl">🎙️</span>
+                                    <div class="section-icon" style="background: #fdf2f8; color: #ec4899;"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z"/></svg></div>
                                     <div>
                                         <h3 class="font-semibold text-slate-800 dark:text-slate-100">Realtime Voice</h3>
                                         <p class="text-sm text-slate-500">WebSocket voice endpoint (/voice)</p>
@@ -2191,7 +2230,7 @@
                                     </p>
                                 </div>
                                 <button onclick="saveFeatureConfig('realtime')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                    💾 Save Realtime Settings
+                                    Save Realtime Settings
                                 </button>
                             </div>
                         </div>
@@ -2201,7 +2240,7 @@
                     <div class="mt-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm">
                         <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between cursor-pointer" onclick="toggleConfigSection('context')">
                             <div class="flex items-center gap-3">
-                                <span class="text-xl">📝</span>
+                                <div class="section-icon" style="background: #faf5ff; color: #a855f7;"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></div>
                                 <div>
                                     <h3 class="font-semibold text-slate-800 dark:text-slate-100">Context & Summarization</h3>
                                     <p class="text-xs text-slate-500">Compaction model, thread activity summaries</p>
@@ -2248,7 +2287,7 @@
                                 </div>
                             </div>
                             <button onclick="saveFeatureConfig('context')" class="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">
-                                💾 Save Context Settings
+                                Save Context Settings
                             </button>
                         </div>
                     </div>
@@ -2259,7 +2298,7 @@
                             <h3 class="font-semibold text-slate-800 dark:text-slate-100">Raw Configuration (JSON)</h3>
                             <div class="flex items-center gap-3">
                                 <button onclick="event.stopPropagation(); loadConfig()" class="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg">
-                                    🔄 Reload
+                                    Reload
                                 </button>
                                 <span class="text-slate-400 transition-transform" id="rawChevron">▼</span>
                             </div>
@@ -2273,20 +2312,20 @@
                 <!-- System Tab -->
                 <div id="system" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Status</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Status</div>
                             <div class="text-2xl font-bold" id="systemStatus">Healthy</div>
                         </div>
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Uptime</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Uptime</div>
                             <div class="text-2xl font-bold" id="systemUptime">-</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Memory</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Memory</div>
                             <div class="text-2xl font-bold" id="systemMemory">-</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Version</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Version</div>
                             <div class="text-2xl font-bold" id="systemVersion">-</div>
                         </div>
                     </div>
@@ -2307,13 +2346,13 @@
                             </div>
                             <div class="p-5 space-y-3">
                                 <button onclick="resetDatabase()" class="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium">
-                                    🗑️ Reset Database
+                                    Reset Database
                                 </button>
                                 <button onclick="clearEvents()" class="w-full px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors font-medium">
-                                    🧹 Clear Events
+                                    Clear Events
                                 </button>
                                 <button onclick="exportData()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
-                                    📤 Export Data
+                                    Export Data
                                 </button>
                             </div>
                         </div>
@@ -2322,7 +2361,7 @@
 
                 <!-- Events Tab -->
                 <div id="events" class="tab-pane hidden h-full overflow-y-auto">
-                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                    <div class="filter-bar">
                         <select id="eventCategoryFilter" onchange="filterEvents()" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
                             <option value="">All Categories</option>
                             <option value="SYSTEM">System</option>
@@ -2350,7 +2389,7 @@
                             <span class="text-sm text-slate-600">Auto-scroll</span>
                         </div>
                         <button onclick="clearEventLog()" class="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors ml-auto">
-                            🧹 Clear
+                            Clear
                         </button>
                     </div>
 
@@ -2363,8 +2402,8 @@
                             <span class="text-sm text-slate-500" id="eventCount">0 events</span>
                         </div>
                         <div id="eventsList" class="max-h-[600px] overflow-y-auto font-mono text-sm">
-                            <div class="text-center py-12 text-slate-400">
-                                <div class="text-4xl mb-3">📡</div>
+                            <div class="empty-state">
+                                <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
                                 <p>Waiting for events...</p>
                             </div>
                         </div>
@@ -2374,25 +2413,25 @@
                 <!-- Tracing Tab -->
                 <div id="tracing" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Traces</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Total Traces</div>
                             <div class="text-2xl font-bold" id="tracesTotal">0</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Avg Duration</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Avg Duration</div>
                             <div class="text-2xl font-bold" id="tracesAvgDuration">-</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Spans</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Total Spans</div>
                             <div class="text-2xl font-bold" id="tracesSpans">0</div>
                         </div>
-                        <div class="gradient-blue rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Errors</div>
+                        <div class="stat-card stat-card-primary">
+                            <div class="stat-label">Errors</div>
                             <div class="text-2xl font-bold" id="tracesErrors">0</div>
                         </div>
                     </div>
 
-                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                    <div class="filter-bar">
                         <input type="text" id="traceSearch" placeholder="Search traces..." class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 w-64">
 
                         <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -2417,7 +2456,7 @@
                         </select>
 
                         <button onclick="loadTraces()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                            🔄 Refresh
+                            <svg class="w-3.5 h-3.5 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Refresh
                         </button>
                     </div>
 
@@ -2426,8 +2465,8 @@
                             <h3 class="font-semibold text-slate-800 dark:text-slate-100">Request Traces</h3>
                         </div>
                         <div id="tracesList" class="divide-y divide-slate-100 dark:divide-slate-700 max-h-[500px] overflow-y-auto">
-                            <div class="text-center py-12 text-slate-400">
-                                <div class="text-4xl mb-3">🔍</div>
+                            <div class="empty-state">
+                                <div class="flex justify-center mb-3"><div class="spinner"></div></div>
                                 <p>Loading traces...</p>
                             </div>
                         </div>
@@ -2437,25 +2476,25 @@
                 <!-- Usage Tab -->
                 <div id="usage" class="tab-pane hidden h-full overflow-y-auto">
                     <div class="grid grid-cols-4 gap-4 mb-6">
-                        <div class="gradient-purple rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Total Tokens</div>
+                        <div class="stat-card stat-card-purple">
+                            <div class="stat-label">Total Tokens</div>
                             <div class="text-2xl font-bold" id="usageTotalTokens">0</div>
                         </div>
-                        <div class="gradient-green rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Input Tokens</div>
+                        <div class="stat-card stat-card-success">
+                            <div class="stat-label">Input Tokens</div>
                             <div class="text-2xl font-bold" id="usageInputTokens">0</div>
                         </div>
-                        <div class="gradient-orange rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">Output Tokens</div>
+                        <div class="stat-card stat-card-warning">
+                            <div class="stat-label">Output Tokens</div>
                             <div class="text-2xl font-bold" id="usageOutputTokens">0</div>
                         </div>
-                        <div class="gradient-red rounded-xl p-5 text-white shadow-lg">
-                            <div class="text-sm opacity-90 mb-1">LLM Calls</div>
+                        <div class="stat-card stat-card-danger">
+                            <div class="stat-label">LLM Calls</div>
                             <div class="text-2xl font-bold" id="usageCallCount">0</div>
                         </div>
                     </div>
 
-                    <div class="bg-slate-100 dark:bg-slate-800 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+                    <div class="filter-bar">
                         <div class="flex items-center gap-2">
                             <label class="text-sm text-slate-600">From:</label>
                             <input type="date" id="usageStartDate" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100">
@@ -2470,7 +2509,7 @@
                             <option value="thread">By Thread</option>
                         </select>
                         <button onclick="loadUsage()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-                            📊 Load Usage
+                            Load Usage
                         </button>
                     </div>
 
@@ -2479,9 +2518,9 @@
                             <h3 class="font-semibold text-slate-800 dark:text-slate-100">Usage Details</h3>
                         </div>
                         <div id="usageDetails" class="p-5">
-                            <div class="text-center py-12 text-slate-400">
-                                <div class="text-4xl mb-3">💰</div>
-                                <p>Click "Load Usage" to see usage data</p>
+                            <div class="empty-state">
+                                <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+                                <p>Load usage data to see token breakdown</p>
                             </div>
                         </div>
                     </div>

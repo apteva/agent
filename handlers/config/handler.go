@@ -634,18 +634,26 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 					operatorConfigChanged = true
 				}
 				currentConfig.Operator.BrowserProvider = browserProvider
+				// Clear all provider configs — only the active one gets set below
+				currentConfig.Operator.BrowserEngine = nil
+				currentConfig.Operator.Browserbase = nil
+				currentConfig.Operator.Steel = nil
+				currentConfig.Operator.CDP = nil
 			}
-			if virtualBrowser, ok := operatorConfig["virtual_browser"].(string); ok {
-				if currentConfig.Operator.VirtualBrowser != virtualBrowser {
+			// BrowserEngine provider config
+			if beConfig, ok := operatorConfig["browserengine"].(map[string]interface{}); ok {
+				currentConfig.Operator.BrowserEngine = &appConfig.BrowserEngineProviderConfig{}
+				if apiKey, ok := beConfig["api_key"].(string); ok {
+					currentConfig.Operator.BrowserEngine.APIKey = apiKey
 					operatorConfigChanged = true
 				}
-				currentConfig.Operator.VirtualBrowser = virtualBrowser
+				if baseURL, ok := beConfig["base_url"].(string); ok {
+					currentConfig.Operator.BrowserEngine.BaseURL = baseURL
+				}
 			}
 			// Browserbase provider config
 			if bbConfig, ok := operatorConfig["browserbase"].(map[string]interface{}); ok {
-				if currentConfig.Operator.Browserbase == nil {
-					currentConfig.Operator.Browserbase = &appConfig.BrowserbaseProviderConfig{}
-				}
+				currentConfig.Operator.Browserbase = &appConfig.BrowserbaseProviderConfig{}
 				if apiKey, ok := bbConfig["api_key"].(string); ok {
 					currentConfig.Operator.Browserbase.APIKey = apiKey
 					operatorConfigChanged = true
@@ -656,9 +664,7 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			// Steel provider config
 			if steelConfig, ok := operatorConfig["steel"].(map[string]interface{}); ok {
-				if currentConfig.Operator.Steel == nil {
-					currentConfig.Operator.Steel = &appConfig.SteelProviderConfig{}
-				}
+				currentConfig.Operator.Steel = &appConfig.SteelProviderConfig{}
 				if apiKey, ok := steelConfig["api_key"].(string); ok {
 					currentConfig.Operator.Steel.APIKey = apiKey
 					operatorConfigChanged = true
@@ -667,13 +673,11 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 					currentConfig.Operator.Steel.BaseURL = baseURL
 				}
 			}
-			// Chrome provider config
-			if chromeConfig, ok := operatorConfig["chrome"].(map[string]interface{}); ok {
-				if currentConfig.Operator.Chrome == nil {
-					currentConfig.Operator.Chrome = &appConfig.ChromeProviderConfig{}
-				}
-				if debugURL, ok := chromeConfig["debug_url"].(string); ok {
-					currentConfig.Operator.Chrome.DebugURL = debugURL
+			// CDP provider config
+			if cdpConfig, ok := operatorConfig["cdp"].(map[string]interface{}); ok {
+				currentConfig.Operator.CDP = &appConfig.CDPProviderConfig{}
+				if url, ok := cdpConfig["url"].(string); ok {
+					currentConfig.Operator.CDP.URL = url
 					operatorConfigChanged = true
 				}
 			}

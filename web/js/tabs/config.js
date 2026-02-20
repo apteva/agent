@@ -10,7 +10,47 @@ function updateBrowserProviderUI() {
     document.getElementById('providerBrowserEngineSettings').classList.toggle('hidden', provider !== 'browserengine');
     document.getElementById('providerBrowserbaseSettings').classList.toggle('hidden', provider !== 'browserbase');
     document.getElementById('providerSteelSettings').classList.toggle('hidden', provider !== 'steel');
-    document.getElementById('providerChromeSettings').classList.toggle('hidden', provider !== 'chrome');
+    document.getElementById('providerCDPSettings').classList.toggle('hidden', provider !== 'cdp');
+}
+
+// Fetch and display operator/browser status
+async function refreshOperatorStatus() {
+    try {
+        const resp = await fetch('/operator/status');
+        const status = await resp.json();
+        const dot = document.getElementById('operatorStatusDot');
+        const text = document.getElementById('operatorStatusText');
+        const sessionInfo = document.getElementById('operatorSessionInfo');
+
+        if (!status.enabled) {
+            dot.className = 'w-2 h-2 rounded-full bg-slate-400';
+            text.textContent = 'Disabled';
+            sessionInfo.classList.add('hidden');
+        } else if (!status.provider_ready) {
+            dot.className = 'w-2 h-2 rounded-full bg-yellow-400';
+            text.textContent = `${status.browser_provider || 'unknown'} — not configured (missing credentials)`;
+            sessionInfo.classList.add('hidden');
+        } else {
+            const session = status.active_session;
+            if (session) {
+                dot.className = 'w-2 h-2 rounded-full bg-green-400';
+                text.textContent = `${status.provider_name} — active session`;
+                let info = `Session: ${session.id}`;
+                if (session.stream_url) info += ` | <a href="${session.stream_url}" target="_blank" class="underline">Stream</a>`;
+                if (session.view_url) info += ` | <a href="${session.view_url}" target="_blank" class="underline">View</a>`;
+                if (session.cdp_connected) info += ' | CDP connected';
+                sessionInfo.innerHTML = info;
+                sessionInfo.classList.remove('hidden');
+            } else {
+                dot.className = 'w-2 h-2 rounded-full bg-blue-400';
+                text.textContent = `${status.provider_name} — ready (no active session)`;
+                sessionInfo.classList.add('hidden');
+            }
+        }
+    } catch (e) {
+        document.getElementById('operatorStatusDot').className = 'w-2 h-2 rounded-full bg-red-400';
+        document.getElementById('operatorStatusText').textContent = 'Error fetching status';
+    }
 }
 
 // Show/hide realtime provider-specific settings
@@ -354,28 +394,31 @@ async function loadConfig() {
         // Load Operator settings
         const op = currentConfig.operator || {};
         document.getElementById('operatorBrowserProvider').value = op.browser_provider || 'browserengine';
-        document.getElementById('operatorBrowserUrl').value = op.virtual_browser || '';
         document.getElementById('operatorDisplayWidth').value = op.display_width || '';
         document.getElementById('operatorDisplayHeight').value = op.display_height || '';
         document.getElementById('operatorAllowedDomains').value = (op.allowed_domains || []).join(', ');
         document.getElementById('operatorBlockedDomains').value = (op.blocked_domains || []).join(', ');
         // Load provider-specific settings
+        const be = op.browserengine || {};
+        document.getElementById('operatorBrowserEngineApiKey').value = be.api_key || '';
+        document.getElementById('operatorBrowserEngineBaseUrl').value = be.base_url || '';
         const bb = op.browserbase || {};
         document.getElementById('operatorBrowserbaseApiKey').value = bb.api_key || '';
         document.getElementById('operatorBrowserbaseProjectId').value = bb.project_id || '';
         const steel = op.steel || {};
         document.getElementById('operatorSteelApiKey').value = steel.api_key || '';
         document.getElementById('operatorSteelBaseUrl').value = steel.base_url || '';
-        document.getElementById('operatorChromeDebugUrl').value = (op.chrome || {}).debug_url || '';
+        document.getElementById('operatorCDPUrl').value = (op.cdp || {}).url || '';
         updateBrowserProviderUI();
+        refreshOperatorStatus();
 
         // Load Agents settings
         const agents = currentConfig.agents || {};
-        document.getElementById('agentsMode').value = agents.mode || 'coordinator';
+        document.getElementById('agentsMode').value = agents.mode || 'peer';
         document.getElementById('agentsGroup').value = agents.group || '';
         document.getElementById('agentsDiscoveryMethod').value = agents.discovery_method || 'file';
         document.getElementById('agentsFileRegistryPath').value = agents.file_registry_path || '/tmp/apteva-agents';
-        updateAgentsModeStatus(agents.mode || 'coordinator');
+        updateAgentsModeStatus(agents.mode || 'peer');
         updateDiscoveryMethodUI();
 
         // Load Telemetry settings
@@ -643,29 +686,29 @@ async function saveFeatureConfig(feature) {
                 .filter(d => d);
             const browserProvider = document.getElementById('operatorBrowserProvider').value;
             const operatorUpdate = {
-                ...currentConfig?.operator,
                 enabled: document.getElementById('toggleOperator').checked,
                 browser_provider: browserProvider,
-                virtual_browser: document.getElementById('operatorBrowserUrl').value || undefined,
                 display_width: parseInt(document.getElementById('operatorDisplayWidth').value) || undefined,
                 display_height: parseInt(document.getElementById('operatorDisplayHeight').value) || undefined,
                 allowed_domains: allowedDomains.length > 0 ? allowedDomains : undefined,
                 blocked_domains: blockedDomains.length > 0 ? blockedDomains : undefined
             };
-            // Include provider-specific configs
-            const bbApiKey = document.getElementById('operatorBrowserbaseApiKey').value;
-            const bbProjectId = document.getElementById('operatorBrowserbaseProjectId').value;
-            if (bbApiKey) {
-                operatorUpdate.browserbase = { api_key: bbApiKey, project_id: bbProjectId || undefined };
-            }
-            const steelApiKey = document.getElementById('operatorSteelApiKey').value;
-            const steelBaseUrl = document.getElementById('operatorSteelBaseUrl').value;
-            if (steelApiKey) {
-                operatorUpdate.steel = { api_key: steelApiKey, base_url: steelBaseUrl || undefined };
-            }
-            const chromeDebugUrl = document.getElementById('operatorChromeDebugUrl').value;
-            if (chromeDebugUrl) {
-                operatorUpdate.chrome = { debug_url: chromeDebugUrl };
+            // Only include the active provider's config
+            if (browserProvider === 'browserengine') {
+                const apiKey = document.getElementById('operatorBrowserEngineApiKey').value;
+                const baseUrl = document.getElementById('operatorBrowserEngineBaseUrl').value;
+                if (apiKey) operatorUpdate.browserengine = { api_key: apiKey, base_url: baseUrl || undefined };
+            } else if (browserProvider === 'browserbase') {
+                const apiKey = document.getElementById('operatorBrowserbaseApiKey').value;
+                const projectId = document.getElementById('operatorBrowserbaseProjectId').value;
+                if (apiKey) operatorUpdate.browserbase = { api_key: apiKey, project_id: projectId || undefined };
+            } else if (browserProvider === 'steel') {
+                const apiKey = document.getElementById('operatorSteelApiKey').value;
+                const baseUrl = document.getElementById('operatorSteelBaseUrl').value;
+                if (apiKey) operatorUpdate.steel = { api_key: apiKey, base_url: baseUrl || undefined };
+            } else if (browserProvider === 'cdp') {
+                const cdpUrl = document.getElementById('operatorCDPUrl').value;
+                if (cdpUrl) operatorUpdate.cdp = { url: cdpUrl };
             }
             updates = { operator: operatorUpdate };
             break;
@@ -907,11 +950,14 @@ function updateAgentsModeStatus(mode) {
     if (!iconEl || !statusEl) return;
 
     if (mode === 'worker') {
-        iconEl.textContent = '👷';
+        iconEl.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>';
         statusEl.textContent = 'Mode: Worker (receive-only, no call_agent tool)';
-    } else {
-        iconEl.textContent = '🎯';
+    } else if (mode === 'coordinator') {
+        iconEl.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><circle cx="12" cy="12" r="6" stroke-width="2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>';
         statusEl.textContent = 'Mode: Coordinator (discovers & calls other agents)';
+    } else {
+        iconEl.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>';
+        statusEl.textContent = 'Mode: Peer (all agents can collaborate freely)';
     }
 }
 
@@ -1415,7 +1461,7 @@ function loadEnabledWebhooks() {
     } else {
         container.innerHTML = webhooks.map(server => `
             <span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-sm">
-                📨 ${server}
+                ${server}
                 <button onclick="removeWebhookServer('${server}')" class="ml-1 text-blue-500 hover:text-red-500">&times;</button>
             </span>
         `).join(' ');
@@ -1752,10 +1798,10 @@ function renderExternalServersList() {
             : 'bg-slate-100 text-slate-500 dark:bg-slate-600 dark:text-slate-400';
         const statusText = server.enabled !== false ? 'Enabled' : 'Disabled';
 
-        // Detect provider icon
-        let icon = '🔌';
-        if (server.url.includes('composio.dev')) icon = '⚡';
-        else if (server.url.includes('smithery.ai')) icon = '🔨';
+        // Detect provider icon (SVG)
+        let icon = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>';
+        if (server.url.includes('composio.dev')) icon = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>';
+        else if (server.url.includes('smithery.ai')) icon = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>';
 
         // Mask URL for display
         const displayUrl = server.url.length > 60 ? server.url.substring(0, 57) + '...' : server.url;
@@ -1763,7 +1809,7 @@ function renderExternalServersList() {
         return `
             <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg">
                 <div class="flex items-center gap-3 flex-1 min-w-0">
-                    <span class="text-xl">${icon}</span>
+                    <span class="text-slate-500 dark:text-slate-400">${icon}</span>
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2">
                             <span class="font-medium text-slate-700 dark:text-slate-200">${escapeHtml(server.name)}</span>
@@ -1774,13 +1820,13 @@ function renderExternalServersList() {
                 </div>
                 <div class="flex items-center gap-1 ml-2">
                     <button onclick="toggleExternalServerEnabled(${index})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-slate-700" title="${server.enabled !== false ? 'Disable' : 'Enable'}">
-                        ${server.enabled !== false ? '⏸️' : '▶️'}
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">${server.enabled !== false ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>' : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>'}</svg>
                     </button>
                     <button onclick="editExternalServer(${index})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-blue-600" title="Edit">
-                        ✏️
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                     </button>
                     <button onclick="deleteExternalServer(${index})" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-500 hover:text-red-600" title="Delete">
-                        🗑️
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>
             </div>

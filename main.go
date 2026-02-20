@@ -417,6 +417,8 @@ func initDB() {
 	CREATE TABLE IF NOT EXISTS threads (
 		id TEXT PRIMARY KEY,
 		title TEXT,
+		type TEXT DEFAULT 'chat',
+		parent_id TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		metadata TEXT DEFAULT '{}'
@@ -2049,9 +2051,30 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Add config tools if setup mode is enabled
 	if agentConfig.SetupMode {
-		configTools := tools.GetToolsForNames([]string{"config_set", "tools_search"})
+		configTools := tools.GetToolsForNames([]string{"config_set"})
 		customTools = append(customTools, configTools...)
-		log.Printf("🔧 Setup mode: Added config tools (config_set, tools_search)")
+		log.Printf("🔧 Setup mode: Added config tools (config_set)")
+	}
+
+	// Add operator session tools if operator mode is enabled (skip any already loaded from config)
+	if agentConfig.Operator != nil && agentConfig.Operator.Enabled {
+		existingToolNames := make(map[string]bool)
+		for _, t := range customTools {
+			existingToolNames[t.Name] = true
+		}
+		operatorToolNames := []string{"create_operator_session", "list_operator_sessions", "close_operator_session", "high_quality_screenshot"}
+		var added int
+		for _, name := range operatorToolNames {
+			if !existingToolNames[name] {
+				if resolved := tools.GetToolsForNames([]string{name}); len(resolved) > 0 {
+					customTools = append(customTools, resolved[0])
+					added++
+				}
+			}
+		}
+		if added > 0 {
+			log.Printf("🖥️ Operator mode: Added %d session tools", added)
+		}
 	}
 
 	// Get MCP tool definitions if configured
@@ -2462,7 +2485,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 				} else {
 					log.Printf("Updated thread %s activity: %s", summaryThreadID, result.Activity)
 
-					// Emit thread activity event
+					// Emit thread activity event with type and parent info
 					bus := events.GetEventBus()
 					log.Printf("🔔 DEBUG thread_activity: emitting event for thread=%s, subscribers=%d, bus_running=%v",
 						summaryThreadID, bus.SubscriberCount(), bus.IsRunning())
@@ -2471,6 +2494,14 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 						WithData("activity", result.Activity)
 					if titlePtr != nil {
 						activityEvent.WithData("title", result.Title)
+					}
+					// Add thread type and parent_id
+					var threadType, parentID sql.NullString
+					if err := db.QueryRow("SELECT COALESCE(type, 'chat'), parent_id FROM threads WHERE id = ?", summaryThreadID).Scan(&threadType, &parentID); err == nil {
+						activityEvent.WithData("thread_type", threadType.String)
+						if parentID.Valid {
+							activityEvent.WithData("parent_id", parentID.String)
+						}
 					}
 					if err := bus.Publish(activityEvent); err != nil {
 						log.Printf("❌ DEBUG thread_activity: publish failed: %v", err)
@@ -2867,8 +2898,8 @@ func initAgentCommunication() {
 func registerAgentTools() {
 	cfg := config.GetConfig().Get()
 
-	// In worker mode, don't register any agent tools (receive-only)
-	if cfg.Agents != nil && cfg.Agents.IsWorkerMode() {
+	// Only register agent tools if this agent can call others (peer or coordinator mode)
+	if cfg.Agents != nil && !cfg.Agents.CanCallAgents() {
 		log.Printf("🔧 Worker mode: skipping agent tool registration (receive-only)")
 		return
 	}
@@ -2880,12 +2911,12 @@ func registerAgentTools() {
 
 	registry := tools.GetGlobalRegistry()
 
-	// Register call_agent tool (coordinator mode only)
+	// Register call_agent tool
 	registry.RegisterTool(&agents.CallAgentTool{
 		Client: agentClient,
 	})
 
-	// Register delegation tools (coordinator mode only)
+	// Register delegation tools
 	registry.RegisterTool(&agents.DelegateTaskTool{
 		Client: agentClient,
 	})
@@ -2893,7 +2924,7 @@ func registerAgentTools() {
 		Client: agentClient,
 	})
 
-	// Register activity tool (coordinator mode only)
+	// Register activity tool
 	registry.RegisterTool(&agents.GetAgentActivityTool{
 		Client: agentClient,
 	})
@@ -3608,41 +3639,7 @@ func main() {
 
 	// Register config tools (for setup mode)
 	// These are always registered but only added to tool list when setup mode is enabled
-	tools.RegisterConfigTools(
-		// MCP tools provider
-		func() []tools.ToolInfo {
-			// Provide MCP tools to config tools for discovery
-			if agentConfig.MCP != nil && agentConfig.MCP.Enabled {
-				mcpTools := mcp.GetEnabledMCPTools(agentConfig.MCP)
-				var toolInfos []tools.ToolInfo
-				for _, t := range mcpTools {
-					toolInfos = append(toolInfos, tools.ToolInfo{
-						Name:        t.Name,
-						Description: t.Description,
-						Category:    "mcp",
-						Source:      "mcp",
-					})
-				}
-				return toolInfos
-			}
-			return nil
-		},
-		// Skills provider
-		func() []tools.SkillInfo {
-			sm := skills.GetManager()
-			var skillInfos []tools.SkillInfo
-			for _, s := range sm.GetAll() {
-				skillInfos = append(skillInfos, tools.SkillInfo{
-					Name:        s.Name,
-					Description: s.Description,
-					Category:    s.Category,
-					Tools:       s.Tools,
-					Icon:        s.Icon,
-				})
-			}
-			return skillInfos
-		},
-	)
+	tools.RegisterConfigTools()
 
 	// Initialize memory manager if enabled
 	// Note: This is synchronous because filesystem callbacks depend on it
@@ -3794,6 +3791,10 @@ func main() {
 	mux.HandleFunc("/config", handlerConfig.HandleConfig)
 	mux.HandleFunc("/providers", handlerConfig.HandleProviders)
 	mux.HandleFunc("/reset", handleReset)
+	mux.HandleFunc("/operator/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(operator.GetStatus())
+	})
 
 	// Realtime voice endpoints (always registered, handler checks if enabled)
 	realtimeServer := realtime.NewServer(db, messageSaver, eventBus)

@@ -9,7 +9,7 @@ import (
 // All providers create sessions (possibly via REST) and return connection info.
 // Providers that support CDP return a ConnectURL for direct WebSocket control.
 type BrowserProvider interface {
-	// Name returns the provider identifier ("browserengine", "browserbase", "steel", "chrome")
+	// Name returns the provider identifier ("browserengine", "browserbase", "steel", "cdp")
 	Name() string
 
 	// CreateSession creates a browser session and returns connection metadata.
