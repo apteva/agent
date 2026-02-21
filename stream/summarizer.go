@@ -63,23 +63,35 @@ func (s *Summarizer) GenerateThreadSummary(threadID string, messages []Message) 
 		return nil, fmt.Errorf("no messages to summarize")
 	}
 
-	// Take the last few messages (up to 6) to keep input small
+	isTaskThread := strings.HasPrefix(threadID, "task_") || strings.HasPrefix(threadID, "spawn_") || strings.HasPrefix(threadID, "scheduler_")
+
+	// For task/scheduler threads, use more messages to capture what was actually done
+	maxMessages := 6
+	if isTaskThread {
+		maxMessages = 12
+	}
+
+	// Take the last few messages to keep input small
 	start := 0
-	if len(messages) > 6 {
-		start = len(messages) - 6
+	if len(messages) > maxMessages {
+		start = len(messages) - maxMessages
 	}
 	recent := messages[start:]
 
 	// Build a numbered conversation snippet so the LLM can see ordering
 	var snippet strings.Builder
 	totalMessages := len(messages)
+	truncateLen := 500
+	if isTaskThread {
+		truncateLen = 800 // allow more detail for task threads
+	}
 	for i, msg := range recent {
 		role := strings.ToUpper(msg.Role)
 		content := extractTextForSummary(msg)
 		if content != "" {
 			// Truncate individual messages to keep tokens low
-			if len(content) > 500 {
-				content = content[:500] + "..."
+			if len(content) > truncateLen {
+				content = content[:truncateLen] + "..."
 			}
 			msgNum := totalMessages - len(recent) + i + 1
 			snippet.WriteString(fmt.Sprintf("#%d [%s]: %s\n", msgNum, role, content))
@@ -87,7 +99,24 @@ func (s *Summarizer) GenerateThreadSummary(threadID string, messages []Message) 
 	}
 	snippet.WriteString(fmt.Sprintf("\n(Total messages: %d. Message #%d is the MOST RECENT.)\n", totalMessages, totalMessages))
 
-	prompt := fmt.Sprintf(`CONVERSATION:
+	var prompt string
+	if isTaskThread {
+		prompt = fmt.Sprintf(`TASK EXECUTION THREAD:
+%s
+Summarize as a JSON object:
+- "title": 3-6 word task goal
+- "activity": 2-5 words about the outcome. Be specific but very short. Do NOT say "task completed" or "executed successfully".
+
+Examples:
+{"title": "Daily News Summary", "activity": "Fetched 5 AI articles"}
+{"title": "Competitor Analysis", "activity": "Found 3 pricing changes"}
+{"title": "Database Cleanup", "activity": "Deleted 234 expired sessions"}
+{"title": "Email Campaign Draft", "activity": "Failed, auth error"}
+{"title": "Dummy Task", "activity": "Ping test successful"}
+
+Your JSON:`, snippet.String())
+	} else {
+		prompt = fmt.Sprintf(`CONVERSATION:
 %s
 Summarize this conversation as a JSON object with two fields:
 - "title": 3-6 word thread topic
@@ -99,7 +128,13 @@ Examples:
 {"title": "Task Management", "activity": "Created recurring task"}
 
 Your JSON:`, snippet.String())
+	}
 
+	return s.callAndParse(prompt)
+}
+
+// callAndParse calls the LLM API and parses the JSON response
+func (s *Summarizer) callAndParse(prompt string) (*SummaryResult, error) {
 	response, err := s.callAPI(prompt)
 	if err != nil {
 		return nil, fmt.Errorf("API call failed: %w", err)
@@ -227,6 +262,11 @@ func (s *Summarizer) callOpenAICompatibleAPI(prompt string) (string, error) {
 		},
 	}
 
+	// Disable thinking/reasoning for providers that support it — summarization
+	// doesn't need chain-of-thought and thinking wastes ~94% of tokens.
+	if s.provider == "fireworks" {
+		requestBody["reasoning_effort"] = "none"
+	}
 
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {

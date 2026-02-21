@@ -92,9 +92,10 @@ type EmbeddingResponse struct {
 }
 
 type CompletionRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature"`
+	Model           string    `json:"model"`
+	Messages        []Message `json:"messages"`
+	Temperature     float64   `json:"temperature"`
+	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 }
 
 type Message struct {
@@ -986,6 +987,11 @@ func (m *MemoryManager) callOpenAICompatibleAPI(prompt, model, provider string) 
 		},
 	}
 
+	// Disable thinking/reasoning for providers that support it — memory
+	// extraction doesn't need chain-of-thought and wastes tokens/latency.
+	if provider == "fireworks" {
+		req.ReasoningEffort = "none"
+	}
 
 	jsonData, err := json.Marshal(req)
 	if err != nil {
