@@ -3636,10 +3636,11 @@ func main() {
 	// Register operator session tools (only if operator is enabled)
 	if agentConfig.Operator != nil && agentConfig.Operator.Enabled {
 		tools.RegisterOperatorSessionTools()
-		// Register browser tool for non-Anthropic providers (Anthropic uses native computer tool)
-		if agentConfig.LLM.Provider != "anthropic" {
-			tools.RegisterBrowserTool()
-		}
+		// Always register browser tool — works with all providers.
+		// Anthropic also gets the native computer tool via BuiltinTools, but
+		// the browser tool (different name) serves as fallback and is needed
+		// when provider is switched dynamically (e.g. Anthropic → Fireworks).
+		tools.RegisterBrowserTool()
 		log.Printf("🖥️ Operator tools enabled")
 	}
 
@@ -3786,6 +3787,9 @@ func main() {
 		operatorConfig := cfg.Get().Operator
 		if operatorConfig != nil && operatorConfig.Enabled {
 			operator.InitProvider(operatorConfig)
+			// Ensure operator tools are registered (idempotent — skips if already present)
+			tools.RegisterOperatorSessionTools()
+			tools.RegisterBrowserTool()
 			log.Printf("🖥️  Browser provider re-initialized via config update")
 		}
 		return nil

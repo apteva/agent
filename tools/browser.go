@@ -118,7 +118,8 @@ func (t *BrowserTool) Execute(params map[string]interface{}) (interface{}, error
 }
 
 // RegisterBrowserTool registers the browser tool in the global registry.
-// Called from main.go when operator mode is enabled and provider is not Anthropic.
+// Called from main.go when operator mode is enabled (all providers).
+// Idempotent — safe to call multiple times (e.g. on config changes).
 func RegisterBrowserTool() {
 	registry := GetGlobalRegistry()
 	registry.RegisterTool(&BrowserTool{})
