@@ -88,6 +88,9 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 		return nil, fmt.Errorf("BrowserEngine returned status %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Support both API gateway wrapped response {"success":true,"data":{...}}
+	// and direct browser-service flat response {"id":"...","url":"...",...}
+	var data map[string]interface{}
 	var gatewayResp struct {
 		Success bool                   `json:"success"`
 		Data    map[string]interface{} `json:"data"`
@@ -97,11 +100,21 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 		return nil, fmt.Errorf("failed to parse session response: %w", err)
 	}
 
-	if !gatewayResp.Success {
-		return nil, fmt.Errorf("BrowserEngine session creation failed: %s", gatewayResp.Error)
+	if gatewayResp.Data != nil {
+		// Gateway-wrapped response
+		if !gatewayResp.Success {
+			return nil, fmt.Errorf("BrowserEngine session creation failed: %s", gatewayResp.Error)
+		}
+		data = gatewayResp.Data
+	} else {
+		// Flat response from direct browser-service
+		if err := json.Unmarshal(body, &data); err != nil {
+			return nil, fmt.Errorf("failed to parse session response: %w", err)
+		}
+		if errMsg, ok := data["error"].(string); ok && errMsg != "" {
+			return nil, fmt.Errorf("BrowserEngine session creation failed: %s", errMsg)
+		}
 	}
-
-	data := gatewayResp.Data
 	sessionID, ok := data["id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("no session ID in BrowserEngine response")
@@ -181,6 +194,7 @@ func (p *BrowserEngineProvider) ExecuteCommand(ctx context.Context, sessionID, c
 		return nil, fmt.Errorf("BrowserEngine command error (HTTP %d): %s", resp.StatusCode, string(body))
 	}
 
+	// Support both gateway-wrapped and flat responses
 	var gatewayResp struct {
 		Success bool                   `json:"success"`
 		Data    map[string]interface{} `json:"data"`
@@ -190,18 +204,26 @@ func (p *BrowserEngineProvider) ExecuteCommand(ctx context.Context, sessionID, c
 		return nil, fmt.Errorf("failed to parse command response: %w", err)
 	}
 
-	if !gatewayResp.Success {
-		return nil, fmt.Errorf("BrowserEngine command failed: %s", gatewayResp.Error)
-	}
-
 	if gatewayResp.Data != nil {
+		if !gatewayResp.Success {
+			return nil, fmt.Errorf("BrowserEngine command failed: %s", gatewayResp.Error)
+		}
 		return map[string]interface{}{
 			"success": true,
 			"data":    gatewayResp.Data,
 		}, nil
 	}
 
+	// Flat response from direct browser-service
+	var flat map[string]interface{}
+	if err := json.Unmarshal(body, &flat); err != nil {
+		return nil, fmt.Errorf("failed to parse command response: %w", err)
+	}
+	if errMsg, ok := flat["error"].(string); ok && errMsg != "" {
+		return nil, fmt.Errorf("BrowserEngine command failed: %s", errMsg)
+	}
 	return map[string]interface{}{
 		"success": true,
+		"data":    flat,
 	}, nil
 }

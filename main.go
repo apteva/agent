@@ -1569,8 +1569,15 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		WithThread(threadID).
 		WithData("message_preview", messageText).
 		WithData("message_type", fmt.Sprintf("%T", chatReq.Message)).
+		WithData("source", string(trace.Source)).
 		WithMetadata("provider", llmConfig.Provider).
 		WithMetadata("model", llmConfig.Model)
+	if webhookTrigger != nil {
+		if trigger, ok := webhookTrigger["trigger"].(map[string]interface{}); ok {
+			chatEvent.WithData("webhook_server", trigger["server"]).
+				WithData("webhook_event", trigger["event"])
+		}
+	}
 	eventBus.Publish(chatEvent)
 
 	// Return thread ID and trace ID in response headers
@@ -2393,6 +2400,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			// Publish chat response complete event
 			responseCompleteEvent := events.NewEvent(events.CategoryChat, events.TypeChatResponseComplete, events.LevelInfo).
 				WithThread(threadID).
+				WithData("source", string(trace.Source)).
 				WithDuration(llmStartTime)
 			eventBus.Publish(responseCompleteEvent)
 
@@ -2446,6 +2454,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			// Publish chat response complete event
 			responseCompleteEvent := events.NewEvent(events.CategoryChat, events.TypeChatResponseComplete, events.LevelInfo).
 				WithThread(threadID).
+				WithData("source", string(trace.Source)).
 				WithDuration(llmStartTime)
 			eventBus.Publish(responseCompleteEvent)
 		}
