@@ -213,7 +213,7 @@ type GeminiContent struct {
 // GeminiPart represents a single part of content (text, image, function call, etc.)
 type GeminiPart struct {
 	Text             string                  `json:"text,omitempty"`
-	InlineData       *GeminiInlineData       `json:"inline_data,omitempty"`
+	InlineData       *GeminiInlineData       `json:"inlineData,omitempty"`
 	FunctionCall     *GeminiFunctionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *GeminiFunctionResponse `json:"functionResponse,omitempty"`
 	ThoughtSignature string                  `json:"thoughtSignature,omitempty"` // At Part level for Gemini 3

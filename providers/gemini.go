@@ -40,7 +40,7 @@ type GeminiThinkingConfig struct {
 
 // GeminiToolConfig wraps function declarations
 type GeminiToolConfig struct {
-	FunctionDeclarations []GeminiFunction `json:"function_declarations"`
+	FunctionDeclarations []GeminiFunction `json:"functionDeclarations"`
 }
 
 // GeminiFunction represents a tool definition
