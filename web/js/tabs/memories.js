@@ -50,7 +50,7 @@ async function loadMemories() {
         // Update status text
         const statusEl = document.getElementById('memoryStatusText');
         if (errorMsg) {
-            statusEl.innerHTML = `<span class="text-red-500">⚠️ ${errorMsg}</span>`;
+            statusEl.innerHTML = `<span class="text-red-500">${errorMsg}</span>`;
         } else if (!configEnabled) {
             statusEl.textContent = 'Memory disabled in config';
         } else if (enabled) {
@@ -73,7 +73,7 @@ async function loadMemories() {
         if (memories.length === 0) {
             let message = '';
             if (errorMsg) {
-                message = `<span class="text-red-500">⚠️ ${errorMsg}</span>`;
+                message = `<span class="text-red-500">${errorMsg}</span>`;
             } else if (!configEnabled) {
                 message = 'Memory system is disabled in config';
             } else if (!enabled) {
@@ -82,8 +82,8 @@ async function loadMemories() {
                 message = 'No memories stored yet. Start chatting to build memories!';
             }
             container.innerHTML = `
-                <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-                    <div class="text-4xl mb-3">🧠</div>
+                <div class="empty-state text-center py-12 text-slate-400 dark:text-slate-500">
+                    <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18"/></svg>
                     <p>${message}</p>
                 </div>`;
             return;
@@ -98,15 +98,15 @@ async function loadMemories() {
         };
 
         const sourceIcons = {
-            chat: '💬',
-            file: '📄',
-            manual: '✏️'
+            chat: 'Chat',
+            file: 'File',
+            manual: 'Manual'
         };
 
         container.innerHTML = memories.map(memory => {
             const importance = Math.round((memory.importance || 0) * 100);
             const source = memory.source || 'chat';
-            const sourceIcon = sourceIcons[source] || '💬';
+            const sourceIcon = sourceIcons[source] || 'Chat';
 
             return `
                 <div class="p-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors data-item">
@@ -115,7 +115,7 @@ async function loadMemories() {
                             <span class="px-2 py-1 text-xs font-medium rounded-full ${categoryColors[memory.category] || 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'}">
                                 ${(memory.category || 'unknown').toUpperCase()}
                             </span>
-                            <span title="Source: ${source}">${sourceIcon}</span>
+                            <span class="px-1.5 py-0.5 text-xs bg-slate-100 dark:bg-slate-700 rounded" title="Source: ${source}">${sourceIcon}</span>
                             ${memory.source_name ? `
                                 <span class="text-xs text-slate-500 dark:text-slate-400 max-w-[150px] truncate" title="${escapeHtml(memory.source_name)}">
                                     ${escapeHtml(memory.source_name)}
@@ -123,7 +123,7 @@ async function loadMemories() {
                             ` : ''}
                         </div>
                         <button onclick="deleteMemory('${memory.id}')" class="text-red-500 hover:text-red-700">
-                            🗑️
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     </div>
                     <div class="text-slate-700 dark:text-slate-200 mb-2 whitespace-pre-wrap text-sm">
@@ -135,10 +135,10 @@ async function loadMemories() {
                         </div>
                     ` : ''}
                     <div class="flex gap-4 text-xs text-slate-400 dark:text-slate-500 flex-wrap">
-                        <span>📊 ${importance}%</span>
-                        <span>👁️ ${memory.access_count || 0}x</span>
-                        <span>📅 ${formatRelativeTime(memory.created_at)}</span>
-                        ${memory.total_chunks > 1 ? `<span>📑 ${(memory.chunk_index || 0) + 1}/${memory.total_chunks}</span>` : ''}
+                        <span>Imp: ${importance}%</span>
+                        <span>Views: ${memory.access_count || 0}</span>
+                        <span>${formatRelativeTime(memory.created_at)}</span>
+                        ${memory.total_chunks > 1 ? `<span>Part ${(memory.chunk_index || 0) + 1}/${memory.total_chunks}</span>` : ''}
                     </div>
                 </div>
             `;

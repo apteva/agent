@@ -33,10 +33,17 @@ type Task struct {
 	Recurrence  *string    `json:"recurrence,omitempty"`
 	NextRun     *time.Time `json:"next_run,omitempty"`
 	Result      *string    `json:"result,omitempty"`
-	Source      string     `json:"source"`              // 'local' or 'delegated'
+	Source      string     `json:"source"`              // 'local', 'delegated', or 'a2a'
 	DelegatorID *string    `json:"delegator_id,omitempty"` // Agent ID that delegated this task
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+
+	// A2A protocol fields
+	ContextID  *string `json:"context_id,omitempty"`   // A2A contextId (conversation grouping)
+	A2ATaskID  *string `json:"a2a_task_id,omitempty"`  // External A2A task ID from caller
+	Artifacts  *string `json:"artifacts,omitempty"`     // JSON array of A2A Artifacts
+	History    *string `json:"history,omitempty"`       // JSON array of A2A Messages
+	PushConfig *string `json:"push_config,omitempty"`   // JSON push notification config
 }
 
 var taskDB *sql.DB
@@ -180,8 +187,8 @@ func ListTasksTool(input map[string]interface{}) (map[string]interface{}, error)
 		query += " AND (execute_at > datetime('now') OR next_run > datetime('now'))"
 	}
 
-	// Add thread filter if provided
-	if threadID, ok := input["_thread_id"].(string); ok {
+	// Add thread filter only if explicitly requested by user (not the injected _thread_id)
+	if threadID, ok := input["thread_id"].(string); ok && threadID != "" {
 		query += " AND thread_id = ?"
 		args = append(args, threadID)
 	}
@@ -469,6 +476,12 @@ func ExecuteTaskTool(input map[string]interface{}) (map[string]interface{}, erro
 	// Generate thread ID that will be used for execution
 	threadID := fmt.Sprintf("task_%s_%d", taskID, time.Now().Unix())
 
+	// Get parent thread ID for result reporting and thread hierarchy
+	parentThreadID := ""
+	if ptid, ok := input["_thread_id"].(string); ok {
+		parentThreadID = ptid
+	}
+
 	// Check if sync execution is requested
 	sync := false
 	if syncVal, ok := input["sync"].(bool); ok {
@@ -478,7 +491,7 @@ func ExecuteTaskTool(input map[string]interface{}) (map[string]interface{}, erro
 	if sync {
 		// Execute synchronously and wait for completion
 		log.Printf("Starting synchronous execution for task %s with thread %s", taskID, threadID)
-		err := executeTask(taskID, title, description, threadID, true)
+		err := executeTask(taskID, title, description, threadID, parentThreadID, true)
 		if err != nil {
 			// Task execution failed
 			return map[string]interface{}{
@@ -520,21 +533,57 @@ func ExecuteTaskTool(input map[string]interface{}) (map[string]interface{}, erro
 	}
 
 	// Execute task asynchronously using goroutine
-	log.Printf("Starting goroutine for task %s execution with thread %s", taskID, threadID)
+	log.Printf("Starting goroutine for task %s execution with thread %s (parent: %s)", taskID, threadID, parentThreadID)
 	go func() {
 		log.Printf("Goroutine started for task %s", taskID)
-		executeTask(taskID, title, description, threadID, false)
+		err := executeTask(taskID, title, description, threadID, parentThreadID, false)
+
+		// Report result back to parent thread
+		if parentThreadID != "" {
+			subResult := SubThreadResult{
+				ThreadID:    threadID,
+				TaskID:      taskID,
+				Title:       title,
+				CompletedAt: time.Now(),
+			}
+			if err != nil {
+				subResult.Status = "failed"
+				subResult.Error = err.Error()
+			} else {
+				subResult.Status = "completed"
+				var resultStr string
+				if scanErr := taskDB.QueryRow("SELECT COALESCE(result, '') FROM tasks WHERE id = ?", taskID).Scan(&resultStr); scanErr == nil {
+					subResult.Response = resultStr
+				}
+			}
+
+			if IsThreadActive(parentThreadID) {
+				// Parent is in active tool loop — inject via collector, picked up next iteration
+				GetOrCreateCollector(parentThreadID).Add(subResult)
+			} else {
+				// Parent is idle — trigger /chat so user sees result immediately
+				msg := FormatPendingResults([]SubThreadResult{subResult})
+				PostChatAsync(parentThreadID, msg, "task_result")
+			}
+
+			// Publish event for UI/monitoring
+			eventBus := events.GetEventBus()
+			evt := events.NewEvent(events.CategoryTask, events.TypeTaskCompleted, events.LevelInfo).
+				WithTask(taskID).
+				WithData("parent_thread_id", parentThreadID).
+				WithData("status", subResult.Status).
+				WithData("title", title)
+			eventBus.Publish(evt)
+		}
 	}()
 
 	// Return immediate response
 	result := map[string]interface{}{
 		"status":    "running",
-		"message":   fmt.Sprintf("Task '%s' is now being executed in a new thread. The task will run independently and update its own status when complete. You can check the task status later or view the execution in the Threads page.", title),
+		"message":   fmt.Sprintf("Task '%s' is now being executed in the background. Results will be reported back automatically when complete.", title),
 		"task_id":   taskID,
 		"thread_id": threadID,
 	}
-
-	// Note: Task completion and recurring task scheduling will be handled by the agent via update_task
 
 	return result, nil
 }
@@ -595,10 +644,16 @@ func ExecuteTaskToolStreaming(input map[string]interface{}, callback StreamCallb
 	// Generate thread ID for execution
 	threadID := fmt.Sprintf("task_%s_%d", taskID, time.Now().Unix())
 
+	// Get parent thread ID for thread hierarchy
+	parentThreadID := ""
+	if ptid, ok := input["_thread_id"].(string); ok {
+		parentThreadID = ptid
+	}
+
 	callback(NewLogEvent(fmt.Sprintf("Executing task: %s", title)))
 
 	// Execute with streaming
-	result, err := executeTaskStreaming(taskID, title, description, threadID, callback)
+	result, err := executeTaskStreaming(taskID, title, description, threadID, parentThreadID, callback)
 	if err != nil {
 		callback(NewErrorEvent(err.Error()))
 		return map[string]interface{}{
@@ -637,17 +692,21 @@ func ExecuteTaskToolStreaming(input map[string]interface{}, callback StreamCallb
 }
 
 // executeTaskStreaming executes a task with streaming output via SSE
-func executeTaskStreaming(taskID, title, description, threadID string, callback StreamCallback) (map[string]interface{}, error) {
-	log.Printf("executeTaskStreaming called for task %s with thread %s", taskID, threadID)
+func executeTaskStreaming(taskID, title, description, threadID, parentThreadID string, callback StreamCallback) (map[string]interface{}, error) {
+	log.Printf("executeTaskStreaming called for task %s with thread %s (parent: %s)", taskID, threadID, parentThreadID)
 
 	// Create a new thread in the database for this task execution
 	threadTitle := fmt.Sprintf("Task Execution: %s", title)
 
-	// Insert the thread into the database with task_id in metadata
+	// Insert the thread into the database with task_id in metadata, type='task', and parent linkage
 	threadMetadata := fmt.Sprintf(`{"task_id":"%s"}`, taskID)
+	var parentID interface{} = nil
+	if parentThreadID != "" {
+		parentID = parentThreadID
+	}
 	_, err := taskDB.Exec(
-		"INSERT INTO threads (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
-		threadID, threadTitle, time.Now(), time.Now(), threadMetadata,
+		"INSERT INTO threads (id, title, type, parent_id, created_at, updated_at, metadata) VALUES (?, ?, 'task', ?, ?, ?, ?)",
+		threadID, threadTitle, parentID, time.Now(), time.Now(), threadMetadata,
 	)
 	if err != nil {
 		log.Printf("Failed to create thread for task %s: %v", taskID, err)
@@ -1022,21 +1081,25 @@ func joinStrings(strs []string, sep string) string {
 // executeTask executes a task by calling the agent's chat endpoint
 // sync=true: waits for completion and returns error if any
 // sync=false: executes in background, no error return (logs errors instead)
-func executeTask(taskID, title, description, threadID string, sync bool) error {
+func executeTask(taskID, title, description, threadID, parentThreadID string, sync bool) error {
 	mode := "async"
 	if sync {
 		mode = "sync"
 	}
-	log.Printf("executeTask called for task %s with thread %s (mode: %s)", taskID, threadID, mode)
+	log.Printf("executeTask called for task %s with thread %s (parent: %s, mode: %s)", taskID, threadID, parentThreadID, mode)
 
 	// Create a new thread in the database for this task execution
 	threadTitle := fmt.Sprintf("Task Execution: %s", title)
 
-	// Insert the thread into the database with task_id in metadata
+	// Insert the thread into the database with task_id in metadata, type='task', and parent linkage
 	threadMetadata := fmt.Sprintf(`{"task_id":"%s"}`, taskID)
+	var parentID interface{} = nil
+	if parentThreadID != "" {
+		parentID = parentThreadID
+	}
 	_, err := taskDB.Exec(
-		"INSERT INTO threads (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
-		threadID, threadTitle, time.Now(), time.Now(), threadMetadata,
+		"INSERT INTO threads (id, title, type, parent_id, created_at, updated_at, metadata) VALUES (?, ?, 'task', ?, ?, ?, ?)",
+		threadID, threadTitle, parentID, time.Now(), time.Now(), threadMetadata,
 	)
 	if err != nil {
 		log.Printf("Failed to create thread for task %s: %v", taskID, err)

@@ -42,7 +42,7 @@ async function loadSystemHealth() {
 }
 
 async function resetDatabase() {
-    if (!confirm('⚠️ This will DELETE ALL DATA including threads, messages, memories, and tasks. This cannot be undone!\n\nAre you sure?')) {
+    if (!confirm('This will DELETE ALL DATA including threads, messages, memories, and tasks. This cannot be undone!\n\nAre you sure?')) {
         return;
     }
 

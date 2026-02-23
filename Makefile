@@ -2,7 +2,8 @@
 
 .PHONY: help build test docker-build docker-run clean lint verify-no-tests \
         release release-all release-linux-amd64 release-linux-arm64 release-darwin-amd64 \
-        release-darwin-arm64 release-windows-amd64 checksums package dist clean-dist
+        release-darwin-arm64 release-windows-amd64 checksums package dist clean-dist \
+        a2a a2a-stop a2a-status a2a-test a2a-logs a2a-restart
 
 # Default target
 help:
@@ -23,6 +24,14 @@ help:
 	@echo "  release-all     - Build all platforms (macOS needs native build)"
 	@echo "  dist            - Build, checksum, and package all platforms"
 	@echo "  clean-dist      - Remove dist/ folder"
+	@echo ""
+	@echo "A2A Multi-Agent:"
+	@echo "  a2a             - Start two A2A peer agents (ports 4015+4016)"
+	@echo "  a2a-stop        - Stop both agents"
+	@echo "  a2a-test        - Run A2A protocol tests against running pair"
+	@echo "  a2a-status      - Check agent health and discovery"
+	@echo "  a2a-logs        - Tail both agent logs"
+	@echo "  a2a-restart     - Restart both agents"
 	@echo ""
 	@echo "Individual platforms:"
 	@echo "  release-linux-amd64   - Linux x86_64"
@@ -100,6 +109,41 @@ test-coverage:
 	go test -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+#==============================================================================
+# A2A Multi-Agent
+#==============================================================================
+
+# Start two A2A peer agents (Ctrl+C stops both)
+a2a:
+	@./scripts/spawn-a2a-pair.sh start && \
+	trap './scripts/spawn-a2a-pair.sh stop' EXIT INT TERM && \
+	echo "Press Ctrl+C to stop both agents..." && \
+	tail -f /tmp/a2a-test/agent-a.log /tmp/a2a-test/agent-b.log
+
+# Stop both agents
+a2a-stop:
+	@./scripts/spawn-a2a-pair.sh stop
+
+# Restart both agents
+a2a-restart:
+	@./scripts/spawn-a2a-pair.sh restart
+
+# Check health and discovery
+a2a-status:
+	@./scripts/spawn-a2a-pair.sh status
+
+# Run A2A protocol tests
+a2a-test:
+	@./scripts/spawn-a2a-pair.sh test
+
+# Tail agent logs (use AGENT=a or AGENT=b for one agent)
+a2a-logs:
+	@./scripts/spawn-a2a-pair.sh logs $(AGENT)
+
+# Run 3-agent collaboration + loop safety test
+a2a-trio:
+	@./scripts/a2a-trio-test.sh
 
 # Quick test (skip slow tests)
 test-quick:

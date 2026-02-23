@@ -98,6 +98,33 @@ type BuiltinToolConfig struct {
 	DisplayNumber     *int                `json:"display_number,omitempty"`     // For computer tool
 }
 
+// ComputerToolVersion returns the correct computer tool type string for the given model.
+// Claude Opus 4.6, Sonnet 4.6, and Opus 4.5 use computer_20251124;
+// all other models use computer_20250124.
+func ComputerToolVersion(model string) string {
+	if strings.Contains(model, "opus-4-6") ||
+		strings.Contains(model, "sonnet-4-6") ||
+		strings.Contains(model, "opus-4-5") {
+		return "computer_20251124"
+	}
+	return "computer_20250124"
+}
+
+// ComputerUseBetaFlag returns the correct anthropic-beta header value for computer use.
+func ComputerUseBetaFlag(model string) string {
+	if strings.Contains(model, "opus-4-6") ||
+		strings.Contains(model, "sonnet-4-6") ||
+		strings.Contains(model, "opus-4-5") {
+		return "computer-use-2025-11-24"
+	}
+	return "computer-use-2025-01-24"
+}
+
+// IsComputerTool returns true if the tool type is any version of the computer tool.
+func IsComputerTool(toolType string) bool {
+	return toolType == "computer_20250124" || toolType == "computer_20251124"
+}
+
 type CitationsConfig struct {
 	Enabled bool `json:"enabled"`
 }
@@ -289,6 +316,12 @@ type FileSystemConfig struct {
 	AllowedTypes   []string `json:"allowed_types"`    // File types to store (default: ["image", "document"])
 }
 
+// A2AConfig enables the Google Agent2Agent (A2A) protocol for inter-agent communication.
+type A2AConfig struct {
+	Enabled           bool `json:"enabled"`
+	PushNotifications bool `json:"push_notifications,omitempty"`
+}
+
 type AgentsConfig struct {
 	Enabled          bool              `json:"enabled"`
 	Mode             string            `json:"mode,omitempty"`               // "peer" | "coordinator" | "worker" (default: "peer")
@@ -429,6 +462,7 @@ type AgentConfig struct {
 	Realtime    *RealtimeConfig    `json:"realtime,omitempty"`
 	Telemetry   *TelemetryConfig   `json:"telemetry,omitempty"`
 	Reflection  *ReflectionConfig  `json:"reflection,omitempty"`
+	A2A         *A2AConfig         `json:"a2a,omitempty"`
 	Version     string             `json:"version"`
 }
 
@@ -709,8 +743,9 @@ func (c *Config) Get() AgentConfig {
 				displayHeight = 768
 			}
 
+			computerToolType := ComputerToolVersion(config.LLM.Model)
 			computerTool := BuiltinToolConfig{
-				Type:            "computer_20250124",
+				Type:            computerToolType,
 				Name:            "computer",
 				DisplayWidthPx:  &displayWidth,
 				DisplayHeightPx: &displayHeight,
@@ -721,7 +756,7 @@ func (c *Config) Get() AgentConfig {
 			toolExists := false
 			toolIndex := -1
 			for i, tool := range config.LLM.BuiltinTools {
-				if tool.Type == "computer_20250124" {
+				if IsComputerTool(tool.Type) {
 					toolExists = true
 					toolIndex = i
 					break
@@ -732,7 +767,9 @@ func (c *Config) Get() AgentConfig {
 				// Add new computer tool
 				config.LLM.BuiltinTools = append(config.LLM.BuiltinTools, computerTool)
 			} else {
-				// Update existing computer tool with display dimensions if not already set
+				// Always update type to match current model (e.g. switching to Sonnet 4.6)
+				config.LLM.BuiltinTools[toolIndex].Type = computerToolType
+				// Update display dimensions if not already set
 				if config.LLM.BuiltinTools[toolIndex].DisplayWidthPx == nil {
 					config.LLM.BuiltinTools[toolIndex].DisplayWidthPx = &displayWidth
 				}
@@ -926,8 +963,9 @@ func (c *Config) GetLLMConfig() LLMConfig {
 				displayHeight = 768
 			}
 
+			computerToolType := ComputerToolVersion(llmConfig.Model)
 			computerTool := BuiltinToolConfig{
-				Type:            "computer_20250124",
+				Type:            computerToolType,
 				Name:            "computer",
 				DisplayWidthPx:  &displayWidth,
 				DisplayHeightPx: &displayHeight,
@@ -938,7 +976,7 @@ func (c *Config) GetLLMConfig() LLMConfig {
 			toolExists := false
 			toolIndex := -1
 			for i, tool := range llmConfig.BuiltinTools {
-				if tool.Type == "computer_20250124" {
+				if IsComputerTool(tool.Type) {
 					toolExists = true
 					toolIndex = i
 					break
@@ -949,7 +987,9 @@ func (c *Config) GetLLMConfig() LLMConfig {
 				// Add new computer tool
 				llmConfig.BuiltinTools = append(llmConfig.BuiltinTools, computerTool)
 			} else {
-				// Update existing computer tool with display dimensions if not already set
+				// Always update type to match current model (e.g. switching to Sonnet 4.6)
+				llmConfig.BuiltinTools[toolIndex].Type = computerToolType
+				// Update display dimensions if not already set
 				if llmConfig.BuiltinTools[toolIndex].DisplayWidthPx == nil {
 					llmConfig.BuiltinTools[toolIndex].DisplayWidthPx = &displayWidth
 				}
@@ -1191,6 +1231,7 @@ func BuildFeatures(cfg *AgentConfig) map[string]bool {
 	features["agents"] = cfg.Agents != nil && cfg.Agents.Enabled
 	features["webhooks"] = cfg.MCP != nil && cfg.MCP.Enabled && len(cfg.MCP.Webhooks) > 0
 	features["skills"] = cfg.Skills != nil && cfg.Skills.Enabled
+	features["a2a"] = cfg.A2A != nil && cfg.A2A.Enabled
 
 	return features
 }

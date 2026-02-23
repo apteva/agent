@@ -76,8 +76,9 @@ const (
 	TypeTaskUpdated  EventType = "task_updated"
 	TypeTaskExecuted EventType = "task_executed"
 	TypeTaskDeleted  EventType = "task_deleted"
-	TypeTaskFailed   EventType = "task_failed"
-	TypeTaskListed   EventType = "task_listed"
+	TypeTaskFailed    EventType = "task_failed"
+	TypeTaskCompleted EventType = "task_completed" // Async task finished, result reported back
+	TypeTaskListed    EventType = "task_listed"
 
 	// File events
 	TypeFileUploaded EventType = "file_uploaded"

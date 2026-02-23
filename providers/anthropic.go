@@ -95,7 +95,7 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 			}
 
 			// Special handling for computer tool
-			if builtinConfig.Type == "computer_20250124" {
+			if config.IsComputerTool(builtinConfig.Type) {
 				// Priority: builtin tool config > operator config > defaults
 				displayWidth := 1024
 				displayHeight := 768
@@ -485,7 +485,7 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 		hasComputerTool := false
 		for _, builtinTool := range builtinTools {
 			if builtinConfig, ok := builtinTool.(config.BuiltinToolConfig); ok {
-				if builtinConfig.Type == "computer_20250124" {
+				if config.IsComputerTool(builtinConfig.Type) {
 					hasComputerTool = true
 					break
 				}
@@ -493,7 +493,7 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 		}
 
 		if hasComputerTool {
-			req.Header.Set("anthropic-beta", "computer-use-2025-01-24")
+			req.Header.Set("anthropic-beta", config.ComputerUseBetaFlag(llmConfig.Model))
 		} else {
 			req.Header.Set("anthropic-beta", "web-fetch-2025-09-10")
 		}

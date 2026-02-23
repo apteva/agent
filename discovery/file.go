@@ -103,7 +103,7 @@ func (d *FileDiscovery) Start() error {
 	log.Printf("🔍 DEBUG: FileDiscovery instance pointer=%p", d)
 
 	// In worker mode, only register (no discovery of other agents)
-	if d.cfg.IsWorkerMode() {
+	if !d.cfg.CanDiscoverAgents() {
 		log.Printf("🔍 File worker mode: registered but not discovering")
 		return nil
 	}

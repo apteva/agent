@@ -9,6 +9,9 @@ import (
 )
 
 // HandleThreads - GET /threads - List all threads
+// Query params:
+//   - all=true: show all threads including children
+//   - type=task|scheduler|reflection|chat: filter by type
 func HandleThreads(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -16,16 +19,33 @@ func HandleThreads(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Query threads with message count using LEFT JOIN
+		showAll := r.URL.Query().Get("all") == "true"
+		filterType := r.URL.Query().Get("type")
+
+		// Query all threads with message count
 		query := `
-			SELECT t.id, t.title, t.activity, t.created_at, t.updated_at, t.metadata,
+			SELECT t.id, t.title, COALESCE(t.type, 'chat'), t.parent_id, t.activity,
+			       t.created_at, t.updated_at, t.metadata,
 			       COALESCE(COUNT(m.id), 0) as message_count
 			FROM threads t
 			LEFT JOIN messages m ON t.id = m.thread_id
-			GROUP BY t.id
-			ORDER BY t.updated_at DESC
 		`
-		rows, err := db.Query(query)
+
+		var args []interface{}
+		var conditions []string
+
+		if filterType != "" {
+			conditions = append(conditions, "t.type = ?")
+			args = append(args, filterType)
+		}
+
+		if len(conditions) > 0 {
+			query += " WHERE " + strings.Join(conditions, " AND ")
+		}
+
+		query += " GROUP BY t.id ORDER BY t.updated_at DESC"
+
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			log.Printf("Database error: %v", err)
 			http.Error(w, "Database error", http.StatusInternalServerError)
@@ -33,15 +53,22 @@ func HandleThreads(db *sql.DB) http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		threads := make([]Thread, 0)
+		allThreads := make([]Thread, 0)
 		for rows.Next() {
 			var thread Thread
 			var metadataStr string
-			err := rows.Scan(&thread.ID, &thread.Title, &thread.Activity, &thread.CreatedAt, &thread.UpdatedAt, &metadataStr, &thread.MessageCount)
+			var threadType sql.NullString
+			err := rows.Scan(&thread.ID, &thread.Title, &threadType, &thread.ParentID, &thread.Activity,
+				&thread.CreatedAt, &thread.UpdatedAt, &metadataStr, &thread.MessageCount)
 			if err != nil {
 				log.Printf("Database scan error: %v", err)
 				http.Error(w, "Database scan error", http.StatusInternalServerError)
 				return
+			}
+
+			thread.Type = "chat"
+			if threadType.Valid && threadType.String != "" {
+				thread.Type = threadType.String
 			}
 
 			// Parse metadata JSON
@@ -50,7 +77,7 @@ func HandleThreads(db *sql.DB) http.HandlerFunc {
 				thread.Metadata = make(map[string]interface{})
 			}
 
-			threads = append(threads, thread)
+			allThreads = append(allThreads, thread)
 		}
 
 		if err := rows.Err(); err != nil {
@@ -59,9 +86,37 @@ func HandleThreads(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Wrap in expected format for frontend
+		var result []Thread
+		if showAll {
+			result = allThreads
+		} else {
+			// Build parent→children map and return only top-level threads
+			// with child threads nested inside
+			childMap := make(map[string][]Thread) // parentID → children
+			for _, t := range allThreads {
+				if t.ParentID != nil && *t.ParentID != "" {
+					childMap[*t.ParentID] = append(childMap[*t.ParentID], t)
+				}
+			}
+
+			for _, t := range allThreads {
+				if t.ParentID != nil && *t.ParentID != "" {
+					continue // skip children at top level
+				}
+				// Attach children if any
+				if children, ok := childMap[t.ID]; ok {
+					t.Children = children
+				}
+				result = append(result, t)
+			}
+		}
+
+		if result == nil {
+			result = []Thread{}
+		}
+
 		response := map[string]interface{}{
-			"threads": threads,
+			"threads": result,
 		}
 		sendJSON(w, http.StatusOK, response)
 	}

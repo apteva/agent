@@ -350,7 +350,7 @@ func (s *Scheduler) callAgent() {
 	// Create the thread in the database if we have a database connection
 	if s.db != nil {
 		_, err := s.db.Exec(
-			"INSERT INTO threads (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
+			"INSERT INTO threads (id, title, type, created_at, updated_at, metadata) VALUES (?, ?, 'scheduler', ?, ?, ?)",
 			threadID, threadTitle, time.Now(), time.Now(), "{}",
 		)
 		if err != nil {

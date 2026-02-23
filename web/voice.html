@@ -233,7 +233,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎙️ Voice Agent</h1>
+        <h1>Voice Agent</h1>
 
         <div class="controls">
             <button id="startBtn">Start Conversation</button>
@@ -244,14 +244,14 @@
         </div>
 
         <div class="transcript" id="transcriptPanel">
-            <h3>📝 Transcript</h3>
+            <h3>Transcript</h3>
             <div id="transcript">
                 <p class="empty-state">Conversation will appear here...</p>
             </div>
         </div>
 
         <div class="tools-panel">
-            <h3>🔧 Tool Executions</h3>
+            <h3>Tool Executions</h3>
             <div id="toolsList">
                 <p class="empty-state">Tool calls will appear here...</p>
             </div>
@@ -372,7 +372,7 @@
             source.connect(processor);
             processor.connect(audioContext.destination);
 
-            console.log('✅ Audio capture started');
+            console.log('Audio capture started');
         }
 
         function stopConversation() {
@@ -506,8 +506,8 @@
             toolDiv.className = `tool-execution ${status}`;
             toolDiv.id = `tool-${callID}`;
             toolDiv.innerHTML = `
-                <div class="tool-name">🔧 ${name}</div>
-                <div class="tool-status">${status === 'executing' ? '⏳ Executing...' : '✓ Complete'}</div>
+                <div class="tool-name">${name}</div>
+                <div class="tool-status">${status === 'executing' ? 'Executing...' : '✓ Complete'}</div>
             `;
 
             toolsListDiv.appendChild(toolDiv);
@@ -522,7 +522,7 @@
                 toolDiv.className = 'tool-execution failed';
                 const errorDiv = document.createElement('div');
                 errorDiv.className = 'tool-result';
-                errorDiv.textContent = `❌ Error: ${error}`;
+                errorDiv.textContent = `Error: ${error}`;
                 errorDiv.style.color = '#dc3545';
                 toolDiv.appendChild(errorDiv);
             } else {

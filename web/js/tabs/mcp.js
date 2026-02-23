@@ -134,7 +134,7 @@ function renderMCPServers() {
     container.innerHTML = mcpServersData.map(server => `
         <div class="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700 rounded">
             <div class="flex items-center gap-2">
-                ${server.icon_url ? `<img src="${server.icon_url}" class="w-5 h-5 rounded">` : '<span class="w-5 h-5 bg-slate-300 rounded flex items-center justify-center text-xs">🔌</span>'}
+                ${server.icon_url ? `<img src="${server.icon_url}" class="w-5 h-5 rounded">` : '<span class="w-5 h-5 bg-slate-200 dark:bg-slate-600 rounded flex items-center justify-center text-slate-500"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg></span>'}
                 <span class="font-medium text-slate-700 dark:text-slate-200">${server.display_name || server.name}</span>
                 <span class="text-xs text-slate-400">${server.name}</span>
             </div>
@@ -472,17 +472,8 @@ function renderCredentialsList(errorMsg = null) {
 
 // Get icon for provider
 function getProviderIcon(provider) {
-    const icons = {
-        'stripe': '💳',
-        'github': '🐙',
-        'slack': '💬',
-        'notion': '📝',
-        'google': '🔵',
-        'facebook': '📘',
-        'twitter': '🐦',
-        'discord': '🎮'
-    };
-    return icons[provider?.toLowerCase()] || '🔑';
+    // Return a simple SVG key icon for all providers
+    return '<svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>';
 }
 
 // Populate credential select dropdown

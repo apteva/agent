@@ -38,6 +38,8 @@ func NewTestDatabase(t *testing.T) *TestDatabase {
 	CREATE TABLE threads (
 		id TEXT PRIMARY KEY,
 		title TEXT,
+		type TEXT DEFAULT 'chat',
+		parent_id TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		metadata TEXT DEFAULT '{}'

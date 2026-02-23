@@ -28,8 +28,8 @@ async function toggleSetupMode(enabled) {
 
         // Show notification
         const msg = enabled ?
-            '🔧 Setup Mode enabled. Agent can now configure itself.' :
-            '✅ Setup Mode disabled. Configuration applied.';
+            'Setup Mode enabled. Agent can now configure itself.' :
+            'Setup Mode disabled. Configuration applied.';
         showToast(msg, enabled ? 'info' : 'success');
 
         // If we're enabling setup mode, add a system message to the chat
@@ -178,7 +178,7 @@ function addRawChunk(rawLine, parsedData) {
             <span class="${typeColor} font-semibold">${parsedData?.type || 'raw'}</span>
             ${parsedData?.tool_name ? `<span class="text-orange-400">${parsedData.tool_name}</span>` : ''}
             ${parsedData?.tool_id ? `<span class="text-slate-600">${parsedData.tool_id.substring(0, 8)}...</span>` : ''}
-            <button onclick="event.stopPropagation(); copyChunk(${chunkIndex})" class="ml-auto text-slate-500 hover:text-blue-400 text-[10px]" title="Copy this chunk">📋</button>
+            <button onclick="event.stopPropagation(); copyChunk(${chunkIndex})" class="ml-auto text-slate-500 hover:text-blue-400 text-[10px]" title="Copy this chunk">Copy</button>
         </div>
         <pre class="text-green-400 whitespace-pre-wrap break-all text-[10px]">${escapeHtml(displayData)}</pre>
     `;
@@ -459,7 +459,7 @@ function addChatMessage(role, content, isStreaming = false, attachments = []) {
             if (att.type === 'image' && att.preview) {
                 attachmentsHtml += `<img src="${att.preview}" class="max-w-[150px] max-h-[100px] rounded-lg object-cover" alt="${escapeHtml(att.name)}">`;
             } else {
-                const icon = att.mediaType === 'application/pdf' ? '📄' : '📎';
+                const icon = `<svg class="w-3.5 h-3.5 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${att.mediaType === 'application/pdf' ? 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' : 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13'}"/></svg>`;
                 attachmentsHtml += `<div class="flex items-center gap-1 px-2 py-1 bg-white/20 rounded-lg text-xs">${icon} ${escapeHtml(att.name)}</div>`;
             }
         }
@@ -497,7 +497,7 @@ function addChatThinking(content) {
             <div class="max-w-[90%] w-full bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800 rounded-xl overflow-hidden">
                 <button onclick="toggleThinking(this)" class="w-full flex items-center justify-between px-4 py-2 bg-pink-100 dark:bg-pink-900/40 hover:bg-pink-200 dark:hover:bg-pink-900/60 transition-colors">
                     <div class="flex items-center gap-2 text-sm text-pink-700 dark:text-pink-300">
-                        <span>🧠</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                         <span class="font-medium">Thinking</span>
                         <span class="thinking-status text-pink-500 dark:text-pink-400 text-xs">(streaming...)</span>
                     </div>
@@ -698,7 +698,7 @@ function handleToolStreamEvent(data) {
             // Show error
             const errorEntry = document.createElement('div');
             errorEntry.className = 'text-red-500 py-0.5';
-            errorEntry.innerHTML = `⚠️ ${escapeHtml(data.content)}`;
+            errorEntry.innerHTML = escapeHtml(data.content);
             logsArea.classList.remove('hidden');
             logsArea.appendChild(errorEntry);
             break;
@@ -988,7 +988,7 @@ function clearChatThread() {
     chatThreadId = null;
     document.getElementById('chatMessagesContainer').innerHTML = `
         <div class="text-center text-slate-400 dark:text-slate-500 py-12">
-            <div class="text-4xl mb-3">💬</div>
+            <div class="empty-icon mx-auto"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg></div>
             <p>Start a conversation with the agent</p>
         </div>
     `;
@@ -1057,7 +1057,7 @@ function updateChatFilePreview() {
                 </div>
             `;
         } else {
-            const icon = file.mediaType === 'application/pdf' ? '📄' : '📎';
+            const icon = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${file.mediaType === 'application/pdf' ? 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' : 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13'}"/></svg>`;
             return `
                 <div class="relative group flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg">
                     <span>${icon}</span>

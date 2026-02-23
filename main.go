@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apteva/agent/a2a"
 	"github.com/apteva/agent/agents"
 	"github.com/apteva/agent/config"
 	"github.com/apteva/agent/discovery"
@@ -3438,12 +3439,21 @@ func authMiddleware(next http.Handler) http.Handler {
 			"/",      // main UI page
 			"/chat",  // TODO: implement proper auth for agent-to-agent calls
 		}
+		whitelistedWellKnown := []string{
+			"/.well-known/agent.json", // A2A Agent Card (public for discovery)
+		}
 		whitelistedPrefixes := []string{
 			"/web/",   // static assets (JS, CSS)
 			"/files/", // file downloads (images displayed in chat, shared links)
 		}
 
 		for _, path := range whitelistedPaths {
+			if r.URL.Path == path {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		for _, path := range whitelistedWellKnown {
 			if r.URL.Path == path {
 				next.ServeHTTP(w, r)
 				return
@@ -3808,6 +3818,18 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(operator.GetStatus())
 	})
+
+	// A2A protocol endpoints
+	a2aPort := os.Getenv("PORT")
+	if a2aPort == "" {
+		a2aPort = "4015"
+	}
+	if !strings.HasPrefix(a2aPort, ":") {
+		a2aPort = ":" + a2aPort
+	}
+	a2aHandler := a2a.NewHandler(cfg, db, events.GetEventBus(), a2aPort)
+	mux.HandleFunc("/.well-known/agent.json", a2aHandler.HandleAgentCard)
+	mux.HandleFunc("/a2a", a2aHandler.HandleJSONRPC)
 
 	// Realtime voice endpoints (always registered, handler checks if enabled)
 	realtimeServer := realtime.NewServer(db, messageSaver, eventBus)

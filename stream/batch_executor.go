@@ -404,6 +404,11 @@ func executeCustomToolSyncCtx(ctx context.Context, tc ToolCall, threadID, taskID
 		}
 	}
 
+	// Inject thread context into tool input for tools that need parent thread awareness
+	if threadID != "" {
+		tc.Input["_thread_id"] = threadID
+	}
+
 	// Execute tool with context for cancellation
 	result, execErr := tools.ExecuteWithContext(ctx, tool, tc.Input)
 	duration := time.Since(startTime)
@@ -495,6 +500,11 @@ func executeCustomToolWithStreamingCtx(ctx context.Context, tc ToolCall, threadI
 		if streamCallback != nil {
 			streamCallback(tc.ID, event)
 		}
+	}
+
+	// Inject thread context into tool input for tools that need parent thread awareness
+	if threadID != "" {
+		tc.Input["_thread_id"] = threadID
 	}
 
 	// Execute with streaming and context for cancellation

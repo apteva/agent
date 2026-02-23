@@ -8,11 +8,14 @@ import (
 type Thread struct {
 	ID           string                 `json:"id"`
 	Title        *string                `json:"title"`
+	Type         string                 `json:"type"`
+	ParentID     *string                `json:"parent_id,omitempty"`
 	Activity     *string                `json:"activity"`
 	CreatedAt    time.Time              `json:"created_at"`
 	UpdatedAt    time.Time              `json:"updated_at"`
 	Metadata     map[string]interface{} `json:"metadata"`
 	MessageCount int                    `json:"message_count"`
+	Children     []Thread               `json:"children,omitempty"`
 }
 
 // Message represents a single message in a thread

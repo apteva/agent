@@ -19,26 +19,29 @@ function clearApiKey() {
     localStorage.removeItem('agent_api_key');
 }
 
+// ========== SVG Icon Helpers ==========
+
+const ICONS = {
+    sun: '<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"/></svg>',
+    moon: '<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"/></svg>',
+    empty: '<svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m6 4.125l2.25 2.25m0 0l2.25 2.25M12 13.875l2.25-2.25M12 13.875l-2.25 2.25M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>',
+};
+
 // ========== Dark Mode ==========
 
 function toggleDarkMode() {
-    // Add transition class for smooth animation
     document.body.style.transition = 'background-color 0.2s ease, color 0.2s ease';
-
     document.documentElement.classList.toggle('dark');
     const isDark = document.documentElement.classList.contains('dark');
     localStorage.setItem('darkMode', isDark ? 'true' : 'false');
-    document.getElementById('darkModeToggle').textContent = isDark ? '☀️' : '🌙';
+    const btn = document.getElementById('darkModeToggle');
+    if (btn) btn.innerHTML = isDark ? ICONS.sun : ICONS.moon;
 }
 
 function initDarkMode() {
-    // Dark mode class is already applied in head script to prevent flash
-    // Just update the toggle button icon
     const isDark = document.documentElement.classList.contains('dark');
-    const toggleBtn = document.getElementById('darkModeToggle');
-    if (toggleBtn && isDark) {
-        toggleBtn.textContent = '☀️';
-    }
+    const btn = document.getElementById('darkModeToggle');
+    if (btn && isDark) btn.innerHTML = ICONS.sun;
 }
 
 // ========== API Functions ==========
@@ -47,7 +50,6 @@ async function makeRequest(endpoint, method = 'GET', body = null) {
     try {
         const headers = { 'Content-Type': 'application/json' };
 
-        // Add API key if configured
         if (API_KEY) {
             headers['X-API-Key'] = API_KEY;
         }
@@ -88,7 +90,7 @@ function showToast(message, type = 'info') {
     };
 
     const toast = document.createElement('div');
-    toast.className = `fixed top-4 right-4 px-4 py-3 ${colors[type] || colors.info} text-white rounded-lg shadow-lg z-50 animate-fade-in`;
+    toast.className = `fixed top-4 right-4 px-4 py-3 ${colors[type] || colors.info} text-white rounded-lg shadow-lg z-50 animate-fade-in text-sm font-medium`;
     toast.textContent = message;
     document.body.appendChild(toast);
 
@@ -105,7 +107,7 @@ function showResponse(elementId, response, isError = false) {
     el.classList.remove('hidden');
     el.className = `mt-4 p-4 rounded-lg text-sm font-mono overflow-auto max-h-64 ${
         isError
-            ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+            ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/50'
             : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
     }`;
 
@@ -178,12 +180,12 @@ function switchTab(event, tabName) {
     // Update sidebar buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active', 'bg-slate-800', 'text-white');
-        btn.classList.add('text-slate-300', 'hover:bg-slate-800', 'hover:text-white');
+        btn.classList.add('text-slate-400', 'hover:bg-white/5', 'hover:text-slate-200');
     });
 
     if (event && event.currentTarget) {
         event.currentTarget.classList.add('active', 'bg-slate-800', 'text-white');
-        event.currentTarget.classList.remove('text-slate-300');
+        event.currentTarget.classList.remove('text-slate-400');
     }
 
     // Update tab panes
@@ -195,7 +197,6 @@ function switchTab(event, tabName) {
     const activePane = document.getElementById(tabName);
     if (activePane) {
         activePane.classList.remove('hidden');
-        // Only animate if user clicked (not initial load)
         if (event) {
             activePane.classList.add('animate');
         }
@@ -215,20 +216,30 @@ function capitalize(str) {
 
 // ========== Component Builders ==========
 
-function createStatCard(label, value, gradient = 'from-blue-500 to-blue-600', icon = '') {
+const STAT_VARIANTS = {
+    primary: 'stat-card-primary',
+    success: 'stat-card-success',
+    warning: 'stat-card-warning',
+    danger:  'stat-card-danger',
+    purple:  'stat-card-purple',
+    teal:    'stat-card-teal',
+};
+
+function createStatCard(label, value, variant = 'primary', icon = '') {
+    const cls = STAT_VARIANTS[variant] || STAT_VARIANTS.primary;
     return `
-        <div class="bg-gradient-to-br ${gradient} rounded-xl p-5 text-white shadow-lg">
-            <div class="text-sm opacity-90 mb-1">${icon} ${label}</div>
-            <div class="text-2xl font-bold">${value}</div>
+        <div class="stat-card ${cls}">
+            <div class="stat-label">${icon ? icon + ' ' : ''}${label}</div>
+            <div class="stat-value">${value}</div>
         </div>
     `;
 }
 
 function createCard(title, content, actions = '') {
     return `
-        <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-                <h3 class="font-semibold text-slate-800 dark:text-slate-100">${title}</h3>
+        <div class="bg-white dark:bg-slate-800 border border-slate-200/75 dark:border-slate-700/50 rounded-xl shadow-sm overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
+                <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">${title}</h3>
                 ${actions}
             </div>
             <div class="p-5">${content}</div>
@@ -238,35 +249,35 @@ function createCard(title, content, actions = '') {
 
 function createBadge(text, color = 'blue') {
     const colors = {
-        blue: 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300',
-        green: 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300',
-        red: 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300',
-        yellow: 'bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300',
-        purple: 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300',
-        cyan: 'bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-300',
-        slate: 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+        blue:   'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 ring-1 ring-blue-200/50 dark:ring-blue-800/50',
+        green:  'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300 ring-1 ring-emerald-200/50 dark:ring-emerald-800/50',
+        red:    'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300 ring-1 ring-red-200/50 dark:ring-red-800/50',
+        yellow: 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 ring-1 ring-amber-200/50 dark:ring-amber-800/50',
+        purple: 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 ring-1 ring-purple-200/50 dark:ring-purple-800/50',
+        cyan:   'bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-300 ring-1 ring-cyan-200/50 dark:ring-cyan-800/50',
+        slate:  'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200/50 dark:ring-slate-600/50'
     };
-    return `<span class="px-2 py-1 text-xs font-medium rounded-full ${colors[color] || colors.blue}">${text}</span>`;
+    return `<span class="px-2 py-0.5 text-xs font-medium rounded-md ${colors[color] || colors.blue}">${text}</span>`;
 }
 
 function createButton(text, onclick, variant = 'primary', size = 'md') {
     const variants = {
-        primary: 'bg-blue-600 hover:bg-blue-700 text-white',
-        secondary: 'bg-slate-100 hover:bg-slate-200 text-slate-700',
-        danger: 'bg-red-600 hover:bg-red-700 text-white',
-        success: 'bg-emerald-600 hover:bg-emerald-700 text-white'
+        primary:   'bg-blue-600 hover:bg-blue-700 text-white shadow-sm',
+        secondary: 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200',
+        danger:    'bg-red-600 hover:bg-red-700 text-white shadow-sm',
+        success:   'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
     };
     const sizes = {
-        sm: 'px-2 py-1 text-xs',
-        md: 'px-4 py-2 text-sm',
-        lg: 'px-6 py-3 text-base'
+        sm: 'px-2.5 py-1 text-xs',
+        md: 'px-3.5 py-2 text-sm',
+        lg: 'px-5 py-2.5 text-sm'
     };
-    return `<button onclick="${onclick}" class="${variants[variant]} ${sizes[size]} font-medium rounded-lg transition-colors">${text}</button>`;
+    return `<button onclick="${onclick}" class="${variants[variant]} ${sizes[size]} font-medium rounded-lg transition-all">${text}</button>`;
 }
 
 function createInput(id, placeholder = '', type = 'text', className = '') {
     return `<input type="${type}" id="${id}" placeholder="${placeholder}"
-        class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${className}">`;
+        class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 text-sm outline-none transition-shadow ${className}">`;
 }
 
 function createSelect(id, options, className = '') {
@@ -275,14 +286,15 @@ function createSelect(id, options, className = '') {
             ? `<option value="${o}">${o}</option>`
             : `<option value="${o.value}">${o.label}</option>`
     ).join('');
-    return `<select id="${id}" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${className}">${opts}</select>`;
+    return `<select id="${id}" class="px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 text-sm outline-none transition-shadow ${className}">${opts}</select>`;
 }
 
-function createEmptyState(message, icon = '📭') {
+function createEmptyState(message, icon = '') {
+    const svg = icon || ICONS.empty;
     return `
         <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-            <div class="text-4xl mb-3">${icon}</div>
-            <p>${message}</p>
+            <div class="flex justify-center mb-3 opacity-40">${svg}</div>
+            <p class="text-sm">${message}</p>
         </div>
     `;
 }
@@ -290,7 +302,7 @@ function createEmptyState(message, icon = '📭') {
 function createLoadingState() {
     return `
         <div class="flex items-center justify-center py-12">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div class="h-6 w-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full" style="animation: spin 0.7s linear infinite;"></div>
         </div>
     `;
 }
@@ -339,11 +351,9 @@ function connectEventStream(onEvent) {
         eventSource.close();
     }
 
-    // Include API key as query param (EventSource doesn't support custom headers)
     const url = API_KEY ? `${API_BASE}/events?api_key=${encodeURIComponent(API_KEY)}` : `${API_BASE}/events`;
     eventSource = new EventSource(url);
 
-    // Handler for parsing and forwarding events
     const handleEvent = (e) => {
         try {
             const event = JSON.parse(e.data);
@@ -353,12 +363,10 @@ function connectEventStream(onEvent) {
         }
     };
 
-    // Listen for all known event types
     EVENT_TYPES.forEach(type => {
         eventSource.addEventListener(type, handleEvent);
     });
 
-    // Also listen to generic message events (fallback)
     eventSource.onmessage = handleEvent;
 
     eventSource.onerror = () => {

@@ -287,6 +287,10 @@ func UnifiedToolConversationWithBuiltins(w http.ResponseWriter, provider Provide
 
 // UnifiedToolConversationWithContext is like UnifiedToolConversationWithBuiltins but accepts a context for cancellation
 func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWriter, provider Provider, processor StreamProcessor, messages []Message, customTools []tools.ToolDefinition, builtinTools []interface{}, messageSaver MessageSaver, threadID string, requestID string, model *string, fileProcessor FileProcessor, taskID string) error {
+	// Track this thread as active for async result reporting
+	tools.MarkThreadActive(threadID)
+	defer tools.MarkThreadIdle(threadID)
+
 	// Start conversation with current messages
 	currentMessages := messages
 	// Use configured max turns, default 50 (was hardcoded to 10)
@@ -297,6 +301,18 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 	}
 
 	for iteration := 0; iteration < maxIterations; iteration++ {
+		// Drain any pending async task results and inject into conversation
+		if collector := tools.GetCollector(threadID); collector != nil {
+			if pending := collector.Drain(); len(pending) > 0 {
+				resultsMsg := tools.FormatPendingResults(pending)
+				currentMessages = append(currentMessages, Message{
+					Role:    "user",
+					Content: resultsMsg,
+				})
+				log.Printf("📬 Injected %d async task results into thread %s", len(pending), threadID)
+			}
+		}
+
 		// Check for cancellation at start of each iteration
 		select {
 		case <-ctx.Done():
@@ -905,11 +921,14 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					log.Printf("Tool use %s has nil input, using empty map", event.ToolName)
 				}
 
+				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
+
 				toolUseBlock := map[string]interface{}{
-					"type":  "tool_use",
-					"id":    event.ToolID,
-					"name":  event.ToolName,
-					"input": inputValue,
+					"type":         "tool_use",
+					"id":           event.ToolID,
+					"name":         event.ToolName,
+					"display_name": displayName,
+					"input":        inputValue,
 				}
 
 				// DEBUG: Log what we're collecting
@@ -920,9 +939,6 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 
 				pendingToolUseBlocks = append(pendingToolUseBlocks, toolUseBlock)
 				log.Printf("📝 Collected tool_use block: %s (id=%s), total pending: %d", event.ToolName, event.ToolID, len(pendingToolUseBlocks))
-
-				// Output tool use event (use dynamic display name since we have full input)
-				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
 				fmt.Fprintf(w, "data: {\"type\":\"tool_use\",\"tool_name\":\"%s\",\"tool_display_name\":\"%s\",\"tool_id\":\"%s\",\"content\":\"%s\",\"timestamp\":%d}\n\n",
 					event.ToolName, escapeJSON(displayName), event.ToolID, escapeJSON(event.Content), time.Now().UnixMilli())
 				flusher.Flush()
@@ -1534,17 +1550,16 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				toolNames[event.ToolID] = event.ToolName
 
 				// Collect tool_use block for consolidated DB save (don't save individually)
+				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
 				drainToolUseBlock := map[string]interface{}{
-					"type":  "tool_use",
-					"id":    event.ToolID,
-					"name":  event.ToolName,
-					"input": event.ToolInput,
+					"type":         "tool_use",
+					"id":           event.ToolID,
+					"name":         event.ToolName,
+					"display_name": displayName,
+					"input":        event.ToolInput,
 				}
 				pendingToolUseBlocks = append(pendingToolUseBlocks, drainToolUseBlock)
 				log.Printf("📝 Collected drained tool_use block: %s (id=%s), total pending: %d", event.ToolName, event.ToolID, len(pendingToolUseBlocks))
-
-				// Stream tool_use event (use dynamic display name since we have full input)
-				displayName := getDynamicToolDisplayName(event.ToolName, event.ToolInput)
 				fmt.Fprintf(w, "data: {\"type\":\"tool_use\",\"tool_name\":\"%s\",\"tool_display_name\":\"%s\",\"tool_id\":\"%s\",\"content\":\"\",\"timestamp\":%d}\n\n",
 					event.ToolName, escapeJSON(displayName), event.ToolID, time.Now().UnixMilli())
 				flusher.Flush()

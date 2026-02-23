@@ -274,7 +274,7 @@ func (r *ReflectionScheduler) performReflection(triggerType string) {
 
 	if r.db != nil {
 		_, err := r.db.Exec(
-			"INSERT INTO threads (id, title, created_at, updated_at, metadata) VALUES (?, ?, ?, ?, ?)",
+			"INSERT INTO threads (id, title, type, created_at, updated_at, metadata) VALUES (?, ?, 'reflection', ?, ?, ?)",
 			threadID, threadTitle, time.Now(), time.Now(), "{}",
 		)
 		if err != nil {

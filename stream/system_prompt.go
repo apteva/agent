@@ -59,6 +59,10 @@ func BuildTaskManagementContext(tasksConfig *config.TasksConfig, schedulerConfig
 		context.WriteString("- Recurring tasks are allowed: you can set recurrence (daily, weekly, monthly, or cron expressions like */5 * * * *)\n")
 	}
 
+	// Explain parallel and async execution
+	context.WriteString("- PARALLEL EXECUTION: You can call execute_task multiple times with sync=true in one response — they run in parallel automatically.\n")
+	context.WriteString("- BACKGROUND TASKS: Use sync=false for long-running work — results are reported back to you automatically when the task completes.\n")
+
 	return context.String()
 }
 

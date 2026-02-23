@@ -180,6 +180,11 @@ func (c *AgentClient) CallAgentWithContext(ctx context.Context, agentID, message
 		}, nil
 	}
 
+	// Use A2A protocol if the target agent supports it
+	if agent.Features["a2a"] {
+		return c.callAgentA2A(ctx, agent, message)
+	}
+
 	// Get agent-specific timeout if configured
 	timeout, _ := time.ParseDuration(agent.Timeout)
 	if timeout == 0 {
@@ -487,6 +492,11 @@ func (c *AgentClient) CallAgentStreamingWithContext(ctx context.Context, agentID
 			AgentName: agent.Name,
 			Error:     fmt.Sprintf("agent is disabled: %s", agent.Name),
 		}, nil
+	}
+
+	// Use A2A protocol if the target agent supports it
+	if agent.Features["a2a"] {
+		return c.callAgentA2AStreaming(ctx, agent, message, callback)
 	}
 
 	// Send progress event

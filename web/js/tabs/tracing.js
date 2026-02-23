@@ -56,7 +56,7 @@ async function loadTraces() {
         if (traces.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-                    <div class="text-4xl mb-3">🔍</div>
+                    <div class="empty-icon mx-auto"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg></div>
                     <p>No traces found</p>
                 </div>`;
             return;
@@ -231,7 +231,7 @@ async function viewTrace(traceId) {
                         <!-- Usage Rollup Button -->
                         <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
                             <button onclick="loadTraceUsage('${trace.id}')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
-                                📊 Load Full Usage Rollup (including children)
+                                Load Full Usage Rollup (including children)
                             </button>
                             <div id="usageRollup-${trace.id}" class="mt-3"></div>
                         </div>

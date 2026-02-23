@@ -851,7 +851,7 @@ function loadToolsConfig() {
     // Check built-in tools
     const hasWebSearch = builtinTools.some(t => t.type === 'web_search_20250305' || t.name === 'web_search');
     const hasWebFetch = builtinTools.some(t => t.type === 'web_fetch_20250910' || t.name === 'web_fetch');
-    const hasComputer = builtinTools.some(t => t.type === 'computer_20250124' || t.name === 'computer');
+    const hasComputer = builtinTools.some(t => t.type?.startsWith('computer_') || t.name === 'computer');
 
     document.getElementById('toolWebSearch').checked = hasWebSearch;
     document.getElementById('toolWebFetch').checked = hasWebFetch;
@@ -915,8 +915,11 @@ async function saveToolsConfig() {
     if (document.getElementById('toolComputer').checked) {
         // Get display dimensions from operator config if available
         const op = currentConfig?.operator || {};
+        // Determine correct computer tool version based on model
+        const model = currentConfig?.llm?.model || '';
+        const isNewVersion = model.includes('opus-4-6') || model.includes('sonnet-4-6') || model.includes('opus-4-5');
         builtinTools.push({
-            type: 'computer_20250124',
+            type: isNewVersion ? 'computer_20251124' : 'computer_20250124',
             name: 'computer',
             display_width_px: op.display_width || 1024,
             display_height_px: op.display_height || 768,

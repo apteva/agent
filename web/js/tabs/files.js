@@ -33,8 +33,8 @@ async function loadFiles() {
 
         if (files.length === 0) {
             container.innerHTML = `
-                <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-                    <div class="text-4xl mb-3">📁</div>
+                <div class="empty-state text-center py-12 text-slate-400 dark:text-slate-500">
+                    <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
                     <p>No files stored</p>
                 </div>`;
             return;
@@ -42,11 +42,11 @@ async function loadFiles() {
 
         container.innerHTML = files.map(file => {
             const isImage = file.mime_type?.startsWith('image/');
-            const icon = isImage ? '🖼️' : (file.mime_type?.includes('pdf') ? '📄' : '📎');
+            const dotColor = isImage ? 'bg-blue-400' : (file.mime_type?.includes('pdf') ? 'bg-red-400' : 'bg-slate-400');
 
             return `
                 <div class="p-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-4">
-                    <div class="text-3xl">${icon}</div>
+                    <div class="w-3 h-3 rounded-full ${dotColor} flex-shrink-0"></div>
                     <div class="flex-1 min-w-0">
                         <div class="font-medium text-slate-800 dark:text-slate-100 truncate">${escapeHtml(file.filename || file.id)}</div>
                         <div class="text-sm text-slate-500 dark:text-slate-400 flex gap-3">
@@ -58,14 +58,14 @@ async function loadFiles() {
                     <div class="flex gap-2">
                         ${isImage ? `
                             <button onclick="previewFile('${file.id}')" class="px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-800">
-                                👁️ Preview
+                                Preview
                             </button>
                         ` : ''}
                         <button onclick="downloadFile('${file.id}')" class="px-3 py-1 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600">
-                            ⬇️ Download
+                            Download
                         </button>
                         <button onclick="deleteFile('${file.id}')" class="px-3 py-1 text-sm bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-800">
-                            🗑️
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     </div>
                 </div>

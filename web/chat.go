@@ -188,8 +188,8 @@ const EmbeddedChatHTML = `<!DOCTYPE html>
         </div>
         <!-- Mode Toggle (hidden if voice not enabled) -->
         <div id="modeToggle" class="mode-toggle hidden">
-            <button id="textModeBtn" class="active" onclick="switchToTextMode()">💬 Text</button>
-            <button id="liveModeBtn" onclick="switchToLiveMode()">🎙️ Live</button>
+            <button id="textModeBtn" class="active" onclick="switchToTextMode()">Text</button>
+            <button id="liveModeBtn" onclick="switchToLiveMode()">Live</button>
         </div>
     </header>
 
@@ -382,7 +382,7 @@ const EmbeddedChatHTML = `<!DOCTYPE html>
                     return ` + "`" + `
                         <div class="file-preview-container">
                             <div class="pdf-preview">
-                                <span>📄</span>
+                                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
                                 <span class="truncate max-w-[100px]">${escapeHtml(file.name)}</span>
                             </div>
                             <div class="file-preview-remove" onclick="removeFile(${i})">×</div>
@@ -418,7 +418,7 @@ const EmbeddedChatHTML = `<!DOCTYPE html>
                     if (file.isImage) {
                         filesHtml += ` + "`" + `<img src="${file.preview || ('data:' + file.type + ';base64,' + file.data)}" class="message-image" alt="Attached image">` + "`" + `;
                     } else {
-                        filesHtml += ` + "`" + `<div class="message-pdf"><span>📄</span><span>${escapeHtml(file.name || 'PDF Document')}</span></div>` + "`" + `;
+                        filesHtml += ` + "`" + `<div class="message-pdf"><svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg><span>${escapeHtml(file.name || 'PDF Document')}</span></div>` + "`" + `;
                     }
                 }
                 filesHtml += '</div>';

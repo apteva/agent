@@ -95,8 +95,8 @@ function renderSubscriptionsList() {
 
     if (subscriptionsData.length === 0) {
         container.innerHTML = `
-            <div class="text-center py-8 text-slate-400 dark:text-slate-500">
-                <div class="text-3xl mb-2">📨</div>
+            <div class="empty-state text-center py-8 text-slate-400 dark:text-slate-500">
+                <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-17.5 0V6a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121.75 6v7.5m-17.5 0v4.5A2.25 2.25 0 006.5 20.25h11a2.25 2.25 0 002.25-2.25V13.5"/></svg>
                 <p>No active subscriptions</p>
                 <p class="text-sm mt-1">Subscribe to webhook events from the Available Webhooks section below</p>
             </div>`;
@@ -115,10 +115,10 @@ function renderSubscriptionsList() {
                 </div>
                 <div class="flex gap-2">
                     <button onclick="editSubscription('${escapeHtml(sub.title)}')" class="text-blue-500 hover:text-blue-700 text-sm" title="Edit subscription">
-                        ✏️
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                     </button>
                     <button onclick="unsubscribeByTitle('${escapeHtml(sub.title)}')" class="text-red-500 hover:text-red-700 text-sm" title="Unsubscribe">
-                        🗑️
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>
             </div>
@@ -151,7 +151,7 @@ function renderAvailableWebhooks() {
         if (enabledWebhookServers.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-4 text-slate-400">
-                    <p class="text-amber-500">⚠️ No webhook servers enabled</p>
+                    <p class="text-amber-500">No webhook servers enabled</p>
                     <p class="text-sm mt-1">Enable webhook servers in Config → MCP → Webhooks section</p>
                 </div>`;
         } else {
@@ -547,14 +547,14 @@ async function sendTestWebhook() {
 
         if (response.status === 200) {
             if (response.data?.success === false) {
-                resultDiv.innerHTML = `<span class="text-amber-500">⚠️ ${response.data.message || 'Not subscribed'}</span>`;
+                resultDiv.innerHTML = `<span class="text-amber-500">${response.data.message || 'Not subscribed'}</span>`;
             } else {
-                resultDiv.innerHTML = '<span class="text-emerald-500">✅ Webhook sent successfully! Check threads for new conversation.</span>';
+                resultDiv.innerHTML = '<span class="text-emerald-500">Webhook sent successfully! Check threads for new conversation.</span>';
             }
         } else {
-            resultDiv.innerHTML = `<span class="text-red-500">❌ Error: ${response.data?.error || 'Unknown error'}</span>`;
+            resultDiv.innerHTML = `<span class="text-red-500">Error: ${response.data?.error || 'Unknown error'}</span>`;
         }
     } catch (e) {
-        resultDiv.innerHTML = `<span class="text-red-500">❌ Error: ${e.message}</span>`;
+        resultDiv.innerHTML = `<span class="text-red-500">Error: ${e.message}</span>`;
     }
 }

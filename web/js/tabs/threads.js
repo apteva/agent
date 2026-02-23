@@ -26,8 +26,8 @@ async function loadThreads() {
 
         if (threads.length === 0) {
             container.innerHTML = `
-                <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-                    <div class="text-4xl mb-3">🧵</div>
+                <div class="empty-state text-center py-12 text-slate-400 dark:text-slate-500">
+                    <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
                     <p>No conversation threads yet</p>
                 </div>`;
             return;
@@ -38,7 +38,7 @@ async function loadThreads() {
                 <div class="flex justify-between items-start mb-1">
                     <span class="font-medium text-slate-800 dark:text-slate-100 text-sm truncate">${escapeHtml(thread.title || 'Untitled')}</span>
                     <button class="delete-thread-btn text-red-400 hover:text-red-600 text-xs ml-2 opacity-50 hover:opacity-100" data-thread-id="${thread.id}">
-                        🗑️
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>
                 ${thread.activity ? `<div class="text-xs text-slate-600 dark:text-slate-300 mb-1 truncate">${escapeHtml(thread.activity)}</div>` : ''}
@@ -78,7 +78,7 @@ async function viewThread(threadId, threadTitle) {
     const container = document.getElementById('threadMessages');
     container.innerHTML = `
         <div class="text-center py-8 text-slate-400">
-            <div class="animate-spin text-2xl mb-2">⏳</div>
+            <div class="flex justify-center mb-3"><div class="spinner"></div></div>
             <p>Loading messages...</p>
         </div>`;
 
@@ -92,8 +92,8 @@ async function viewThread(threadId, threadTitle) {
 
         if (messages.length === 0) {
             container.innerHTML = `
-                <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-                    <div class="text-4xl mb-3">📭</div>
+                <div class="empty-state text-center py-12 text-slate-400 dark:text-slate-500">
+                    <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
                     <p>No messages in this thread</p>
                 </div>`;
             return;
@@ -115,14 +115,14 @@ async function viewThread(threadId, threadTitle) {
                 if (content.type === 'tool_use') {
                     contentHtml = `
                         <div class="text-xs font-mono">
-                            <div class="text-purple-600 dark:text-purple-400 font-semibold mb-1">🔧 Tool: ${escapeHtml(content.name || 'unknown')}</div>
+                            <div class="text-purple-600 dark:text-purple-400 font-semibold mb-1">Tool: ${escapeHtml(content.name || 'unknown')}</div>
                             <pre class="bg-slate-100 dark:bg-slate-900 p-2 rounded text-xs overflow-x-auto">${escapeHtml(JSON.stringify(content.input || {}, null, 2))}</pre>
                         </div>`;
                 } else if (content.type === 'tool_result') {
                     const resultText = typeof content.content === 'string' ? content.content : JSON.stringify(content.content, null, 2);
                     contentHtml = `
                         <div class="text-xs font-mono">
-                            <div class="text-green-600 dark:text-green-400 font-semibold mb-1">📤 Tool Result</div>
+                            <div class="text-green-600 dark:text-green-400 font-semibold mb-1">Result</div>
                             <pre class="bg-slate-100 dark:bg-slate-900 p-2 rounded text-xs overflow-x-auto max-h-40">${escapeHtml(truncate(resultText, 1000))}</pre>
                         </div>`;
                 } else if (Array.isArray(content)) {
@@ -133,7 +133,7 @@ async function viewThread(threadId, threadTitle) {
                         } else if (block.type === 'tool_use') {
                             return `
                                 <div class="text-xs font-mono mt-2">
-                                    <div class="text-purple-600 dark:text-purple-400 font-semibold mb-1">🔧 Tool: ${escapeHtml(block.name || 'unknown')}</div>
+                                    <div class="text-purple-600 dark:text-purple-400 font-semibold mb-1">Tool: ${escapeHtml(block.name || 'unknown')}</div>
                                     <pre class="bg-slate-100 dark:bg-slate-900 p-2 rounded text-xs overflow-x-auto">${escapeHtml(JSON.stringify(block.input || {}, null, 2))}</pre>
                                 </div>`;
                         }
@@ -150,7 +150,7 @@ async function viewThread(threadId, threadTitle) {
                     ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800'
                     : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600';
 
-            const roleLabel = isUser ? '👤 User' : isAssistant ? '🤖 Assistant' : '🔧 Tool';
+            const roleLabel = isUser ? 'User' : isAssistant ? 'Assistant' : 'Tool';
             const roleColor = isUser ? 'text-blue-600 dark:text-blue-400' : isAssistant ? 'text-slate-700 dark:text-slate-300' : 'text-purple-600 dark:text-purple-400';
 
             return `
@@ -166,8 +166,7 @@ async function viewThread(threadId, threadTitle) {
     } else {
         container.innerHTML = `
             <div class="text-center py-12 text-red-400">
-                <div class="text-4xl mb-3">❌</div>
-                <p>Failed to load messages</p>
+                <p class="font-medium">Failed to load messages</p>
             </div>`;
     }
 }
@@ -177,8 +176,8 @@ function closeThreadViewer() {
     document.getElementById('threadViewerTitle').textContent = 'Select a thread';
     document.getElementById('threadViewerActions').classList.add('hidden');
     document.getElementById('threadMessages').innerHTML = `
-        <div class="text-center py-12 text-slate-400 dark:text-slate-500">
-            <div class="text-4xl mb-3">💬</div>
+        <div class="empty-state text-center py-12 text-slate-400 dark:text-slate-500">
+            <svg class="empty-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
             <p>Click a thread to view messages</p>
         </div>`;
     loadThreads();

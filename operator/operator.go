@@ -498,7 +498,7 @@ func HandleComputerToolWithContext(ctx context.Context, input map[string]interfa
 			"full_page": false,
 		}
 
-	case "left_click":
+	case "click", "left_click":
 		coordinate, ok := input["coordinate"].([]interface{})
 		if !ok || len(coordinate) != 2 {
 			return nil, fmt.Errorf("invalid coordinate parameter for left_click")

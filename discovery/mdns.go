@@ -242,14 +242,14 @@ func (d *MDNSDiscovery) Start() error {
 	d.running = true
 
 	// In worker mode, only broadcast (no discovery of other agents)
-	if d.cfg.IsWorkerMode() {
+	if !d.cfg.CanDiscoverAgents() {
 		log.Printf("🔍 mDNS worker mode: broadcasting on group '%s' (no discovery)", d.group)
 		return nil
 	}
 
-	log.Printf("🔍 mDNS coordinator mode: broadcasting and discovering on group '%s'", d.group)
+	log.Printf("🔍 mDNS %s mode: broadcasting and discovering on group '%s'", d.cfg.Mode, d.group)
 
-	// Start continuous discovery in background (coordinator mode only)
+	// Start continuous discovery in background
 	go d.continuousDiscovery(serviceType)
 
 	return nil

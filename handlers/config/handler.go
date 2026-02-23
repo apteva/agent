@@ -121,6 +121,15 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			if val, exists := llmConfig["model"]; exists {
 				if str, ok := val.(string); ok {
 					currentConfig.LLM.Model = str
+					// Update computer tool version when model changes
+					// (e.g. switching to/from Sonnet 4.6 which needs computer_20251124)
+					newToolType := appConfig.ComputerToolVersion(str)
+					for i, bt := range currentConfig.LLM.BuiltinTools {
+						if appConfig.IsComputerTool(bt.Type) && bt.Type != newToolType {
+							currentConfig.LLM.BuiltinTools[i].Type = newToolType
+							log.Printf("🖥️  Updated computer tool type to %s for model %s", newToolType, str)
+						}
+					}
 				} else if val == nil {
 					currentConfig.LLM.Model = ""
 				}
@@ -602,7 +611,7 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 					var filteredBuiltinTools []appConfig.BuiltinToolConfig
 					for _, bt := range currentConfig.LLM.BuiltinTools {
 						// Keep non-computer builtin tools
-						if bt.Type != "computer_20250124" && bt.Name != "computer" {
+						if !appConfig.IsComputerTool(bt.Type) && bt.Name != "computer" {
 							filteredBuiltinTools = append(filteredBuiltinTools, bt)
 						}
 					}
