@@ -90,10 +90,11 @@ type MDNSDiscovery struct {
 
 	server    *mdns.Server
 	iface     *net.Interface // Network interface for mDNS (auto-detected or specified)
-	registry  map[string]*config.AgentInfo
-	mu        sync.RWMutex
-	running   bool
-	stopCh    chan struct{}
+	registry   map[string]*config.AgentInfo
+	mu         sync.RWMutex
+	running    bool
+	stopCh     chan struct{}
+	cardProber *CardProber
 }
 
 // AgentMetadata is broadcast via mDNS TXT records
@@ -127,9 +128,10 @@ func NewMDNSDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentURL str
 		agentURL:  agentURL,
 		group:     cfg.Group,
 		features:  features,
-		iface:     iface,
-		registry:  make(map[string]*config.AgentInfo),
-		stopCh:    make(chan struct{}),
+		iface:      iface,
+		registry:   make(map[string]*config.AgentInfo),
+		stopCh:     make(chan struct{}),
+		cardProber: NewCardProber(),
 	}, nil
 }
 
@@ -414,6 +416,15 @@ func (d *MDNSDiscovery) discoverPeers(serviceType string) {
 	}
 
 UPDATE_REGISTRY:
+	// Enrich A2A agents with Agent Card skills (cached, concurrent)
+	if d.cardProber != nil && len(discovered) > 0 {
+		agents := make([]*config.AgentInfo, 0, len(discovered))
+		for _, agent := range discovered {
+			agents = append(agents, agent)
+		}
+		d.cardProber.EnrichAgents(agents)
+	}
+
 	// Update registry with discovered agents
 	d.mu.Lock()
 	d.registry = discovered

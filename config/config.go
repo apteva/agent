@@ -366,17 +366,36 @@ func (c *AgentsConfig) CanDiscoverAgents() bool {
 }
 
 type AgentInfo struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description"`
-	URL          string          `json:"url"`
-	APIKey       string          `json:"api_key,omitempty"`
-	Capabilities []string        `json:"capabilities"`
-	MCPServers   []string        `json:"mcp_servers,omitempty"`
-	Tags         []string        `json:"tags"`
-	Enabled      bool            `json:"enabled"`
-	Timeout      string          `json:"timeout"`
-	Features     map[string]bool `json:"features,omitempty"` // Enabled features: tasks, memory, filesystem, mcp, operator, scheduler, voice, agents
+	ID              string              `json:"id"`
+	Name            string              `json:"name"`
+	Description     string              `json:"description"`
+	URL             string              `json:"url"`
+	APIKey          string              `json:"api_key,omitempty"`
+	Capabilities    []string            `json:"capabilities"`
+	MCPServers      []string            `json:"mcp_servers,omitempty"`
+	Tags            []string            `json:"tags"`
+	Enabled         bool                `json:"enabled"`
+	Timeout         string              `json:"timeout"`
+	Features        map[string]bool     `json:"features,omitempty"`          // Enabled features: tasks, memory, filesystem, mcp, operator, scheduler, voice, agents
+	Skills          []AgentSkillInfo    `json:"skills,omitempty"`            // Rich skill info from A2A Agent Card probing
+	A2ACapabilities *A2ACapabilityInfo  `json:"a2a_capabilities,omitempty"`  // Capabilities from A2A Agent Card
+}
+
+// AgentSkillInfo is a lightweight skill descriptor extracted from an A2A Agent Card.
+type AgentSkillInfo struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags,omitempty"`
+	Examples    []string `json:"examples,omitempty"`
+}
+
+// A2ACapabilityInfo stores capability data from an A2A Agent Card.
+type A2ACapabilityInfo struct {
+	Streaming         bool     `json:"streaming"`
+	PushNotifications bool     `json:"push_notifications"`
+	InputModes        []string `json:"input_modes,omitempty"`
+	OutputModes       []string `json:"output_modes,omitempty"`
 }
 
 type AgentCommSettings struct {

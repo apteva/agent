@@ -82,24 +82,60 @@ func BuildAgentDiscoveryContext(agents []config.AgentInfo) string {
 		if agent.Description != "" {
 			context.WriteString(fmt.Sprintf("  %s\n", agent.Description))
 		}
-		if len(agent.Capabilities) > 0 {
-			context.WriteString(fmt.Sprintf("  Capabilities: %s\n", strings.Join(agent.Capabilities, ", ")))
-		}
-		// Add MCP servers if present
-		if len(agent.MCPServers) > 0 {
-			context.WriteString(fmt.Sprintf("  MCP Servers: %s\n", strings.Join(agent.MCPServers, ", ")))
-		}
-		// Add features if present
-		if len(agent.Features) > 0 {
-			var enabledFeatures []string
-			for feature, enabled := range agent.Features {
-				if enabled {
-					enabledFeatures = append(enabledFeatures, feature)
+
+		// Prefer rich skills from Agent Card probing
+		if len(agent.Skills) > 0 {
+			context.WriteString("  Skills:\n")
+			for _, skill := range agent.Skills {
+				// Skip the "general" skill — it repeats the agent description
+				if skill.ID == "general" {
+					continue
+				}
+				context.WriteString(fmt.Sprintf("    - %s: %s\n", skill.Name, skill.Description))
+				// Show up to 2 examples
+				maxEx := 2
+				if len(skill.Examples) < maxEx {
+					maxEx = len(skill.Examples)
+				}
+				for _, ex := range skill.Examples[:maxEx] {
+					context.WriteString(fmt.Sprintf("      Example: \"%s\"\n", ex))
 				}
 			}
-			if len(enabledFeatures) > 0 {
-				context.WriteString(fmt.Sprintf("  Features: %s\n", strings.Join(enabledFeatures, ", ")))
+		} else {
+			// Fallback: basic capabilities and features for non-A2A agents
+			if len(agent.Capabilities) > 0 {
+				context.WriteString(fmt.Sprintf("  Capabilities: %s\n", strings.Join(agent.Capabilities, ", ")))
 			}
+			if len(agent.Features) > 0 {
+				var enabledFeatures []string
+				for feature, enabled := range agent.Features {
+					if enabled {
+						enabledFeatures = append(enabledFeatures, feature)
+					}
+				}
+				if len(enabledFeatures) > 0 {
+					context.WriteString(fmt.Sprintf("  Features: %s\n", strings.Join(enabledFeatures, ", ")))
+				}
+			}
+		}
+
+		// A2A protocol capabilities
+		if agent.A2ACapabilities != nil {
+			var caps []string
+			if agent.A2ACapabilities.Streaming {
+				caps = append(caps, "streaming")
+			}
+			if agent.A2ACapabilities.PushNotifications {
+				caps = append(caps, "push-notifications")
+			}
+			if len(caps) > 0 {
+				context.WriteString(fmt.Sprintf("  Protocol: A2A (%s)\n", strings.Join(caps, ", ")))
+			}
+		}
+
+		// MCP servers (complementary to skills)
+		if len(agent.MCPServers) > 0 {
+			context.WriteString(fmt.Sprintf("  MCP Servers: %s\n", strings.Join(agent.MCPServers, ", ")))
 		}
 	}
 

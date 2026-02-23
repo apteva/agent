@@ -22,11 +22,12 @@ type HTTPDiscovery struct {
 	agentURL  string
 	group     string
 
-	registry map[string]*config.AgentInfo
-	mu       sync.RWMutex
-	running  bool
-	stopCh   chan struct{}
-	client   *http.Client
+	registry   map[string]*config.AgentInfo
+	mu         sync.RWMutex
+	running    bool
+	stopCh     chan struct{}
+	client     *http.Client
+	cardProber *CardProber
 }
 
 // NewHTTPDiscovery creates a new HTTP-based discovery service
@@ -41,8 +42,9 @@ func NewHTTPDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentURL str
 		agentName: agentName,
 		agentURL:  agentURL,
 		group:     cfg.Group,
-		registry:  make(map[string]*config.AgentInfo),
-		stopCh:    make(chan struct{}),
+		registry:   make(map[string]*config.AgentInfo),
+		stopCh:     make(chan struct{}),
+		cardProber: NewCardProber(),
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -130,6 +132,15 @@ func (d *HTTPDiscovery) discoverPeers() {
 				Timeout:      d.cfg.Settings.DefaultTimeout,
 			}
 		}
+	}
+
+	// Enrich A2A agents with Agent Card skills
+	if d.cardProber != nil && len(discovered) > 0 {
+		agents := make([]*config.AgentInfo, 0, len(discovered))
+		for _, agent := range discovered {
+			agents = append(agents, agent)
+		}
+		d.cardProber.EnrichAgents(agents)
 	}
 
 	// Update registry

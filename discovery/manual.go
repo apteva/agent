@@ -8,8 +8,9 @@ import (
 
 // ManualDiscovery uses the manually configured available_agents array (legacy mode)
 type ManualDiscovery struct {
-	cfg     *config.AgentsConfig
-	running bool
+	cfg        *config.AgentsConfig
+	running    bool
+	cardProber *CardProber
 }
 
 // NewManualDiscovery creates a manual discovery service (uses available_agents from config)
@@ -17,8 +18,9 @@ func NewManualDiscovery(cfg *config.AgentsConfig) (*ManualDiscovery, error) {
 	log.Printf("📋 Manual discovery mode: using %d configured agents", len(cfg.AvailableAgents))
 
 	return &ManualDiscovery{
-		cfg:     cfg,
-		running: true,
+		cfg:        cfg,
+		running:    true,
+		cardProber: NewCardProber(),
 	}, nil
 }
 
@@ -44,6 +46,16 @@ func (d *ManualDiscovery) GetAgents() []config.AgentInfo {
 			enabled = append(enabled, agent)
 		}
 	}
+
+	// Enrich A2A agents with Agent Card skills (cached)
+	if d.cardProber != nil && len(enabled) > 0 {
+		ptrs := make([]*config.AgentInfo, len(enabled))
+		for i := range enabled {
+			ptrs[i] = &enabled[i]
+		}
+		d.cardProber.EnrichAgents(ptrs)
+	}
+
 	return enabled
 }
 

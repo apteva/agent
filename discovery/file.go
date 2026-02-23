@@ -34,6 +34,7 @@ type FileDiscovery struct {
 	mu           sync.RWMutex
 	running      bool
 	stopCh       chan struct{}
+	cardProber   *CardProber
 }
 
 // FileAgentEntry is the structure written to each agent's file
@@ -75,6 +76,7 @@ func NewFileDiscovery(cfg *config.AgentsConfig, agentID, agentName, agentDescrip
 		registryPath:     registryPath,
 		registry:         make(map[string]*config.AgentInfo),
 		stopCh:           make(chan struct{}),
+		cardProber:       NewCardProber(),
 	}, nil
 }
 
@@ -245,6 +247,15 @@ func (d *FileDiscovery) discoverPeers() {
 			Timeout:      d.cfg.Settings.DefaultTimeout,
 		}
 		discovered[entry.ID] = agent
+	}
+
+	// Enrich A2A agents with Agent Card skills (cached, concurrent)
+	if d.cardProber != nil && len(discovered) > 0 {
+		agents := make([]*config.AgentInfo, 0, len(discovered))
+		for _, agent := range discovered {
+			agents = append(agents, agent)
+		}
+		d.cardProber.EnrichAgents(agents)
 	}
 
 	// Update registry

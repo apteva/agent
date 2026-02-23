@@ -1,7 +1,9 @@
 package a2a
 
 import (
+	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/apteva/agent/config"
 )
@@ -113,7 +115,32 @@ func buildSkills(cfg *config.AgentConfig) []AgentSkill {
 		})
 	}
 
+	// MCP server-based skills
+	if cfg.MCP != nil && cfg.MCP.Enabled {
+		for _, server := range cfg.MCP.Servers {
+			if !server.Enabled {
+				continue
+			}
+			skills = append(skills, AgentSkill{
+				ID:          slugify(server.Name) + "-integration",
+				Name:        titleCase(server.Name) + " Integration",
+				Description: fmt.Sprintf("Access and interact with %s", server.Name),
+				Tags:        []string{"mcp", server.Name, "integration"},
+			})
+		}
+	}
+
 	return skills
+}
+
+// titleCase converts "notion" to "Notion", "my-server" to "My-Server".
+func titleCase(name string) string {
+	if name == "" {
+		return name
+	}
+	runes := []rune(name)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
 // slugify converts a name to a URL-safe ID.
