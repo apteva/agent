@@ -185,6 +185,68 @@ func (a *FileManagerAdapter) ProcessContentBlocks(blocks []stream.ContentBlock, 
 	return streamBlocks, nil
 }
 
+func (a *FileManagerAdapter) ExpandFileReferences(blocks []stream.ContentBlock) ([]stream.ContentBlock, error) {
+	if a.fm == nil {
+		return blocks, nil
+	}
+	// Convert stream.ContentBlock to filesystem.ContentBlock
+	fsBlocks := make([]filesystem.ContentBlock, len(blocks))
+	for i, block := range blocks {
+		fsBlocks[i] = filesystem.ContentBlock{
+			Type:      block.Type,
+			Text:      block.Text,
+			ID:        block.ID,
+			Name:      block.Name,
+			Input:     block.Input,
+			ToolUseID: block.ToolUseID,
+			Content:   block.Content,
+			IsError:   block.IsError,
+		}
+		if block.Source != nil {
+			fsBlocks[i].Source = &filesystem.ContentSource{
+				Type:      block.Source.Type,
+				MediaType: block.Source.MediaType,
+				Data:      block.Source.Data,
+				URL:       block.Source.URL,
+				FileID:    block.Source.FileID,
+			}
+		}
+	}
+
+	// Expand with FileManager
+	expandedBlocks, err := a.fm.ExpandFileReferences(fsBlocks)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert back to stream.ContentBlock
+	streamBlocks := make([]stream.ContentBlock, len(expandedBlocks))
+	for i, block := range expandedBlocks {
+		streamBlocks[i] = stream.ContentBlock{
+			Type: block.Type,
+			Text: block.Text,
+		}
+		if block.Source != nil {
+			streamBlocks[i].Source = &stream.ContentSource{
+				Type:      block.Source.Type,
+				MediaType: block.Source.MediaType,
+				Data:      block.Source.Data,
+				URL:       block.Source.URL,
+				FileID:    block.Source.FileID,
+			}
+		}
+		// Preserve tool fields from original block
+		if i < len(blocks) {
+			streamBlocks[i].ID = blocks[i].ID
+			streamBlocks[i].Name = blocks[i].Name
+			streamBlocks[i].Input = blocks[i].Input
+			streamBlocks[i].ToolUseID = blocks[i].ToolUseID
+		}
+	}
+
+	return streamBlocks, nil
+}
+
 func (a *FileManagerAdapter) IsEnabled() bool {
 	if a.fm == nil {
 		return false

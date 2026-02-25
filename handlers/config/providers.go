@@ -132,7 +132,8 @@ func GetProviders() []ProviderInfo {
 			ID:   "venice",
 			Name: "Venice AI (Uncensored)",
 			Models: []ProviderModel{
-				{Value: "zai-org-glm-4.7", Label: "GLM 4.7 Private (203K context)", Recommended: true},
+				{Value: "olafangensan-glm-4.7-flash-heretic", Label: "GLM 4.7 Flash Heretic (Thinking)", Recommended: true},
+				{Value: "zai-org-glm-4.7", Label: "GLM 4.7 Private (203K context)"},
 				{Value: "venice-uncensored", Label: "Venice Uncensored"},
 			},
 		},

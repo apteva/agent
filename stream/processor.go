@@ -115,6 +115,7 @@ type TurnResetter interface {
 // FileProcessor interface for filesystem operations
 type FileProcessor interface {
 	ProcessContentBlocks(blocks []ContentBlock, threadID, messageID, source string) ([]ContentBlock, error)
+	ExpandFileReferences(blocks []ContentBlock) ([]ContentBlock, error)
 	ExtractImagesFromToolResult(result interface{}, threadID, source string) (interface{}, []string, error)
 	IsEnabled() bool
 }
@@ -538,12 +539,21 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 							}
 						}
 
-						// Process for file extraction
+						// Process for file extraction (stores files in DB)
 						if len(contentBlocks) > 0 {
 							extractedBlocks, err := fileProcessor.ProcessContentBlocks(contentBlocks, threadID, "", "tool_result")
 							if err != nil {
 								log.Printf("⚠️  Failed to process tool result for file extraction: %v", err)
 							} else {
+								// Expand file references back to base64 so the LLM can see the content
+								expandedBlocks, expandErr := fileProcessor.ExpandFileReferences(extractedBlocks)
+								if expandErr != nil {
+									log.Printf("⚠️  Failed to expand file references: %v", expandErr)
+								} else {
+									extractedBlocks = expandedBlocks
+									log.Printf("🔄 Expanded file references back to base64 for LLM")
+								}
+
 								// Convert back to []interface{} for toolResultContent
 								var extractedArray []interface{}
 								for _, eb := range extractedBlocks {
@@ -608,6 +618,15 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 								if err != nil {
 									log.Printf("⚠️  Failed to process tool result for file extraction: %v", err)
 								} else {
+									// Expand file references back to base64 so the LLM can see the content
+									expandedBlocks, expandErr := fileProcessor.ExpandFileReferences(extractedBlocks)
+									if expandErr != nil {
+										log.Printf("⚠️  Failed to expand file references: %v", expandErr)
+									} else {
+										extractedBlocks = expandedBlocks
+										log.Printf("🔄 Expanded file references back to base64 for LLM")
+									}
+
 									// Convert back to JSON string
 									var extractedArray []interface{}
 									for _, eb := range extractedBlocks {

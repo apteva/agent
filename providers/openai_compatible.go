@@ -65,6 +65,10 @@ func isThinkingModel(model string) bool {
 	if strings.Contains(model, "glm") && strings.Contains(model, "thinking") {
 		return true
 	}
+	// GLM heretic models (thinking/reasoning via Venice)
+	if strings.Contains(model, "glm") && strings.Contains(model, "heretic") {
+		return true
+	}
 	// DeepSeek R1 reasoning models
 	if strings.Contains(model, "deepseek") && strings.Contains(model, "r1") {
 		return true

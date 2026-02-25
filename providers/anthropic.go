@@ -17,13 +17,19 @@ import (
 )
 
 type AnthropicRequest struct {
-	Model       string                     `json:"model"`
-	MaxTokens   int                        `json:"max_tokens"`
-	Messages    []stream.Message           `json:"messages"`
-	System      string                     `json:"system,omitempty"`
-	Stream      bool                       `json:"stream"`
-	Temperature *float64                   `json:"temperature,omitempty"`
-	Tools       []interface{}              `json:"tools,omitempty"` // Mixed: custom + built-in tools
+	Model        string                     `json:"model"`
+	MaxTokens    int                        `json:"max_tokens"`
+	Messages     []stream.Message           `json:"messages"`
+	System       string                     `json:"system,omitempty"`
+	Stream       bool                       `json:"stream"`
+	Temperature  *float64                   `json:"temperature,omitempty"`
+	Tools        []interface{}              `json:"tools,omitempty"` // Mixed: custom + built-in tools
+	CacheControl *CacheControl              `json:"cache_control,omitempty"`
+}
+
+// CacheControl enables automatic prompt caching for Anthropic API requests.
+type CacheControl struct {
+	Type string `json:"type"` // "ephemeral"
 }
 
 type AnthropicContentBlock struct {
@@ -234,13 +240,14 @@ func (p *AnthropicProvider) GetRawStream(messages []stream.Message, customTools 
 
 	// Prepare Anthropic request
 	anthropicReq := AnthropicRequest{
-		Model:       llmConfig.Model,
-		MaxTokens:   llmConfig.MaxTokens,
-		Temperature: llmConfig.Temperature,
-		Messages:    filteredMessages,
-		System:      finalSystemPrompt,
-		Stream:      true,
-		Tools:       allTools,
+		Model:        llmConfig.Model,
+		MaxTokens:    llmConfig.MaxTokens,
+		Temperature:  llmConfig.Temperature,
+		Messages:     filteredMessages,
+		System:       finalSystemPrompt,
+		Stream:       true,
+		Tools:        allTools,
+		CacheControl: &CacheControl{Type: "ephemeral"},
 	}
 
 	reqBody, err := json.Marshal(anthropicReq)

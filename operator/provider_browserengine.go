@@ -17,6 +17,14 @@ type BrowserEngineProvider struct {
 	APIKey  string // X-API-Key header value
 }
 
+// truncateLog truncates a string for log output
+func truncateLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "...(truncated)"
+}
+
 // NewBrowserEngineProvider creates a new BrowserEngineProvider.
 func NewBrowserEngineProvider(baseURL, apiKey string) *BrowserEngineProvider {
 	baseURL = strings.TrimRight(baseURL, "/")
@@ -71,7 +79,12 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", p.APIKey)
 
-	log.Printf("Creating BrowserEngine session at %s", url)
+	maskedKey := p.APIKey
+	if len(maskedKey) > 8 {
+		maskedKey = maskedKey[:4] + "..." + maskedKey[len(maskedKey)-4:]
+	}
+	log.Printf("🔧 BrowserEngine CreateSession: POST %s", url)
+	log.Printf("   Key: %s, Body: %s", maskedKey, string(jsonData))
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -83,6 +96,8 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 	if err != nil {
 		return nil, fmt.Errorf("failed to read session response: %w", err)
 	}
+
+	log.Printf("   Response: HTTP %d, Body: %s", resp.StatusCode, truncateLog(string(body), 500))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("BrowserEngine returned status %d: %s", resp.StatusCode, string(body))
@@ -148,6 +163,8 @@ func (p *BrowserEngineProvider) DestroySession(ctx context.Context, sessionID st
 	}
 	req.Header.Set("X-API-Key", p.APIKey)
 
+	log.Printf("🔧 BrowserEngine DestroySession: DELETE %s", url)
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Printf("Failed to destroy BrowserEngine session %s: %v", sessionID, err)
@@ -179,6 +196,9 @@ func (p *BrowserEngineProvider) ExecuteCommand(ctx context.Context, sessionID, c
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", p.APIKey)
 
+	log.Printf("🔧 BrowserEngine ExecuteCommand: POST %s", url)
+	log.Printf("   Command: %s, Body: %s", cmdType, string(jsonData))
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("BrowserEngine command failed: %w", err)
@@ -189,6 +209,8 @@ func (p *BrowserEngineProvider) ExecuteCommand(ctx context.Context, sessionID, c
 	if err != nil {
 		return nil, fmt.Errorf("failed to read command response: %w", err)
 	}
+
+	log.Printf("   Response: HTTP %d, Body: %s", resp.StatusCode, truncateLog(string(body), 500))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("BrowserEngine command error (HTTP %d): %s", resp.StatusCode, string(body))

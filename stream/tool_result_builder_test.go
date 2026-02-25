@@ -32,6 +32,10 @@ func (m *mockFileProcessor) ProcessContentBlocks(blocks []ContentBlock, threadID
 	return blocks, nil
 }
 
+func (m *mockFileProcessor) ExpandFileReferences(blocks []ContentBlock) ([]ContentBlock, error) {
+	return blocks, nil
+}
+
 func (m *mockFileProcessor) ExtractImagesFromToolResult(result interface{}, threadID, source string) (interface{}, []string, error) {
 	m.calledWith = result
 	// Walk the result and replace image data with file references

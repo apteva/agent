@@ -20,6 +20,7 @@ func TestIsThinkingModel(t *testing.T) {
 		// GLM thinking models
 		{"glm-4-thinking", true},
 		{"glm-reasoning-thinking", true},
+		{"olafangensan-glm-4.7-flash-heretic", true},
 
 		// DeepSeek R1
 		{"deepseek-ai/DeepSeek-R1", true},

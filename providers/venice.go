@@ -22,6 +22,7 @@ type VeniceProvider struct {
 // Requires VENICE_API_KEY environment variable to be set
 //
 // Popular models:
+// - olafangensan-glm-4.7-flash-heretic (GLM 4.7 Flash Heretic, fast thinking/reasoning)
 // - zai-org-glm-4.7 (GLM 4.7 Private, 203K context, $0.20/M in, $0.90/M out)
 // - venice-uncensored (Uncensored model, no tool call support)
 func NewVeniceProvider() *VeniceProvider {

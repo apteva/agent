@@ -162,7 +162,7 @@ func BuildSystemPromptWithConfig(llmConfig config.LLMConfig, agentName, agentDes
 	if locName := now.Location().String(); locName != "" && locName != "Local" {
 		timezoneName = locName
 	}
-	currentTime := now.Format("Monday, January 2, 2006 at 3:04 PM MST")
+	currentTime := now.Format("Monday, January 2, 2006")
 
 	// Start with base system prompt from config
 	basePrompt := llmConfig.SystemPrompt

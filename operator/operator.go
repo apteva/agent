@@ -75,9 +75,14 @@ func InitProvider(operatorConfig *config.OperatorConfig) BrowserProvider {
 			if baseURL == "" {
 				baseURL = "https://api.browserengine.co"
 			}
+			maskedKey := operatorConfig.BrowserEngine.APIKey
+			if len(maskedKey) > 8 {
+				maskedKey = maskedKey[:4] + "..." + maskedKey[len(maskedKey)-4:]
+			}
+			log.Printf("🔧 BrowserEngine init: baseURL=%s, apiKey=%s", baseURL, maskedKey)
 			activeProvider = NewBrowserEngineProvider(baseURL, operatorConfig.BrowserEngine.APIKey)
 		} else {
-			log.Printf("⚠️  BrowserEngine provider selected but no API key configured")
+			log.Printf("⚠️  BrowserEngine provider selected but no API key configured (config=%v)", operatorConfig.BrowserEngine != nil)
 			activeProvider = nil
 		}
 	}
