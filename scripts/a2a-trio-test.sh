@@ -360,6 +360,35 @@ run_tests() {
         pass=$((pass + 1))
     fi
 
+    # ── Test 6: Self-sufficiency — no unnecessary agent calls ────
+    total=$((total + 1))
+    echo -e "${BLUE}[Test $total]${NC} Self-sufficiency: Alpha answers simple question WITHOUT calling others"
+    info "  Asking Alpha a simple math question (should NOT call Bravo or Charlie)..."
+
+    # Record current log length to isolate this test's activity
+    alpha_log_before=$(wc -l < "$LOG_A")
+
+    resp=$(a2a_send $PORT_A "What is 2+2? Just give me the answer." 60)
+    state=$(echo "$resp" | jq -r '.result.status.state // "error"' 2>/dev/null)
+    text=$(echo "$resp" | jq -r '.result.artifacts[0].parts[0].text // "no response"' 2>/dev/null | head -c 300)
+
+    if [ "$state" = "completed" ] && [ -n "$text" ] && [ "$text" != "no response" ]; then
+        # Check Alpha's log for actual call_agent tool INVOCATIONS (not registration/config lines)
+        agent_calls=$(tail -n +"$((alpha_log_before + 1))" "$LOG_A" | grep -c "Collected tool_use block: call_agent\|Streaming tool call_agent" || true)
+        if [ "$agent_calls" -eq 0 ]; then
+            ok "  state=$state — answered directly without calling other agents"
+            info "  Alpha says: $text"
+            pass=$((pass + 1))
+        else
+            fail "  state=$state — unnecessarily called other agents ($agent_calls call_agent references in log)"
+            info "  Alpha says: $text"
+        fi
+    else
+        fail "  state=$state — failed to answer"
+        echo "  Response: $(echo "$resp" | head -c 300)"
+    fi
+    echo ""
+
     # ── Summary ──────────────────────────────────────────────────
     echo ""
     echo -e "${CYAN}╔═══════════════════════════════════════════╗${NC}"
