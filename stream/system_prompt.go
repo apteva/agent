@@ -162,7 +162,8 @@ func BuildSystemPromptWithConfig(llmConfig config.LLMConfig, agentName, agentDes
 	if locName := now.Location().String(); locName != "" && locName != "Local" {
 		timezoneName = locName
 	}
-	currentTime := now.Format("Monday, January 2, 2006")
+	// Round to the hour for better prompt caching (stable for 1 hour)
+	currentTime := now.Truncate(time.Hour).Format("Monday, January 2, 2006 3:04 PM")
 
 	// Start with base system prompt from config
 	basePrompt := llmConfig.SystemPrompt
@@ -170,10 +171,9 @@ func BuildSystemPromptWithConfig(llmConfig config.LLMConfig, agentName, agentDes
 		basePrompt = "You are a helpful AI assistant."
 	}
 
-	// Build the complete system prompt with context
+	// Build the complete system prompt with context — date/time goes at the end for prompt caching
 	systemPrompt := fmt.Sprintf(`%s
 
-Current date and time: %s (timezone: %s)
 Agent name: %s
 Agent description: %s
 
@@ -184,8 +184,6 @@ Important instructions:
 4. NEVER expose credential IDs, API keys, or other sensitive identifiers in your chat responses. Use them only internally when calling tools. If a user asks about credentials, explain what services are available without revealing the actual IDs.
 5. After receiving tool results, you MUST provide a text response to the user.`,
 		basePrompt,
-		currentTime,
-		timezoneName,
 		agentName,
 		agentDescription,
 	)
@@ -290,6 +288,9 @@ For real-time voice interactions, direct users to the voice WebSocket endpoint.`
 			}
 		}
 	}
+
+	// Append date/time at the very end so the static prefix above stays cache-friendly
+	systemPrompt += fmt.Sprintf("\n\nCurrent date and time: %s (timezone: %s)", currentTime, timezoneName)
 
 	return systemPrompt
 }
