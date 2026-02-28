@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -28,10 +29,12 @@ type StreamingExternalClient interface {
 
 // ExternalServerManager manages connections to external standard MCP servers
 type ExternalServerManager struct {
-	httpClients  map[string]*StandardMCPClient // HTTP clients keyed by server name
-	stdioClients map[string]*StdioMCPClient    // Stdio clients keyed by server name
-	tools        map[string]ExternalMCPTool    // keyed by "server__tool"
-	mu           sync.RWMutex
+	httpClients   map[string]*StandardMCPClient // HTTP clients keyed by server name
+	stdioClients  map[string]*StdioMCPClient    // Stdio clients keyed by server name
+	tools         map[string]ExternalMCPTool    // keyed by "server__tool"
+	failedServers []config.ExternalMCPServer    // Servers that failed to connect at startup
+	retryStop     chan struct{}                  // Signal to stop retry loop
+	mu            sync.RWMutex
 }
 
 // ExternalMCPTool represents a tool from an external MCP server
@@ -56,6 +59,7 @@ func GetExternalServerManager() *ExternalServerManager {
 			httpClients:  make(map[string]*StandardMCPClient),
 			stdioClients: make(map[string]*StdioMCPClient),
 			tools:        make(map[string]ExternalMCPTool),
+			retryStop:    make(chan struct{}),
 		}
 	})
 	return globalExternalManager
@@ -208,7 +212,7 @@ func (m *ExternalServerManager) RemoveServer(name string) error {
 	return nil
 }
 
-// GetTools returns all tools from all external servers
+// GetTools returns all tools from all external servers (sorted for cache stability)
 func (m *ExternalServerManager) GetTools() []ExternalMCPTool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -217,6 +221,9 @@ func (m *ExternalServerManager) GetTools() []ExternalMCPTool {
 	for _, tool := range m.tools {
 		tools = append(tools, tool)
 	}
+	sort.Slice(tools, func(i, j int) bool {
+		return tools[i].FullName < tools[j].FullName
+	})
 	return tools
 }
 
@@ -477,56 +484,100 @@ func InitializeExternalServers(servers []config.ExternalMCPServer) error {
 			continue
 		}
 
-		// Determine server type (default to http for backwards compatibility)
-		serverType := server.Type
-		if serverType == "" {
-			if len(server.Command) > 0 {
-				serverType = "stdio"
-			} else {
-				serverType = "http"
-			}
-		}
-
-		switch serverType {
-		case "stdio":
-			// Build command with args
-			command := server.Command
-			if len(server.Args) > 0 {
-				command = append(command, server.Args...)
-			}
-
-			cfg := StdioMCPServerConfig{
-				Name:    server.Name,
-				Command: command,
-				Env:     server.Env,
-				Enabled: server.Enabled,
-			}
-
-			if err := manager.AddStdioServer(cfg); err != nil {
-				log.Printf("⚠️ MCP Stdio [%s]: Failed to start: %v", server.Name, err)
-				// Continue with other servers
-			}
-
-		case "http":
-			cfg := StandardMCPServerConfig{
-				Name:    server.Name,
-				URL:     server.URL,
-				Headers: server.Headers,
-				Timeout: 30 * time.Second,
-				Enabled: server.Enabled,
-			}
-
-			if err := manager.AddServer(cfg); err != nil {
-				log.Printf("⚠️ MCP HTTP [%s]: Failed to connect: %v", server.Name, err)
-				// Continue with other servers
-			}
-
-		default:
-			log.Printf("⚠️ MCP External [%s]: Unknown server type: %s", server.Name, serverType)
+		if err := manager.connectServer(server); err != nil {
+			log.Printf("⚠️ MCP [%s]: Failed to connect (will retry in background): %v", server.Name, err)
+			manager.mu.Lock()
+			manager.failedServers = append(manager.failedServers, server)
+			manager.mu.Unlock()
 		}
 	}
 
+	// Start background retry for any failed servers
+	manager.mu.RLock()
+	hasFailed := len(manager.failedServers) > 0
+	manager.mu.RUnlock()
+	if hasFailed {
+		go manager.retryFailedServers()
+	}
+
 	return nil
+}
+
+// connectServer attempts to connect a single server by config
+func (m *ExternalServerManager) connectServer(server config.ExternalMCPServer) error {
+	serverType := server.Type
+	if serverType == "" {
+		if len(server.Command) > 0 {
+			serverType = "stdio"
+		} else {
+			serverType = "http"
+		}
+	}
+
+	switch serverType {
+	case "stdio":
+		command := server.Command
+		if len(server.Args) > 0 {
+			command = append(command, server.Args...)
+		}
+		cfg := StdioMCPServerConfig{
+			Name:    server.Name,
+			Command: command,
+			Env:     server.Env,
+			Enabled: server.Enabled,
+		}
+		return m.AddStdioServer(cfg)
+
+	case "http":
+		cfg := StandardMCPServerConfig{
+			Name:    server.Name,
+			URL:     server.URL,
+			Headers: server.Headers,
+			Timeout: 30 * time.Second,
+			Enabled: server.Enabled,
+		}
+		return m.AddServer(cfg)
+
+	default:
+		return fmt.Errorf("unknown server type: %s", serverType)
+	}
+}
+
+// retryFailedServers periodically retries connecting to servers that failed at startup
+func (m *ExternalServerManager) retryFailedServers() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.mu.RLock()
+			remaining := make([]config.ExternalMCPServer, len(m.failedServers))
+			copy(remaining, m.failedServers)
+			m.mu.RUnlock()
+
+			if len(remaining) == 0 {
+				log.Printf("🔌 MCP: All servers connected, stopping retry loop")
+				return
+			}
+
+			var stillFailed []config.ExternalMCPServer
+			for _, server := range remaining {
+				if err := m.connectServer(server); err != nil {
+					stillFailed = append(stillFailed, server)
+				} else {
+					log.Printf("🔌 MCP [%s]: Successfully connected on retry", server.Name)
+				}
+			}
+
+			m.mu.Lock()
+			m.failedServers = stillFailed
+			m.mu.Unlock()
+
+		case <-m.retryStop:
+			return
+		}
+	}
 }
 
 // ConvertExternalToolsToToolDefinitions converts external MCP tools to our internal format

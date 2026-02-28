@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -114,6 +115,7 @@ func BuildAgentDiscoveryContext(agents []config.AgentInfo) string {
 					}
 				}
 				if len(enabledFeatures) > 0 {
+					sort.Strings(enabledFeatures)
 					context.WriteString(fmt.Sprintf("  Features: %s\n", strings.Join(enabledFeatures, ", ")))
 				}
 			}
@@ -227,8 +229,16 @@ For real-time voice interactions, direct users to the voice WebSocket endpoint.`
 
 	// Add MCP credentials if available
 	if mcpConfig != nil && mcpConfig.Enabled && len(mcpConfig.Credentials) > 0 {
+		// Sort credential keys for deterministic ordering (prompt cache stability)
+		var credKeys []string
+		for k := range mcpConfig.Credentials {
+			credKeys = append(credKeys, k)
+		}
+		sort.Strings(credKeys)
+
 		var credentialsList []string
-		for _, cred := range mcpConfig.Credentials {
+		for _, k := range credKeys {
+			cred := mcpConfig.Credentials[k]
 			credInfo := fmt.Sprintf("- %s (%s): ID %s",
 				cred.Name, cred.Provider, cred.CredentialID)
 			credentialsList = append(credentialsList, credInfo)

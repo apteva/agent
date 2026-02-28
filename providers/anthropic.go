@@ -17,14 +17,14 @@ import (
 )
 
 type AnthropicRequest struct {
-	Model        string                     `json:"model"`
-	MaxTokens    int                        `json:"max_tokens"`
-	Messages     []stream.Message           `json:"messages"`
-	System       string                     `json:"system,omitempty"`
-	Stream       bool                       `json:"stream"`
-	Temperature  *float64                   `json:"temperature,omitempty"`
-	Tools        []interface{}              `json:"tools,omitempty"` // Mixed: custom + built-in tools
-	CacheControl *CacheControl              `json:"cache_control,omitempty"`
+	Model        string           `json:"model"`
+	MaxTokens    int              `json:"max_tokens"`
+	Messages     []stream.Message `json:"messages"`
+	System       string           `json:"system,omitempty"`
+	Stream       bool             `json:"stream"`
+	Temperature  *float64         `json:"temperature,omitempty"`
+	Tools        []interface{}    `json:"tools,omitempty"`    // Mixed: custom + built-in tools
+	CacheControl *CacheControl    `json:"cache_control,omitempty"` // Automatic prompt caching
 }
 
 // CacheControl enables automatic prompt caching for Anthropic API requests.
