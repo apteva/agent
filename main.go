@@ -2004,11 +2004,14 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 						memoryContext := memory.FormatMemoryContext(relevantMemories)
 						log.Printf("[Memory] Injecting %d memories into chat context", len(relevantMemories))
 
-						// Add memory context to the first user message
+						// Add memory context to the LAST user message (not the first!)
+						// Injecting into the first user message would mutate early messages
+						// on every request (different queries → different memories), breaking
+						// Anthropic's prompt cache prefix matching for all subsequent messages.
 						if len(messages) > 0 {
-							for i, msg := range messages {
-								if msg.Role == "user" {
-									switch content := msg.Content.(type) {
+							for i := len(messages) - 1; i >= 0; i-- {
+								if messages[i].Role == "user" {
+									switch content := messages[i].Content.(type) {
 									case string:
 										messages[i].Content = memoryContext + "\n\n" + content
 									}
