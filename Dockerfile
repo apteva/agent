@@ -23,8 +23,10 @@ COPY . .
 
 # Build the binary with static linking and optimizations
 # -tags netgo ensures no CGO dependencies for networking
-RUN CGO_ENABLED=1 go build \
-    -ldflags="-w -s -linkmode external -extldflags '-static'" \
+RUN VERSION=$(cat VERSION 2>/dev/null || echo "1.0.0") && \
+    BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ') && \
+    CGO_ENABLED=1 go build \
+    -ldflags="-w -s -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -linkmode external -extldflags '-static'" \
     -tags netgo \
     -a \
     -o server .

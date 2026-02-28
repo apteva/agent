@@ -3729,6 +3729,9 @@ func main() {
 	startupTime := time.Now()
 	log.Printf("🚀 Agent starting...")
 
+	// Set version globally so config.GetVersion() always returns the correct value
+	config.SetVersion(getVersion())
+
 	loadEnv()
 	initDB()
 	defer db.Close()

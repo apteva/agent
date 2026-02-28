@@ -509,11 +509,23 @@ func GetConfig() *Config {
 	return globalConfig
 }
 
-// GetVersion returns the agent version from VERSION file
+// buildVersion is set by main.go at startup from ldflags or VERSION file
+var buildVersion string
+
+// SetVersion sets the version (called by main at startup)
+func SetVersion(v string) {
+	buildVersion = v
+}
+
+// GetVersion returns the agent version
 func GetVersion() string {
+	if buildVersion != "" {
+		return buildVersion
+	}
+	// Fallback: read VERSION file (development mode)
 	data, err := os.ReadFile("VERSION")
 	if err != nil {
-		return "1.0.0" // fallback
+		return "1.0.0"
 	}
 	return strings.TrimSpace(string(data))
 }

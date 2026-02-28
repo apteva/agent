@@ -42,8 +42,8 @@ help:
 
 # Build binary locally
 build:
-	@echo "Building agent-core..."
-	CGO_ENABLED=1 go build -o agent-core .
+	@echo "Building agent-core v$(VERSION)..."
+	CGO_ENABLED=1 go build $(LDFLAGS_RELEASE) -o agent-core .
 
 # Run tests
 test:
