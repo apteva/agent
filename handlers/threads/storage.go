@@ -307,3 +307,68 @@ func (d *DatabaseMessageSaver) GetThreadMessages(threadID string) ([]Message, er
 
 	return messages, nil
 }
+
+// GetThreadMessagesSince returns messages created after the given timestamp.
+// Used to skip already-compacted messages when a compaction summary exists.
+func (d *DatabaseMessageSaver) GetThreadMessagesSince(threadID string, since time.Time) ([]Message, error) {
+	dbQueryStart := time.Now()
+	query := "SELECT id, thread_id, role, content, model, created_at, metadata FROM messages WHERE thread_id = ? AND created_at > ? ORDER BY created_at ASC"
+	rows, err := d.db.Query(query, threadID, since)
+	if err != nil {
+		eventBus := events.GetEventBus()
+		errorEvent := events.NewEvent(events.CategoryDatabase, events.TypeDBError, events.LevelError).
+			WithThread(threadID).
+			WithData("table", "messages").
+			WithData("operation", "SELECT").
+			WithData("query", query).
+			WithError(err).
+			WithDuration(dbQueryStart)
+		eventBus.Publish(errorEvent)
+		return nil, fmt.Errorf("failed to query messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var message Message
+		var contentStr, metadataStr string
+
+		err := rows.Scan(&message.ID, &message.ThreadID, &message.Role, &contentStr, &message.Model, &message.CreatedAt, &metadataStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+
+		// Parse content - could be string or JSON content blocks
+		trimmedContent := strings.TrimSpace(contentStr)
+		if strings.HasPrefix(trimmedContent, "{") || strings.HasPrefix(trimmedContent, "[") {
+			var content interface{}
+			if err := json.Unmarshal([]byte(contentStr), &content); err != nil {
+				message.Content = contentStr
+			} else {
+				message.Content = content
+			}
+		} else {
+			message.Content = contentStr
+		}
+
+		// Parse metadata JSON
+		if err := json.Unmarshal([]byte(metadataStr), &message.Metadata); err != nil {
+			message.Metadata = make(map[string]interface{})
+		}
+
+		messages = append(messages, message)
+	}
+
+	eventBus := events.GetEventBus()
+	queryEvent := events.NewEvent(events.CategoryDatabase, events.TypeDBQuery, events.LevelInfo).
+		WithThread(threadID).
+		WithData("table", "messages").
+		WithData("operation", "SELECT").
+		WithData("rows_returned", len(messages)).
+		WithData("where_clause", fmt.Sprintf("thread_id = '%s' AND created_at > '%s'", threadID, since.Format(time.RFC3339))).
+		WithData("order_by", "created_at ASC").
+		WithDuration(dbQueryStart)
+	eventBus.Publish(queryEvent)
+
+	return messages, nil
+}

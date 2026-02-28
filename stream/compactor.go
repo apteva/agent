@@ -154,6 +154,9 @@ func (c *Compactor) GetExistingCompaction(threadID string) (*CompactionResult, e
 	if summary, ok := compactionData["summary"].(string); ok {
 		result.Summary = summary
 	}
+	if messagesCompacted, ok := compactionData["messages_compacted"].(float64); ok {
+		result.MessagesCompacted = int(messagesCompacted)
+	}
 	if lastMsgID, ok := compactionData["last_compacted_message_id"].(string); ok {
 		result.LastCompactedMsgID = lastMsgID
 	}

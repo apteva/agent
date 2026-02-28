@@ -320,12 +320,15 @@ func GetTaskTool(input map[string]interface{}) (map[string]interface{}, error) {
 	if threadID.Valid {
 		taskMap["thread_id"] = threadID.String
 
-		// Fetch trajectory (messages from the thread)
-		trajectory, err := getTaskTrajectory(threadID.String)
-		if err != nil {
-			log.Printf("Warning: failed to get trajectory for task %s: %v", taskID, err)
-		} else if len(trajectory) > 0 {
-			taskMap["trajectory"] = trajectory
+		// Only fetch trajectory for execution threads (prefixed with "task_"),
+		// not for the conversation thread where the task was created
+		if strings.HasPrefix(threadID.String, "task_") {
+			trajectory, err := getTaskTrajectory(threadID.String)
+			if err != nil {
+				log.Printf("Warning: failed to get trajectory for task %s: %v", taskID, err)
+			} else if len(trajectory) > 0 {
+				taskMap["trajectory"] = trajectory
+			}
 		}
 	}
 	if description.Valid {

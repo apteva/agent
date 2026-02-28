@@ -9,40 +9,52 @@ import (
 
 // UsageSummary represents token usage statistics
 type UsageSummary struct {
-	TotalInputTokens  int64  `json:"total_input_tokens"`
-	TotalOutputTokens int64  `json:"total_output_tokens"`
-	TotalTokens       int64  `json:"total_tokens"`
-	CallCount         int64  `json:"call_count"`
-	StartTime         string `json:"start_time,omitempty"`
-	EndTime           string `json:"end_time,omitempty"`
+	TotalInputTokens         int64  `json:"total_input_tokens"`
+	TotalOutputTokens        int64  `json:"total_output_tokens"`
+	TotalTokens              int64  `json:"total_tokens"`
+	TotalCacheCreationTokens int64  `json:"total_cache_creation_tokens,omitempty"`
+	TotalCacheReadTokens     int64  `json:"total_cache_read_tokens,omitempty"`
+	TotalReasoningTokens     int64  `json:"total_reasoning_tokens,omitempty"`
+	CallCount                int64  `json:"call_count"`
+	StartTime                string `json:"start_time,omitempty"`
+	EndTime                  string `json:"end_time,omitempty"`
 }
 
 // UsageByThread represents token usage grouped by thread
 type UsageByThread struct {
-	ThreadID     string `json:"thread_id"`
-	ThreadTitle  string `json:"thread_title,omitempty"`
-	InputTokens  int64  `json:"input_tokens"`
-	OutputTokens int64  `json:"output_tokens"`
-	TotalTokens  int64  `json:"total_tokens"`
-	CallCount    int64  `json:"call_count"`
+	ThreadID             string `json:"thread_id"`
+	ThreadTitle          string `json:"thread_title,omitempty"`
+	InputTokens          int64  `json:"input_tokens"`
+	OutputTokens         int64  `json:"output_tokens"`
+	TotalTokens          int64  `json:"total_tokens"`
+	CacheCreationTokens  int64  `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens      int64  `json:"cache_read_tokens,omitempty"`
+	ReasoningTokens      int64  `json:"reasoning_tokens,omitempty"`
+	CallCount            int64  `json:"call_count"`
 }
 
 // UsageByTask represents token usage grouped by task
 type UsageByTask struct {
-	TaskID       string `json:"task_id"`
-	InputTokens  int64  `json:"input_tokens"`
-	OutputTokens int64  `json:"output_tokens"`
-	TotalTokens  int64  `json:"total_tokens"`
-	CallCount    int64  `json:"call_count"`
+	TaskID               string `json:"task_id"`
+	InputTokens          int64  `json:"input_tokens"`
+	OutputTokens         int64  `json:"output_tokens"`
+	TotalTokens          int64  `json:"total_tokens"`
+	CacheCreationTokens  int64  `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens      int64  `json:"cache_read_tokens,omitempty"`
+	ReasoningTokens      int64  `json:"reasoning_tokens,omitempty"`
+	CallCount            int64  `json:"call_count"`
 }
 
 // UsageByDay represents token usage grouped by day
 type UsageByDay struct {
-	Date         string `json:"date"`
-	InputTokens  int64  `json:"input_tokens"`
-	OutputTokens int64  `json:"output_tokens"`
-	TotalTokens  int64  `json:"total_tokens"`
-	CallCount    int64  `json:"call_count"`
+	Date                 string `json:"date"`
+	InputTokens          int64  `json:"input_tokens"`
+	OutputTokens         int64  `json:"output_tokens"`
+	TotalTokens          int64  `json:"total_tokens"`
+	CacheCreationTokens  int64  `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens      int64  `json:"cache_read_tokens,omitempty"`
+	ReasoningTokens      int64  `json:"reasoning_tokens,omitempty"`
+	CallCount            int64  `json:"call_count"`
 }
 
 // HandleUsage - GET /usage - Get token usage statistics
@@ -105,6 +117,9 @@ func handleUsageSummary(w http.ResponseWriter, db *sql.DB, startTime, endTime *t
 			COALESCE(SUM(token_usage_input), 0) as input_tokens,
 			COALESCE(SUM(token_usage_output), 0) as output_tokens,
 			COALESCE(SUM(token_usage_input + token_usage_output), 0) as total_tokens,
+			COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
+			COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+			COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
 			COUNT(*) as call_count
 		FROM spans
 		WHERE kind = 'llm'
@@ -134,6 +149,9 @@ func handleUsageSummary(w http.ResponseWriter, db *sql.DB, startTime, endTime *t
 		&summary.TotalInputTokens,
 		&summary.TotalOutputTokens,
 		&summary.TotalTokens,
+		&summary.TotalCacheCreationTokens,
+		&summary.TotalCacheReadTokens,
+		&summary.TotalReasoningTokens,
 		&summary.CallCount,
 	)
 	if err != nil {
@@ -171,6 +189,9 @@ func handleUsageByThread(w http.ResponseWriter, db *sql.DB, startTime, endTime *
 			COALESCE(SUM(s.token_usage_input), 0) as input_tokens,
 			COALESCE(SUM(s.token_usage_output), 0) as output_tokens,
 			COALESCE(SUM(s.token_usage_input + s.token_usage_output), 0) as total_tokens,
+			COALESCE(SUM(s.cache_creation_tokens), 0) as cache_creation_tokens,
+			COALESCE(SUM(s.cache_read_tokens), 0) as cache_read_tokens,
+			COALESCE(SUM(s.reasoning_tokens), 0) as reasoning_tokens,
 			COUNT(*) as call_count
 		FROM spans s
 		LEFT JOIN threads t ON s.thread_id = t.id
@@ -219,6 +240,9 @@ func handleUsageByThread(w http.ResponseWriter, db *sql.DB, startTime, endTime *
 			&usage.InputTokens,
 			&usage.OutputTokens,
 			&usage.TotalTokens,
+			&usage.CacheCreationTokens,
+			&usage.CacheReadTokens,
+			&usage.ReasoningTokens,
 			&usage.CallCount,
 		)
 		if err != nil {
@@ -262,6 +286,9 @@ func handleUsageByTask(w http.ResponseWriter, db *sql.DB, startTime, endTime *ti
 			COALESCE(SUM(token_usage_input), 0) as input_tokens,
 			COALESCE(SUM(token_usage_output), 0) as output_tokens,
 			COALESCE(SUM(token_usage_input + token_usage_output), 0) as total_tokens,
+			COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
+			COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+			COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
 			COUNT(*) as call_count
 		FROM spans
 		WHERE kind = 'llm'
@@ -309,6 +336,9 @@ func handleUsageByTask(w http.ResponseWriter, db *sql.DB, startTime, endTime *ti
 			&usage.InputTokens,
 			&usage.OutputTokens,
 			&usage.TotalTokens,
+			&usage.CacheCreationTokens,
+			&usage.CacheReadTokens,
+			&usage.ReasoningTokens,
 			&usage.CallCount,
 		)
 		if err != nil {
@@ -352,6 +382,9 @@ func handleUsageByDay(w http.ResponseWriter, db *sql.DB, startTime, endTime *tim
 			COALESCE(SUM(token_usage_input), 0) as input_tokens,
 			COALESCE(SUM(token_usage_output), 0) as output_tokens,
 			COALESCE(SUM(token_usage_input + token_usage_output), 0) as total_tokens,
+			COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
+			COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+			COALESCE(SUM(reasoning_tokens), 0) as reasoning_tokens,
 			COUNT(*) as call_count
 		FROM spans
 		WHERE kind = 'llm'
@@ -397,6 +430,9 @@ func handleUsageByDay(w http.ResponseWriter, db *sql.DB, startTime, endTime *tim
 			&usage.InputTokens,
 			&usage.OutputTokens,
 			&usage.TotalTokens,
+			&usage.CacheCreationTokens,
+			&usage.CacheReadTokens,
+			&usage.ReasoningTokens,
 			&usage.CallCount,
 		)
 		if err != nil {

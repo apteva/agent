@@ -46,9 +46,10 @@ type GeminiFunctionCallResponse struct {
 
 // GeminiUsageMetadata contains token usage information
 type GeminiUsageMetadata struct {
-	PromptTokenCount     int `json:"promptTokenCount"`
-	CandidatesTokenCount int `json:"candidatesTokenCount"`
-	TotalTokenCount      int `json:"totalTokenCount"`
+	PromptTokenCount        int `json:"promptTokenCount"`
+	CandidatesTokenCount    int `json:"candidatesTokenCount"`
+	TotalTokenCount         int `json:"totalTokenCount"`
+	CachedContentTokenCount int `json:"cachedContentTokenCount,omitempty"`
 }
 
 // ==================== Gemini Stream Processor ====================
@@ -120,11 +121,12 @@ func (p *GeminiStreamProcessor) ProcessLine(line string) (*StreamEvent, error) {
 		// Send usage event if we have metadata
 		if p.lastUsage != nil {
 			return &StreamEvent{
-				Type:         "usage",
-				InputTokens:  p.lastUsage.PromptTokenCount,
-				OutputTokens: p.lastUsage.CandidatesTokenCount,
-				TotalTokens:  p.lastUsage.TotalTokenCount,
-				Timestamp:    time.Now().UnixMilli(),
+				Type:            "usage",
+				InputTokens:     p.lastUsage.PromptTokenCount,
+				OutputTokens:    p.lastUsage.CandidatesTokenCount,
+				TotalTokens:     p.lastUsage.TotalTokenCount,
+				CacheReadTokens: p.lastUsage.CachedContentTokenCount,
+				Timestamp:       time.Now().UnixMilli(),
 			}, nil
 		}
 

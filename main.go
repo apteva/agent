@@ -264,10 +264,13 @@ func (a *FileManagerAdapter) ExtractImagesFromToolResult(result interface{}, thr
 // ResponseCapture captures SSE events to build a complete response
 type ResponseCapture struct {
 	http.ResponseWriter
-	textChunks    []string
-	contentBlocks []map[string]interface{}
-	inputTokens   int
-	outputTokens  int
+	textChunks          []string
+	contentBlocks       []map[string]interface{}
+	inputTokens         int
+	outputTokens        int
+	cacheCreationTokens int
+	cacheReadTokens     int
+	reasoningTokens     int
 }
 
 func (rc *ResponseCapture) Write(p []byte) (int, error) {
@@ -323,11 +326,20 @@ func (rc *ResponseCapture) Write(p []byte) (int, error) {
 
 				case "usage":
 					// Capture token usage
-					if inputTokens, ok := event["input_tokens"].(float64); ok {
-						rc.inputTokens = int(inputTokens)
+					if v, ok := event["input_tokens"].(float64); ok {
+						rc.inputTokens = int(v)
 					}
-					if outputTokens, ok := event["output_tokens"].(float64); ok {
-						rc.outputTokens = int(outputTokens)
+					if v, ok := event["output_tokens"].(float64); ok {
+						rc.outputTokens = int(v)
+					}
+					if v, ok := event["cache_creation_tokens"].(float64); ok {
+						rc.cacheCreationTokens = int(v)
+					}
+					if v, ok := event["cache_read_tokens"].(float64); ok {
+						rc.cacheReadTokens = int(v)
+					}
+					if v, ok := event["reasoning_tokens"].(float64); ok {
+						rc.reasoningTokens = int(v)
 					}
 				}
 			}
@@ -355,11 +367,21 @@ func (rc *ResponseCapture) ExtractUsage() map[string]interface{} {
 	if rc.inputTokens == 0 && rc.outputTokens == 0 {
 		return nil
 	}
-	return map[string]interface{}{
+	usage := map[string]interface{}{
 		"input_tokens":  rc.inputTokens,
 		"output_tokens": rc.outputTokens,
 		"total_tokens":  rc.inputTokens + rc.outputTokens,
 	}
+	if rc.cacheCreationTokens > 0 {
+		usage["cache_creation_tokens"] = rc.cacheCreationTokens
+	}
+	if rc.cacheReadTokens > 0 {
+		usage["cache_read_tokens"] = rc.cacheReadTokens
+	}
+	if rc.reasoningTokens > 0 {
+		usage["reasoning_tokens"] = rc.reasoningTokens
+	}
+	return usage
 }
 
 
@@ -716,6 +738,11 @@ func initDB() {
 		token_usage_input INTEGER,
 		token_usage_output INTEGER,
 		cost_usd REAL,
+		cache_creation_tokens INTEGER DEFAULT 0,
+		cache_read_tokens INTEGER DEFAULT 0,
+		reasoning_tokens INTEGER DEFAULT 0,
+		provider TEXT,
+		model TEXT,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (trace_id) REFERENCES traces(id) ON DELETE CASCADE,
 		FOREIGN KEY (parent_span_id) REFERENCES spans(id) ON DELETE CASCADE,
@@ -738,6 +765,13 @@ func initDB() {
 
 	// Migration: Add task_id to spans for task usage tracking
 	db.Exec("ALTER TABLE spans ADD COLUMN task_id TEXT")
+
+	// Migration: Add detailed token tracking columns to spans
+	db.Exec("ALTER TABLE spans ADD COLUMN cache_creation_tokens INTEGER DEFAULT 0")
+	db.Exec("ALTER TABLE spans ADD COLUMN cache_read_tokens INTEGER DEFAULT 0")
+	db.Exec("ALTER TABLE spans ADD COLUMN reasoning_tokens INTEGER DEFAULT 0")
+	db.Exec("ALTER TABLE spans ADD COLUMN provider TEXT")
+	db.Exec("ALTER TABLE spans ADD COLUMN model TEXT")
 
 	// Migration: Add parent_trace_id and source to traces for hierarchy tracking
 	db.Exec("ALTER TABLE traces ADD COLUMN parent_trace_id TEXT REFERENCES traces(id)")
@@ -1706,43 +1740,52 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	// Get agent config
 	agentConfig := cfg.Get()
 
-	// Apply context management (truncate messages and strip old images)
+	// Auto-derive effective max tokens from model context window if not explicitly set
+	effectiveMaxTokens := 0
 	if agentConfig.Context != nil {
-		contextMgr := stream.NewContextManager(
-			agentConfig.Context.MaxMessages,
-			agentConfig.Context.MaxTokens,
-			agentConfig.Context.KeepImages,
-		)
-		messages = contextMgr.TruncateMessages(messages)
+		effectiveMaxTokens = agentConfig.Context.MaxTokens
+	}
+	if effectiveMaxTokens == 0 {
+		contextWindow := config.GetModelContextWindow(llmConfig.Provider, llmConfig.Model)
+		// Reserve 20% for output tokens, system prompt, and tool definitions
+		effectiveMaxTokens = int(float64(contextWindow) * 0.8)
+		log.Printf("📊 Auto-derived context budget: %d tokens (80%% of %d for %s/%s)",
+			effectiveMaxTokens, contextWindow, llmConfig.Provider, llmConfig.Model)
 	}
 
-	// Apply auto-compaction if enabled (summarize old messages instead of dropping)
+	// Check for existing compaction and filter already-compacted messages
 	var compactionSummary string
 	if agentConfig.Context != nil && agentConfig.Context.Compaction != nil && agentConfig.Context.Compaction.Enabled {
 		compactor := stream.NewCompactor(
 			agentConfig.Context.Compaction,
-			agentConfig.Context.MaxTokens,
+			effectiveMaxTokens,
 			db,
 			os.Getenv("ANTHROPIC_API_KEY"),
 		)
 
-		// Check for existing compaction summary
+		// Check for existing compaction summary and skip already-compacted messages
 		if existing, err := compactor.GetExistingCompaction(threadID); err == nil && existing != nil {
 			compactionSummary = existing.Summary
-			log.Printf("📦 Using existing compaction summary (%d chars)", len(compactionSummary))
-		}
-
-		// Check if new compaction is needed
-		if compactor.ShouldCompact(messages) {
-			summary, recentMessages, err := compactor.Compact(threadID, messages)
-			if err != nil {
-				log.Printf("⚠️ Compaction failed: %v", err)
+			// Skip messages already covered by the compaction summary
+			if existing.MessagesCompacted > 0 && existing.MessagesCompacted < len(messages) {
+				beforeCount := len(messages)
+				messages = messages[existing.MessagesCompacted:]
+				log.Printf("📦 Loaded compaction summary (%d chars), skipped %d already-compacted messages (%d → %d)",
+					len(compactionSummary), existing.MessagesCompacted, beforeCount, len(messages))
 			} else {
-				compactionSummary = summary
-				messages = recentMessages
-				log.Printf("📦 Compacted to %d messages with summary", len(messages))
+				log.Printf("📦 Loaded compaction summary (%d chars)", len(compactionSummary))
 			}
 		}
+	}
+
+	// Apply context management (truncate messages and strip old images) — hard safety net
+	if agentConfig.Context != nil {
+		contextMgr := stream.NewContextManager(
+			agentConfig.Context.MaxMessages,
+			effectiveMaxTokens,
+			agentConfig.Context.KeepImages,
+		)
+		messages = contextMgr.TruncateMessages(messages)
 	}
 
 	// Expand file references to base64 for LLM (if filesystem enabled)
@@ -2362,6 +2405,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Filter unsupported media (video) for non-Gemini providers
+	filterVideoForProvider(messages, llmConfig.Provider)
+
 	// Check if raw mode is requested
 	if chatReq.RawMode != nil && *chatReq.RawMode {
 		// Raw mode: bypass processor and stream raw LLM chunks directly
@@ -2579,6 +2625,51 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 						log.Printf("❌ DEBUG thread_activity: publish failed: %v", err)
 					} else {
 						log.Printf("✅ DEBUG thread_activity: event published id=%s", activityEvent.ID)
+					}
+				}
+			}()
+		}
+
+		// Background compaction: check if context needs compacting after response
+		if agentConfig.Context != nil && agentConfig.Context.Compaction != nil && agentConfig.Context.Compaction.Enabled {
+			compactThreadID := threadID
+			compactMaxTokens := effectiveMaxTokens
+			compactConfig := agentConfig.Context.Compaction
+			go func() {
+				// Small delay to let message saving complete
+				time.Sleep(3 * time.Second)
+
+				compactor := stream.NewCompactor(
+					compactConfig,
+					compactMaxTokens,
+					db,
+					os.Getenv("ANTHROPIC_API_KEY"),
+				)
+
+				// Reload all messages to check if compaction is needed
+				allMessages, err := messageSaver.GetThreadMessages(compactThreadID)
+				if err != nil {
+					log.Printf("⚠️ Background compaction: failed to load messages: %v", err)
+					return
+				}
+
+				// Convert to stream.Message
+				var streamMsgs []stream.Message
+				for _, msg := range allMessages {
+					sm, err := stream.ConvertDatabaseMessageToStreamMessageWithMetadata(msg.Role, msg.Content, msg.Metadata)
+					if err != nil {
+						streamMsgs = append(streamMsgs, stream.Message{Role: msg.Role, Content: msg.Content})
+					} else {
+						streamMsgs = append(streamMsgs, sm)
+					}
+				}
+
+				if compactor.ShouldCompact(streamMsgs) {
+					summary, _, err := compactor.Compact(compactThreadID, streamMsgs)
+					if err != nil {
+						log.Printf("⚠️ Background compaction failed for thread %s: %v", compactThreadID, err)
+					} else {
+						log.Printf("📦 Background compaction complete for thread %s (%d chars summary)", compactThreadID, len(summary))
 					}
 				}
 			}()
@@ -4001,4 +4092,111 @@ func main() {
 	if err := http.ListenAndServe(port, handler); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// providerSupportsVideo returns true if the provider can handle video content blocks natively
+func providerSupportsVideo(provider string) bool {
+	return provider == "gemini"
+}
+
+// filterVideoForProvider strips video content blocks for providers that don't support video.
+// When filesystem is enabled, the file metadata text block (with URL) was already injected
+// during expansion — we keep that and only remove the base64 video block.
+// When filesystem is disabled, we replace the video block with a text placeholder.
+func filterVideoForProvider(messages []stream.Message, provider string) {
+	if providerSupportsVideo(provider) {
+		return
+	}
+
+	for i := range messages {
+		switch content := messages[i].Content.(type) {
+		case []stream.ContentBlock:
+			filtered := filterVideoBlocks(content)
+			if len(filtered) != len(content) {
+				messages[i].Content = filtered
+				log.Printf("🎬 Filtered video blocks from message %d for provider %s", i, provider)
+			}
+		case []interface{}:
+			filtered := filterVideoBlocksRaw(content)
+			if len(filtered) != len(content) {
+				messages[i].Content = filtered
+				log.Printf("🎬 Filtered video blocks (raw) from message %d for provider %s", i, provider)
+			}
+		}
+	}
+}
+
+// filterVideoBlocks removes video content blocks from typed content blocks.
+// If the preceding block is a filesystem metadata text block, it's kept as context.
+// If not, a placeholder text block is inserted.
+func filterVideoBlocks(blocks []stream.ContentBlock) []stream.ContentBlock {
+	var filtered []stream.ContentBlock
+	hasVideo := false
+
+	for _, block := range blocks {
+		if block.Type == "video" {
+			hasVideo = true
+			// Check if the previous block is a filesystem metadata text block
+			if len(filtered) > 0 && filtered[len(filtered)-1].Type == "text" &&
+				strings.Contains(filtered[len(filtered)-1].Text, "[Uploaded file stored in filesystem]") {
+				// Filesystem metadata already provides context — skip the video block
+				continue
+			}
+			// No filesystem metadata — add a placeholder
+			filtered = append(filtered, stream.ContentBlock{
+				Type: "text",
+				Text: "[Video content provided but not supported by the current AI provider. The video was not processed.]",
+			})
+			continue
+		}
+		filtered = append(filtered, block)
+	}
+
+	// If no video was found, return original slice (no allocation)
+	if !hasVideo {
+		return blocks
+	}
+	return filtered
+}
+
+// filterVideoBlocksRaw removes video content blocks from raw JSON content blocks ([]interface{}).
+func filterVideoBlocksRaw(blocks []interface{}) []interface{} {
+	var filtered []interface{}
+	hasVideo := false
+
+	for _, item := range blocks {
+		blockMap, ok := item.(map[string]interface{})
+		if !ok {
+			filtered = append(filtered, item)
+			continue
+		}
+
+		blockType, _ := blockMap["type"].(string)
+		if blockType == "video" {
+			hasVideo = true
+			// Check if the previous block is a filesystem metadata text block
+			if len(filtered) > 0 {
+				if prevMap, ok := filtered[len(filtered)-1].(map[string]interface{}); ok {
+					if prevType, _ := prevMap["type"].(string); prevType == "text" {
+						if prevText, _ := prevMap["text"].(string); strings.Contains(prevText, "[Uploaded file stored in filesystem]") {
+							// Filesystem metadata already provides context — skip the video block
+							continue
+						}
+					}
+				}
+			}
+			// No filesystem metadata — add a placeholder
+			filtered = append(filtered, map[string]interface{}{
+				"type": "text",
+				"text": "[Video content provided but not supported by the current AI provider. The video was not processed.]",
+			})
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+
+	if !hasVideo {
+		return blocks
+	}
+	return filtered
 }

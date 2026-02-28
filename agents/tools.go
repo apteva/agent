@@ -18,7 +18,7 @@ func (t *CallAgentTool) DisplayName() string {
 }
 
 func (t *CallAgentTool) Description() string {
-	return "Call another agent to get their help or expertise on a specific task. IMPORTANT: Before calling this tool for the first time, use list_available_agents to discover valid agent IDs. The other agent will receive your message and respond with their analysis, code, or recommendations. Use this to delegate tasks to specialized agents."
+	return "Call another agent to get their help or expertise on a specific task. Available agent IDs are listed in your system prompt. The other agent will receive your message and respond with their analysis, code, or recommendations."
 }
 
 func (t *CallAgentTool) InputSchema() map[string]interface{} {
@@ -27,7 +27,7 @@ func (t *CallAgentTool) InputSchema() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"agent_id": map[string]interface{}{
 				"type":        "string",
-				"description": "ID of the agent to call (use list_available_agents to see options)",
+				"description": "ID of the agent to call (available agent IDs are in your system prompt)",
 			},
 			"message": map[string]interface{}{
 				"type":        "string",
@@ -228,7 +228,7 @@ func (t *DelegateTaskTool) DisplayName() string {
 }
 
 func (t *DelegateTaskTool) Description() string {
-	return "Delegate a task to another agent for asynchronous execution. The target agent must have the 'tasks' feature enabled (check with list_available_agents). Unlike call_agent which is synchronous, delegate_task creates a task on the remote agent that will be executed by their scheduler. Use this for long-running work that doesn't need immediate response."
+	return "Delegate a task to another agent for asynchronous execution. The target agent must have the 'tasks' feature enabled. Unlike call_agent which is synchronous, delegate_task creates a task on the remote agent that will be executed by their scheduler. Use this for long-running work that doesn't need immediate response."
 }
 
 // DynamicDisplayName returns "Delegating to {AgentName}" based on the input params
@@ -401,7 +401,7 @@ func (t *GetAgentActivityTool) InputSchema() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"agent_id": map[string]interface{}{
 				"type":        "string",
-				"description": "ID of the agent to check activity for (use list_available_agents to see options)",
+				"description": "ID of the agent to check activity for (available agent IDs are in your system prompt)",
 			},
 			"since": map[string]interface{}{
 				"type":        "string",

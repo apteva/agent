@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 // SmallModels maps providers to their small/fast models for internal tasks
 // (memory decisions, summarization, etc.)
@@ -246,4 +249,149 @@ type EmbeddingProviderInfo struct {
 	Dimensions   int    `json:"dimensions"`
 	HasAPIKey    bool   `json:"has_api_key"`
 	EnvVar       string `json:"env_var"`
+}
+
+// GetModelContextWindow returns the input context window size in tokens for a model.
+// Used to auto-derive context management limits when not explicitly configured.
+func GetModelContextWindow(provider, model string) int {
+	model = strings.ToLower(model)
+
+	switch provider {
+	case "anthropic":
+		// All Claude 3+ models: 200K context
+		return 200000
+
+	case "openai":
+		switch {
+		case strings.Contains(model, "gpt-5"):
+			return 128000
+		case strings.Contains(model, "gpt-4o"):
+			return 128000
+		case strings.Contains(model, "gpt-4-turbo"):
+			return 128000
+		case strings.Contains(model, "gpt-4.1"):
+			return 1000000
+		case strings.Contains(model, "gpt-3.5"):
+			return 16000
+		default:
+			return 128000
+		}
+
+	case "gemini":
+		switch {
+		case strings.Contains(model, "gemini-3"):
+			return 1000000
+		case strings.Contains(model, "gemini-2.5"):
+			return 1000000
+		case strings.Contains(model, "gemini-2"):
+			return 1000000
+		case strings.Contains(model, "gemini-1.5"):
+			return 1000000
+		default:
+			return 1000000
+		}
+
+	case "groq":
+		switch {
+		case strings.Contains(model, "mixtral-8x7b-32768"):
+			return 32768
+		default:
+			return 128000
+		}
+
+	case "fireworks":
+		switch {
+		case strings.Contains(model, "glm-5"):
+			return 128000
+		case strings.Contains(model, "kimi-k2"):
+			return 128000
+		case strings.Contains(model, "mixtral"):
+			return 32000
+		case strings.Contains(model, "llama"):
+			return 128000
+		case strings.Contains(model, "deepseek"):
+			return 128000
+		case strings.Contains(model, "qwen"):
+			return 128000
+		case strings.Contains(model, "minimax"):
+			return 128000
+		default:
+			return 128000
+		}
+
+	case "xai":
+		return 131072
+
+	case "zai":
+		switch {
+		case strings.Contains(model, "glm-5"):
+			return 128000
+		case strings.Contains(model, "glm-4.7"):
+			return 200000
+		case strings.Contains(model, "glm-4.6"):
+			return 200000
+		case strings.Contains(model, "glm-4.5"):
+			return 128000
+		default:
+			return 128000
+		}
+
+	case "moonshot":
+		switch {
+		case strings.Contains(model, "kimi-k2"):
+			return 128000
+		case strings.Contains(model, "128k"):
+			return 128000
+		case strings.Contains(model, "32k"):
+			return 32000
+		case strings.Contains(model, "8k"):
+			return 8000
+		default:
+			return 128000
+		}
+
+	case "venice":
+		switch {
+		case strings.Contains(model, "glm-4.7"):
+			return 200000
+		default:
+			return 128000
+		}
+
+	case "novita":
+		return 128000
+
+	case "mistral":
+		switch {
+		case strings.Contains(model, "mistral-large"):
+			return 128000
+		case strings.Contains(model, "magistral"):
+			return 40000
+		case strings.Contains(model, "codestral"):
+			return 256000
+		default:
+			return 128000
+		}
+
+	case "together":
+		switch {
+		case strings.Contains(model, "kimi"):
+			return 128000
+		case strings.Contains(model, "deepseek"):
+			return 128000
+		case strings.Contains(model, "llama-3.1-405b") || strings.Contains(model, "llama-3.3"):
+			return 128000
+		case strings.Contains(model, "llama-3.1-70b"):
+			return 128000
+		case strings.Contains(model, "llama-3.1-8b"):
+			return 128000
+		case strings.Contains(model, "qwen"):
+			return 128000
+		default:
+			return 128000
+		}
+	}
+
+	// Conservative default for unknown providers
+	return 128000
 }

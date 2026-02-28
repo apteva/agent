@@ -8,11 +8,14 @@ import (
 )
 
 type AnthropicProcessor struct{
-	hasStarted       bool
-	currentToolID    string
-	currentToolName  string
-	currentToolInput string
-	isServerTool     bool  // Track if current tool is server-executed
+	hasStarted                bool
+	currentToolID             string
+	currentToolName           string
+	currentToolInput          string
+	isServerTool              bool  // Track if current tool is server-executed
+	inputTokens               int   // Captured from message_start usage
+	cacheCreationInputTokens  int   // Captured from message_start usage
+	cacheReadInputTokens      int   // Captured from message_start usage
 }
 
 type AnthropicStreamData struct {
@@ -27,8 +30,10 @@ type AnthropicStreamData struct {
 }
 
 type AnthropicUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
 }
 
 type WebSearchResult struct {
@@ -70,9 +75,10 @@ type AnthropicDelta struct {
 }
 
 type AnthropicMessage struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-	Role string `json:"role"`
+	ID    string          `json:"id"`
+	Type  string          `json:"type"`
+	Role  string          `json:"role"`
+	Usage *AnthropicUsage `json:"usage,omitempty"` // Input tokens reported in message_start
 }
 
 type AnthropicContentBlock struct {
@@ -115,6 +121,14 @@ func (p *AnthropicProcessor) ProcessLine(line string) (*StreamEvent, error) {
 			eventType = "start"
 			content = ""
 			p.hasStarted = true
+			// Capture input tokens from message_start (Anthropic reports input tokens here)
+			if anthropicData.Message.Usage != nil {
+				p.inputTokens = anthropicData.Message.Usage.InputTokens
+				p.cacheCreationInputTokens = anthropicData.Message.Usage.CacheCreationInputTokens
+				p.cacheReadInputTokens = anthropicData.Message.Usage.CacheReadInputTokens
+				log.Printf("📊 Anthropic input tokens from message_start: %d (cache_create=%d, cache_read=%d)",
+					p.inputTokens, p.cacheCreationInputTokens, p.cacheReadInputTokens)
+			}
 		} else {
 			return nil, nil // Skip duplicate starts
 		}
@@ -279,12 +293,32 @@ func (p *AnthropicProcessor) ProcessLine(line string) (*StreamEvent, error) {
 	case "message_delta":
 		// Extract usage information from message_delta event
 		if anthropicData.Usage != nil {
+			// Anthropic reports input_tokens in message_start and output_tokens in message_delta.
+			// Combine both for accurate totals.
+			inputTokens := anthropicData.Usage.InputTokens
+			if inputTokens == 0 && p.inputTokens > 0 {
+				inputTokens = p.inputTokens
+			}
+			outputTokens := anthropicData.Usage.OutputTokens
+
+			// Merge cache tokens: prefer non-zero from message_delta, fall back to message_start
+			cacheCreation := anthropicData.Usage.CacheCreationInputTokens
+			if cacheCreation == 0 {
+				cacheCreation = p.cacheCreationInputTokens
+			}
+			cacheRead := anthropicData.Usage.CacheReadInputTokens
+			if cacheRead == 0 {
+				cacheRead = p.cacheReadInputTokens
+			}
+
 			return &StreamEvent{
-				Type:         "usage",
-				InputTokens:  anthropicData.Usage.InputTokens,
-				OutputTokens: anthropicData.Usage.OutputTokens,
-				TotalTokens:  anthropicData.Usage.InputTokens + anthropicData.Usage.OutputTokens,
-				Content:      "",
+				Type:                "usage",
+				InputTokens:         inputTokens,
+				OutputTokens:        outputTokens,
+				TotalTokens:         inputTokens + outputTokens,
+				CacheCreationTokens: cacheCreation,
+				CacheReadTokens:     cacheRead,
+				Content:             "",
 			}, nil
 		}
 		// Skip other message delta events without usage

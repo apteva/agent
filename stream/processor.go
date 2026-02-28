@@ -133,10 +133,27 @@ type StreamEvent struct {
 	Timestamp         int64                  `json:"timestamp"`   // Unix milliseconds timestamp
 
 	// Token usage fields (for "usage" events)
-	InputTokens       int                    `json:"input_tokens,omitempty"`
-	OutputTokens      int                    `json:"output_tokens,omitempty"`
-	TotalTokens       int                    `json:"total_tokens,omitempty"`
+	InputTokens         int                  `json:"input_tokens,omitempty"`
+	OutputTokens        int                  `json:"output_tokens,omitempty"`
+	TotalTokens         int                  `json:"total_tokens,omitempty"`
+	CacheCreationTokens int                  `json:"cache_creation_tokens,omitempty"` // Anthropic: tokens written to cache
+	CacheReadTokens     int                  `json:"cache_read_tokens,omitempty"`     // All providers: tokens read from cache
+	ReasoningTokens     int                  `json:"reasoning_tokens,omitempty"`      // OpenAI: reasoning/thinking tokens
 }
+
+// TokenUsageResult holds all token usage data from a streaming LLM call
+type TokenUsageResult struct {
+	InputTokens         int
+	OutputTokens        int
+	CacheCreationTokens int
+	CacheReadTokens     int
+	ReasoningTokens     int
+}
+
+// Interface methods for events.Span.WithDetailedTokenUsage
+func (t TokenUsageResult) GetCacheCreation() int { return t.CacheCreationTokens }
+func (t TokenUsageResult) GetCacheRead() int     { return t.CacheReadTokens }
+func (t TokenUsageResult) GetReasoning() int     { return t.ReasoningTokens }
 
 // sendCancelledEvent sends a cancellation SSE event to the client
 func sendCancelledEvent(w http.ResponseWriter, reason string) {
@@ -336,6 +353,7 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 			llmSpan = trace.StartSpan(fmt.Sprintf("llm_call_%d", iteration), events.SpanKindLLM).
 				WithThreadID(threadID).
 				WithTaskID(taskID).
+				WithProviderModel(llmConfig.Provider, llmConfig.Model).
 				WithAttribute("provider", llmConfig.Provider).
 				WithAttribute("model", llmConfig.Model).
 				WithAttribute("iteration", iteration).
@@ -372,7 +390,7 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 		}
 
 		// Process the stream and collect tool uses, save messages
-		toolResults, assistantMessage, inputTokens, outputTokens, err := processStreamWithToolsAndSaveContext(ctx, w, rawStream, processor, messageSaver, threadID, requestID, model, fileProcessor, taskID)
+		toolResults, assistantMessage, tokenUsage, err := processStreamWithToolsAndSaveContext(ctx, w, rawStream, processor, messageSaver, threadID, requestID, model, fileProcessor, taskID)
 		rawStream.Close()
 
 		// Get accumulated reasoning content from processor (for thinking models like Kimi K2)
@@ -400,13 +418,13 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 			return err
 		}
 
-		// End LLM span successfully with token usage and cost
+		// End LLM span successfully with token usage
 		if llmSpan != nil {
-			// Update token attribution with actual input tokens from LLM
 			llmSpan.
 				WithAttribute("tool_calls", len(toolResults)).
-				WithAttribute("token_attribution_actual", inputTokens).
-				WithTokenUsage(inputTokens, outputTokens).
+				WithAttribute("token_attribution_actual", tokenUsage.InputTokens).
+				WithTokenUsage(tokenUsage.InputTokens, tokenUsage.OutputTokens).
+				WithDetailedTokenUsage(tokenUsage).
 				End()
 		}
 
@@ -748,11 +766,11 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 }
 
 // processStreamWithToolsAndSave processes a stream, collects tool execution results, and saves messages
-func processStreamWithToolsAndSave(w http.ResponseWriter, rawReader io.Reader, processor StreamProcessor, messageSaver MessageSaver, threadID string, model *string, fileProcessor FileProcessor) ([]StreamEvent, string, int, int, error) {
+func processStreamWithToolsAndSave(w http.ResponseWriter, rawReader io.Reader, processor StreamProcessor, messageSaver MessageSaver, threadID string, model *string, fileProcessor FileProcessor) ([]StreamEvent, string, TokenUsageResult, error) {
 	return processStreamWithToolsAndSaveContext(context.Background(), w, rawReader, processor, messageSaver, threadID, "", model, fileProcessor, "")
 }
 
-func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWriter, rawReader io.Reader, processor StreamProcessor, messageSaver MessageSaver, threadID string, requestID string, model *string, fileProcessor FileProcessor, taskID string) ([]StreamEvent, string, int, int, error) {
+func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWriter, rawReader io.Reader, processor StreamProcessor, messageSaver MessageSaver, threadID string, requestID string, model *string, fileProcessor FileProcessor, taskID string) ([]StreamEvent, string, TokenUsageResult, error) {
 	// Set headers for streaming
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -762,7 +780,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		return nil, "", 0, 0, fmt.Errorf("streaming not supported")
+		return nil, "", TokenUsageResult{}, fmt.Errorf("streaming not supported")
 	}
 
 	var toolResults []StreamEvent
@@ -776,7 +794,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	requestIDSent := false // Track if we've sent the request_id
 
 	// Track token usage
-	var usageInputTokens, usageOutputTokens int
+	var usageResult TokenUsageResult
 
 	// Pending custom tools for parallel execution
 	var pendingCustomTools []ToolCall
@@ -844,7 +862,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					// Just consume the rest
 				}
 			}()
-			return toolResults, assistantContent, usageInputTokens, usageOutputTokens, ctx.Err()
+			return toolResults, assistantContent, usageResult, ctx.Err()
 		default:
 		}
 		line := scanner.Text()
@@ -860,8 +878,13 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 			// Handle usage event (token usage from LLM)
 			if event.Type == "usage" {
 				// Store usage data
-				usageInputTokens = event.InputTokens
-				usageOutputTokens = event.OutputTokens
+				usageResult = TokenUsageResult{
+					InputTokens:         event.InputTokens,
+					OutputTokens:        event.OutputTokens,
+					CacheCreationTokens: event.CacheCreationTokens,
+					CacheReadTokens:     event.CacheReadTokens,
+					ReasoningTokens:     event.ReasoningTokens,
+				}
 
 				// Publish usage event to event bus
 				eventBus := events.GetEventBus()
@@ -871,6 +894,16 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					WithData("input_tokens", event.InputTokens).
 					WithData("output_tokens", event.OutputTokens).
 					WithData("total_tokens", event.TotalTokens)
+
+				if event.CacheCreationTokens > 0 {
+					usageEvent.WithData("cache_creation_tokens", event.CacheCreationTokens)
+				}
+				if event.CacheReadTokens > 0 {
+					usageEvent.WithData("cache_read_tokens", event.CacheReadTokens)
+				}
+				if event.ReasoningTokens > 0 {
+					usageEvent.WithData("reasoning_tokens", event.ReasoningTokens)
+				}
 
 				// Add model if available
 				if model != nil && *model != "" {
@@ -887,12 +920,25 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 
 				eventBus.Publish(usageEvent)
 
-				// Stream usage to client
-				fmt.Fprintf(w, "data: {\"type\":\"usage\",\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"timestamp\":%d}\n\n",
-					event.InputTokens, event.OutputTokens, event.TotalTokens, time.Now().UnixMilli())
+				// Stream usage to client (include cache/reasoning fields when non-zero)
+				usageJSON := fmt.Sprintf(`{"type":"usage","input_tokens":%d,"output_tokens":%d,"total_tokens":%d`,
+					event.InputTokens, event.OutputTokens, event.TotalTokens)
+				if event.CacheCreationTokens > 0 {
+					usageJSON += fmt.Sprintf(`,"cache_creation_tokens":%d`, event.CacheCreationTokens)
+				}
+				if event.CacheReadTokens > 0 {
+					usageJSON += fmt.Sprintf(`,"cache_read_tokens":%d`, event.CacheReadTokens)
+				}
+				if event.ReasoningTokens > 0 {
+					usageJSON += fmt.Sprintf(`,"reasoning_tokens":%d`, event.ReasoningTokens)
+				}
+				usageJSON += fmt.Sprintf(`,"timestamp":%d}`, time.Now().UnixMilli())
+				fmt.Fprintf(w, "data: %s\n\n", usageJSON)
 				flusher.Flush()
 
-				log.Printf("📊 Token usage: input=%d, output=%d, total=%d", event.InputTokens, event.OutputTokens, event.TotalTokens)
+				log.Printf("📊 Token usage: input=%d, output=%d, total=%d, cache_create=%d, cache_read=%d, reasoning=%d",
+					event.InputTokens, event.OutputTokens, event.TotalTokens,
+					event.CacheCreationTokens, event.CacheReadTokens, event.ReasoningTokens)
 				continue // Don't add to tool results
 			}
 
@@ -1546,7 +1592,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	select {
 	case <-ctx.Done():
 		log.Printf("🛑 Cancelled before drain phase")
-		return toolResults, assistantContent, usageInputTokens, usageOutputTokens, ctx.Err()
+		return toolResults, assistantContent, usageResult, ctx.Err()
 	default:
 	}
 
@@ -1824,7 +1870,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, "", 0, 0, fmt.Errorf("error reading stream: %w", err)
+		return nil, "", TokenUsageResult{}, fmt.Errorf("error reading stream: %w", err)
 	}
 
 	// Save final assistant message if we have content
@@ -1867,7 +1913,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 		contentToReturn = preToolContent
 	}
 
-	return toolResults, contentToReturn, usageInputTokens, usageOutputTokens, nil
+	return toolResults, contentToReturn, usageResult, nil
 }
 
 // UnifiedToolConversation - backwards compatible version

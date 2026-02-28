@@ -11,10 +11,16 @@ type OpenAIRequest struct {
 	MaxCompletionTokens int                   `json:"max_completion_tokens,omitempty"` // For newer OpenAI models (gpt-4o, gpt-5.x, o1, etc.)
 	Temperature         *float64              `json:"temperature,omitempty"`
 	Stream              bool                  `json:"stream"`
+	StreamOptions       *StreamOptions        `json:"stream_options,omitempty"`        // Required for token usage in streaming mode
 	Tools               []interface{}         `json:"tools,omitempty"`
 	ReasoningEffort     string                `json:"reasoning_effort,omitempty"`      // For reasoning models (o1, o3, gpt-5.x)
 	ReasoningHistory    string                `json:"reasoning_history,omitempty"`     // For thinking models (Kimi K2): "interleaved" or "preserved"
 	ReasoningSplit      *bool                 `json:"reasoning_split,omitempty"`       // For MiniMax M2.5: true for structured reasoning_details
+}
+
+// StreamOptions controls streaming behavior (OpenAI-compatible APIs)
+type StreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type OpenAIMessage struct {

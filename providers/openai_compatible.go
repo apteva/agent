@@ -420,10 +420,11 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 
 	// Prepare OpenAI request using config
 	openaiReq := OpenAIRequest{
-		Model:    llmConfig.Model,
-		Messages: openaiMessages,
-		Stream:   true,
-		Tools:    openaiTools,
+		Model:         llmConfig.Model,
+		Messages:      openaiMessages,
+		Stream:        true,
+		StreamOptions: &StreamOptions{IncludeUsage: true},
+		Tools:         openaiTools,
 	}
 
 	// Newer OpenAI models (gpt-5.x, o1, o3) don't support custom temperature

@@ -132,8 +132,13 @@ type Span struct {
 	Attributes    map[string]interface{} `json:"attributes"`
 	InputData     string                 `json:"input_data,omitempty"`
 	OutputData    string                 `json:"output_data,omitempty"`
-	TokenUsageIn  int                    `json:"token_usage_input,omitempty"`
-	TokenUsageOut int                    `json:"token_usage_output,omitempty"`
+	TokenUsageIn        int              `json:"token_usage_input,omitempty"`
+	TokenUsageOut       int              `json:"token_usage_output,omitempty"`
+	CacheCreationTokens int             `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens     int             `json:"cache_read_tokens,omitempty"`
+	ReasoningTokens     int             `json:"reasoning_tokens,omitempty"`
+	Provider            string          `json:"provider,omitempty"`
+	Model               string          `json:"model,omitempty"`
 
 	// Not persisted, used for building tree
 	Events     []*Event `json:"events,omitempty"`
@@ -312,6 +317,26 @@ func (s *Span) WithTokenUsage(inputTokens, outputTokens int) *Span {
 	return s
 }
 
+// WithDetailedTokenUsage sets cache and reasoning token counts.
+// Accepts a struct with the same field layout as stream.TokenUsageResult
+// to avoid circular imports.
+func (s *Span) WithDetailedTokenUsage(detail interface{ GetCacheCreation() int; GetCacheRead() int; GetReasoning() int }) *Span {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CacheCreationTokens = detail.GetCacheCreation()
+	s.CacheReadTokens = detail.GetCacheRead()
+	s.ReasoningTokens = detail.GetReasoning()
+	return s
+}
+
+func (s *Span) WithProviderModel(provider, model string) *Span {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Provider = provider
+	s.Model = model
+	return s
+}
+
 func (s *Span) SetStatus(status SpanStatus) *Span {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -450,10 +475,14 @@ func (s *Span) update() error {
 		UPDATE spans
 		SET end_time = ?, duration_ms = ?, status = ?, status_message = ?,
 		    attributes = ?, token_usage_input = ?, token_usage_output = ?,
+		    cache_creation_tokens = ?, cache_read_tokens = ?, reasoning_tokens = ?,
+		    provider = ?, model = ?,
 		    thread_id = ?, task_id = ?
 		WHERE id = ?`,
 		s.EndTime, s.DurationMS, s.Status, s.StatusMessage,
 		string(attributesJSON), s.TokenUsageIn, s.TokenUsageOut,
+		s.CacheCreationTokens, s.CacheReadTokens, s.ReasoningTokens,
+		s.Provider, s.Model,
 		s.ThreadID, s.TaskID, s.ID)
 
 	return err
@@ -550,17 +579,20 @@ func GetSpan(db *sql.DB, spanID string) (*Span, error) {
 	var span Span
 	var attributesJSON, endTime, parentSpanID, statusMessage, category sql.NullString
 	var threadID, sessionID, agentID, inputData, outputData sql.NullString
-	var durationMS, tokenIn, tokenOut sql.NullInt64
+	var provider, model sql.NullString
+	var durationMS, tokenIn, tokenOut, cacheCreation, cacheRead, reasoning sql.NullInt64
 
 	err := db.QueryRow(`
 		SELECT id, trace_id, parent_span_id, name, kind, start_time, end_time, duration_ms,
 		       status, status_message, category, thread_id, session_id, agent_id, attributes,
-		       input_data, output_data, token_usage_input, token_usage_output
+		       input_data, output_data, token_usage_input, token_usage_output,
+		       cache_creation_tokens, cache_read_tokens, reasoning_tokens, provider, model
 		FROM spans WHERE id = ?`, spanID).Scan(
 		&span.ID, &span.TraceID, &parentSpanID, &span.Name, &span.Kind, &span.StartTime,
 		&endTime, &durationMS, &span.Status, &statusMessage, &category,
 		&threadID, &sessionID, &agentID, &attributesJSON,
-		&inputData, &outputData, &tokenIn, &tokenOut)
+		&inputData, &outputData, &tokenIn, &tokenOut,
+		&cacheCreation, &cacheRead, &reasoning, &provider, &model)
 
 	if err != nil {
 		return nil, err
@@ -601,6 +633,21 @@ func GetSpan(db *sql.DB, spanID string) (*Span, error) {
 	if tokenOut.Valid {
 		span.TokenUsageOut = int(tokenOut.Int64)
 	}
+	if cacheCreation.Valid {
+		span.CacheCreationTokens = int(cacheCreation.Int64)
+	}
+	if cacheRead.Valid {
+		span.CacheReadTokens = int(cacheRead.Int64)
+	}
+	if reasoning.Valid {
+		span.ReasoningTokens = int(reasoning.Int64)
+	}
+	if provider.Valid {
+		span.Provider = provider.String
+	}
+	if model.Valid {
+		span.Model = model.String
+	}
 
 	span.db = db
 	return &span, nil
@@ -610,7 +657,8 @@ func GetSpansForTrace(db *sql.DB, traceID string) ([]*Span, error) {
 	rows, err := db.Query(`
 		SELECT id, trace_id, parent_span_id, name, kind, start_time, end_time, duration_ms,
 		       status, status_message, category, thread_id, session_id, agent_id, attributes,
-		       token_usage_input, token_usage_output
+		       token_usage_input, token_usage_output,
+		       cache_creation_tokens, cache_read_tokens, reasoning_tokens, provider, model
 		FROM spans
 		WHERE trace_id = ?
 		ORDER BY start_time`, traceID)
@@ -625,13 +673,15 @@ func GetSpansForTrace(db *sql.DB, traceID string) ([]*Span, error) {
 		var span Span
 		var attributesJSON, endTime, parentSpanID, statusMessage, category sql.NullString
 		var threadID, sessionID, agentID sql.NullString
-		var durationMS, tokenIn, tokenOut sql.NullInt64
+		var provider, model sql.NullString
+		var durationMS, tokenIn, tokenOut, cacheCreation, cacheRead, reasoning sql.NullInt64
 
 		err := rows.Scan(
 			&span.ID, &span.TraceID, &parentSpanID, &span.Name, &span.Kind, &span.StartTime,
 			&endTime, &durationMS, &span.Status, &statusMessage, &category,
 			&threadID, &sessionID, &agentID, &attributesJSON,
-			&tokenIn, &tokenOut)
+			&tokenIn, &tokenOut,
+			&cacheCreation, &cacheRead, &reasoning, &provider, &model)
 
 		if err != nil {
 			continue
@@ -671,6 +721,21 @@ func GetSpansForTrace(db *sql.DB, traceID string) ([]*Span, error) {
 		}
 		if tokenOut.Valid {
 			span.TokenUsageOut = int(tokenOut.Int64)
+		}
+		if cacheCreation.Valid {
+			span.CacheCreationTokens = int(cacheCreation.Int64)
+		}
+		if cacheRead.Valid {
+			span.CacheReadTokens = int(cacheRead.Int64)
+		}
+		if reasoning.Valid {
+			span.ReasoningTokens = int(reasoning.Int64)
+		}
+		if provider.Valid {
+			span.Provider = provider.String
+		}
+		if model.Valid {
+			span.Model = model.String
 		}
 
 		span.db = db

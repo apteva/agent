@@ -41,9 +41,19 @@ type OpenAIStreamData struct {
 }
 
 type OpenAIUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens            int                      `json:"prompt_tokens"`
+	CompletionTokens        int                      `json:"completion_tokens"`
+	TotalTokens             int                      `json:"total_tokens"`
+	PromptTokensDetails     *OpenAIPromptDetails     `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *OpenAICompletionDetails `json:"completion_tokens_details,omitempty"`
+}
+
+type OpenAIPromptDetails struct {
+	CachedTokens int `json:"cached_tokens"`
+}
+
+type OpenAICompletionDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens"`
 }
 
 type OpenAIChoice struct {
@@ -128,26 +138,14 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 			return p.emitAllToolEvents()
 		}
 
-		return &StreamEvent{
-			Type:         "usage",
-			InputTokens:  openaiData.Usage.PromptTokens,
-			OutputTokens: openaiData.Usage.CompletionTokens,
-			TotalTokens:  openaiData.Usage.TotalTokens,
-			Content:      "",
-		}, nil
+		return openaiUsageToStreamEvent(openaiData.Usage), nil
 	}
 
 	// Check if we have pending usage to emit
 	if p.pendingUsage != nil {
 		usage := p.pendingUsage
 		p.pendingUsage = nil
-		return &StreamEvent{
-			Type:         "usage",
-			InputTokens:  usage.PromptTokens,
-			OutputTokens: usage.CompletionTokens,
-			TotalTokens:  usage.TotalTokens,
-			Content:      "",
-		}, nil
+		return openaiUsageToStreamEvent(usage), nil
 	}
 
 	// Check if we have pending content from a start chunk (xAI sends role+content together)
@@ -569,4 +567,22 @@ func (p *OpenAIProcessor) emitAllToolEvents() (*StreamEvent, error) {
 	}
 
 	return nil, nil
+}
+
+// openaiUsageToStreamEvent converts OpenAI usage data to a StreamEvent,
+// including cached token and reasoning token details when available.
+func openaiUsageToStreamEvent(usage *OpenAIUsage) *StreamEvent {
+	event := &StreamEvent{
+		Type:         "usage",
+		InputTokens:  usage.PromptTokens,
+		OutputTokens: usage.CompletionTokens,
+		TotalTokens:  usage.TotalTokens,
+	}
+	if usage.PromptTokensDetails != nil {
+		event.CacheReadTokens = usage.PromptTokensDetails.CachedTokens
+	}
+	if usage.CompletionTokensDetails != nil {
+		event.ReasoningTokens = usage.CompletionTokensDetails.ReasoningTokens
+	}
+	return event
 }

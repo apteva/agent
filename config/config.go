@@ -612,8 +612,12 @@ func (c *Config) loadDefaults() {
 			BlockedDomains:  []string{},
 		},
 		Context: &ContextConfig{
-			MaxMessages: 30, // Keep last 30 messages by default
-			KeepImages:  5,  // Keep images in last 5 messages only
+			MaxMessages: 0, // No message-count limit — use token-based management
+			MaxTokens:   0, // 0 = auto-derive from model context window
+			KeepImages:  5, // Keep images in last 5 messages only
+			Compaction: &CompactionConfig{
+				Enabled: true, // Always on — compacts in background before context fills up
+			},
 		},
 		FileSystem: &FileSystemConfig{
 			Enabled:        false,                 // Disabled by default
