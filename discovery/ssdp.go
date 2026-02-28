@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -262,6 +263,10 @@ func (d *SSDPDiscovery) GetAgents() []config.AgentInfo {
 	for _, agent := range d.registry {
 		agents = append(agents, *agent)
 	}
+	// Sort for deterministic ordering (prompt cache stability)
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].ID < agents[j].ID
+	})
 	return agents
 }
 

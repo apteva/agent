@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"path/filepath"
 	"sync"
 	"syscall"
@@ -322,6 +323,10 @@ func (d *FileDiscovery) GetAgents() []config.AgentInfo {
 		log.Printf("🔍 DEBUG GetAgents returning: %s (%s) at %s", agent.Name, id, agent.URL)
 		agents = append(agents, *agent)
 	}
+	// Sort for deterministic ordering (prompt cache stability)
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].ID < agents[j].ID
+	})
 
 	log.Printf("🔍 DEBUG GetAgents returning %d agents total", len(agents))
 	return agents

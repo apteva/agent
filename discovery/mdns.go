@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -466,6 +467,10 @@ func (d *MDNSDiscovery) GetAgents() []config.AgentInfo {
 	for _, agent := range d.registry {
 		agents = append(agents, *agent)
 	}
+	// Sort for deterministic ordering (prompt cache stability)
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].ID < agents[j].ID
+	})
 	return agents
 }
 
