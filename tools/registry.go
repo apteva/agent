@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 )
 
 // validToolNameRegex matches Anthropic's required pattern: ^[a-zA-Z0-9_-]{1,128}$
@@ -334,6 +335,10 @@ func (r *Registry) ListTools() []ToolDefinition {
 			InputSchema: tool.InputSchema(),
 		})
 	}
+	// Sort for deterministic ordering (cache stability)
+	sort.Slice(definitions, func(i, j int) bool {
+		return definitions[i].Name < definitions[j].Name
+	})
 	return definitions
 }
 
@@ -359,6 +364,7 @@ func (r *Registry) ListToolNames() []string {
 	for name := range r.tools {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 
@@ -371,6 +377,9 @@ func (r *Registry) GetToolManifest() []ToolManifestEntry {
 			Summary: GetSummary(tool),
 		})
 	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
 	return entries
 }
 

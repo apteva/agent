@@ -3,6 +3,7 @@ package tools
 import (
 	"log"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/apteva/agent/config"
@@ -80,11 +81,14 @@ func (l *ToolLoader) LoadTools(userMessage string, allTools []ToolDefinition) []
 		loadedTools[t.Name] = t
 	}
 
-	// Convert map to slice
+	// Convert map to slice (sorted by name for cache stability)
 	result := make([]ToolDefinition, 0, len(loadedTools))
 	for _, t := range loadedTools {
 		result = append(result, t)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
 
 	// Apply max tools cap
 	maxTools := l.config.MaxTools
@@ -212,6 +216,10 @@ func (l *ToolLoader) expandGlob(pattern string, toolMap map[string]ToolDefinitio
 				matches = append(matches, t)
 			}
 		}
+		// Sort for deterministic ordering (cache stability)
+		sort.Slice(matches, func(i, j int) bool {
+			return matches[i].Name < matches[j].Name
+		})
 		return matches
 	}
 
