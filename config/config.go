@@ -683,6 +683,9 @@ func (c *Config) Load() error {
 		return err
 	}
 
+	// Always override version from binary/VERSION file, never from config file
+	c.Agent.Version = GetVersion()
+
 	// Override with environment variables if set
 	if publicURL := os.Getenv("PUBLIC_URL"); publicURL != "" {
 		c.Agent.PublicURL = publicURL
