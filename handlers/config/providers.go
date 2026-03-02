@@ -2,7 +2,12 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/apteva/agent/config"
 )
@@ -298,4 +303,96 @@ func HandleProviders(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// HandleOllamaModels proxies to Ollama's /api/tags to list locally available models.
+// The browser can't call Ollama directly due to CORS.
+func HandleOllamaModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Determine Ollama base URL: query param > config > env > default
+	ollamaURL := r.URL.Query().Get("url")
+	if ollamaURL == "" {
+		cfg := config.GetConfig()
+		if cfg != nil {
+			ollamaURL = cfg.GetLLMConfig().BaseURL
+		}
+	}
+	if ollamaURL == "" {
+		ollamaURL = os.Getenv("OLLAMA_BASE_URL")
+	}
+	if ollamaURL == "" {
+		ollamaURL = "http://localhost:11434"
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(ollamaURL + "/api/tags")
+	if err != nil {
+		log.Printf("Failed to connect to Ollama at %s: %v", ollamaURL, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error":  fmt.Sprintf("Cannot connect to Ollama at %s", ollamaURL),
+			"models": []interface{}{},
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read Ollama response", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse Ollama response and convert to our ProviderModel format
+	var ollamaResp struct {
+		Models []struct {
+			Name    string `json:"name"`
+			Size    int64  `json:"size"`
+			Details struct {
+				Family        string `json:"family"`
+				ParameterSize string `json:"parameter_size"`
+				Quantization  string `json:"quantization_level"`
+			} `json:"details"`
+		} `json:"models"`
+	}
+
+	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+		// Forward raw response
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body)
+		return
+	}
+
+	// Convert to ProviderModel format
+	models := make([]ProviderModel, 0, len(ollamaResp.Models))
+	for _, m := range ollamaResp.Models {
+		label := m.Name
+		if m.Details.ParameterSize != "" {
+			label += fmt.Sprintf(" (%s", m.Details.ParameterSize)
+			if m.Details.Quantization != "" {
+				label += ", " + m.Details.Quantization
+			}
+			label += ")"
+		}
+		// Show size in GB
+		if m.Size > 0 {
+			sizeGB := float64(m.Size) / (1024 * 1024 * 1024)
+			label += fmt.Sprintf(" [%.1fGB]", sizeGB)
+		}
+		models = append(models, ProviderModel{
+			Value: m.Name,
+			Label: label,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"models": models,
+		"url":    ollamaURL,
+	})
 }

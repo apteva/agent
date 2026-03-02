@@ -3986,6 +3986,7 @@ func main() {
 	mux.HandleFunc("/requests/", handleRequestCancel) // Cancel endpoint: POST /requests/{id}/cancel
 	mux.HandleFunc("/config", handlerConfig.HandleConfig)
 	mux.HandleFunc("/providers", handlerConfig.HandleProviders)
+	mux.HandleFunc("/providers/ollama/models", handlerConfig.HandleOllamaModels)
 	mux.HandleFunc("/reset", handleReset)
 	mux.HandleFunc("/operator/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -183,13 +183,30 @@ function updateModelOptions() {
             baseUrlContainer.classList.remove('hidden');
             if (baseUrlInput) {
                 baseUrlInput.placeholder = provider.default_url || 'http://localhost:11434';
+                // Auto-fetch models when base URL changes
+                baseUrlInput.onchange = () => fetchOllamaModels();
             }
         } else {
             baseUrlContainer.classList.add('hidden');
         }
     }
 
-    provider.models.forEach(model => {
+    // For Ollama, auto-fetch available models from the instance
+    if (provider.custom_url && selectedProvider === 'ollama') {
+        modelSelect.innerHTML = '<option value="">Fetching models from Ollama...</option>';
+        fetchOllamaModels();
+        return;
+    }
+
+    populateModelDropdown(provider.models, provider.custom_url);
+}
+
+// Populate model dropdown with given models
+function populateModelDropdown(models, allowCustom) {
+    const modelSelect = document.getElementById('configModel');
+    modelSelect.innerHTML = '';
+
+    models.forEach(model => {
         const option = document.createElement('option');
         option.value = model.value;
         option.textContent = model.label;
@@ -199,51 +216,64 @@ function updateModelOptions() {
         modelSelect.appendChild(option);
     });
 
-    // For providers with custom models (like Ollama), add a custom model option
-    if (provider.custom_url) {
-        const customOption = document.createElement('option');
-        customOption.value = '__custom__';
-        customOption.textContent = '-- Custom model name --';
-        modelSelect.appendChild(customOption);
-    }
-
-    // Set current model value if it matches this provider
+    // Set current model value if it matches
     if (currentConfig?.llm?.model) {
-        const modelExists = provider.models.some(m => m.value === currentConfig.llm.model);
+        const modelExists = models.some(m => m.value === currentConfig.llm.model);
         if (modelExists) {
             modelSelect.value = currentConfig.llm.model;
-        } else if (provider.custom_url && currentConfig.llm.provider === selectedProvider) {
-            // Custom model — select the custom option and show input
-            modelSelect.value = '__custom__';
         }
     }
-
-    // Handle custom model input toggle
-    modelSelect.onchange = function() {
-        toggleCustomModelInput(this.value === '__custom__');
-    };
-    toggleCustomModelInput(modelSelect.value === '__custom__', currentConfig?.llm?.model);
 }
 
-// Show/hide custom model name input
-function toggleCustomModelInput(show, existingValue) {
-    let customInput = document.getElementById('configCustomModel');
-    if (show) {
-        if (!customInput) {
-            const modelSelect = document.getElementById('configModel');
-            customInput = document.createElement('input');
-            customInput.type = 'text';
-            customInput.id = 'configCustomModel';
-            customInput.placeholder = 'e.g. llama3.1:latest';
-            customInput.className = 'w-full px-3 py-2 mt-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100';
-            modelSelect.parentNode.appendChild(customInput);
+// Fetch available models from a running Ollama instance
+async function fetchOllamaModels() {
+    const modelSelect = document.getElementById('configModel');
+    const baseUrlInput = document.getElementById('configBaseUrl');
+    const ollamaUrl = baseUrlInput?.value || '';
+
+    try {
+        const queryParam = ollamaUrl ? `?url=${encodeURIComponent(ollamaUrl)}` : '';
+        const response = await makeRequest(`/providers/ollama/models${queryParam}`);
+
+        if (response.status === 200 && response.data?.models?.length > 0) {
+            const models = response.data.models;
+            modelSelect.innerHTML = '';
+
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.value;
+                option.textContent = model.label;
+                modelSelect.appendChild(option);
+            });
+
+            // Set current model if it exists in the list
+            if (currentConfig?.llm?.model) {
+                const exists = models.some(m => m.value === currentConfig.llm.model);
+                if (exists) {
+                    modelSelect.value = currentConfig.llm.model;
+                }
+            }
+
+            showToast(`Found ${models.length} Ollama models`, 'success');
+        } else {
+            // Ollama not reachable — fall back to static list
+            const provider = providersData?.find(p => p.id === 'ollama');
+            if (provider) {
+                populateModelDropdown(provider.models, true);
+            }
+            const errorMsg = response.data?.error || 'Ollama not reachable';
+            modelSelect.insertBefore(
+                Object.assign(document.createElement('option'), { value: '', textContent: `⚠ ${errorMsg} — showing defaults` }),
+                modelSelect.firstChild
+            );
         }
-        if (existingValue && existingValue !== '__custom__') {
-            customInput.value = existingValue;
+    } catch (e) {
+        console.error('Failed to fetch Ollama models:', e);
+        // Fall back to static list
+        const provider = providersData?.find(p => p.id === 'ollama');
+        if (provider) {
+            populateModelDropdown(provider.models, true);
         }
-        customInput.classList.remove('hidden');
-    } else if (customInput) {
-        customInput.classList.add('hidden');
     }
 }
 
@@ -545,12 +575,7 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
-    // Resolve model: use custom input if selected, otherwise dropdown value
-    let model = document.getElementById('configModel').value;
-    const customModelInput = document.getElementById('configCustomModel');
-    if (model === '__custom__' && customModelInput) {
-        model = customModelInput.value.trim();
-    }
+    const model = document.getElementById('configModel').value;
 
     const updates = {
         id: document.getElementById('configAgentId').value,
