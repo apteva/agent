@@ -477,6 +477,7 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 	endpoint := p.baseURL + "/chat/completions"
 	log.Printf("🔗 %s API call: %s (model: %s)", p.keyEnvVar, endpoint, llmConfig.Model)
 
+
 	// Create HTTP request
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(reqBody))
 	if err != nil {

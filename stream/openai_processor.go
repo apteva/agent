@@ -10,6 +10,8 @@ type OpenAIProcessor struct{
 	hasStarted            bool
 	toolCallStarted       map[int]bool // Track which tool call indices have started
 	pendingUsage          *OpenAIUsage // Store usage when we need to emit tool_use first
+	pendingStop           *StreamEvent // Store stop event so usage chunk can be read first
+	streamDone            bool         // Set when [DONE] is received, allows pendingStop to emit
 	pendingContent        string // Store content from start chunk (xAI sends role+content together)
 
 	// Track multiple parallel tool calls by index
@@ -99,14 +101,37 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 		return event, nil
 	}
 
+	// Check if we have pending usage to emit (from deferred stop or tool completion)
+	if p.pendingUsage != nil {
+		usage := p.pendingUsage
+		p.pendingUsage = nil
+		return openaiUsageToStreamEvent(usage), nil
+	}
+
+	// Emit deferred stop only after stream is done (streamDone flag set by [DONE])
+	// This ensures blank SSE separator lines during streaming don't trigger early stop
+	if p.pendingStop != nil && p.streamDone {
+		stop := p.pendingStop
+		p.pendingStop = nil
+		return stop, nil
+	}
+
 	// OpenAI format: "data: {JSON}"
 	if !strings.HasPrefix(line, "data: ") {
-		return nil, nil // Skip non-data lines
+		return nil, nil // Skip non-data lines (including blank SSE separator lines)
 	}
 
 	// Extract JSON part
 	jsonStr := strings.TrimPrefix(line, "data: ")
 	if jsonStr == "[DONE]" {
+		p.streamDone = true
+		// If we have a pending stop, it'll be emitted on next ProcessLine call
+		// (via the streamDone check above, triggered by drain loop)
+		if p.pendingStop != nil {
+			stop := p.pendingStop
+			p.pendingStop = nil
+			return stop, nil
+		}
 		return nil, nil // Skip DONE marker
 	}
 
@@ -125,7 +150,7 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 	}
 
 	// Check for usage data (comes in final chunk before [DONE])
-	// But first, check if we have pending tool data that needs to be emitted
+	// OpenAI-compatible APIs send usage in a separate chunk AFTER finish_reason:"stop"
 	if openaiData.Usage != nil {
 		// If we have accumulated tool data, emit tool_use events first
 		if len(p.toolIDs) > 0 {
@@ -138,14 +163,12 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 			return p.emitAllToolEvents()
 		}
 
-		return openaiUsageToStreamEvent(openaiData.Usage), nil
-	}
+		// If we have a pending stop, emit usage first (stop will be emitted next call)
+		if p.pendingStop != nil {
+			return openaiUsageToStreamEvent(openaiData.Usage), nil
+		}
 
-	// Check if we have pending usage to emit
-	if p.pendingUsage != nil {
-		usage := p.pendingUsage
-		p.pendingUsage = nil
-		return openaiUsageToStreamEvent(usage), nil
+		return openaiUsageToStreamEvent(openaiData.Usage), nil
 	}
 
 	// Check if we have pending content from a start chunk (xAI sends role+content together)
@@ -296,10 +319,20 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 		}
 	}
 
-	return &StreamEvent{
+	event := &StreamEvent{
 		Type:    eventType,
 		Content: content,
-	}, nil
+	}
+
+	// Defer stop events so the usage chunk (which comes AFTER finish_reason in
+	// OpenAI-compatible APIs) can be read before the scanner loop breaks.
+	// The pending stop will be emitted on the next ProcessLine call after usage.
+	if eventType == "stop" {
+		p.pendingStop = event
+		return nil, nil
+	}
+
+	return event, nil
 }
 
 // processContentWithThinkTags handles content that may contain <think>...</think> tags
@@ -467,12 +500,14 @@ func (p *OpenAIProcessor) ResetForNewTurn() {
 	p.thinkBuffer = ""
 	p.pendingContent = ""  // Clear stale content from previous turn
 	p.pendingUsage = nil   // Clear stale usage from previous turn
+	p.pendingStop = nil    // Clear stale stop from previous turn
+	p.streamDone = false   // Reset stream-done flag for new turn
 	// Don't clear accumulatedReasoning - it's managed by ClearAccumulatedReasoning after use
 }
 
 // HasPendingEvents returns true if there are queued events waiting to be emitted
 func (p *OpenAIProcessor) HasPendingEvents() bool {
-	return len(p.pendingToolUse) > 0 || p.pendingUsage != nil
+	return len(p.pendingToolUse) > 0 || p.pendingUsage != nil || p.pendingStop != nil
 }
 
 // GetAccumulatedReasoning returns the accumulated reasoning content without clearing it

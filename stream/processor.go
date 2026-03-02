@@ -1606,6 +1606,72 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 				break
 			}
 
+			// Handle usage events that were pending (deferred stop allows usage to be captured)
+			if event.Type == "usage" {
+				usageResult = TokenUsageResult{
+					InputTokens:         event.InputTokens,
+					OutputTokens:        event.OutputTokens,
+					CacheCreationTokens: event.CacheCreationTokens,
+					CacheReadTokens:     event.CacheReadTokens,
+					ReasoningTokens:     event.ReasoningTokens,
+				}
+
+				// Publish usage event to event bus
+				eventBus := events.GetEventBus()
+				usageEvent := events.NewEvent(events.CategoryLLM, events.TypeLLMTokens, events.LevelInfo).
+					WithThread(threadID).
+					WithTask(taskID).
+					WithData("input_tokens", event.InputTokens).
+					WithData("output_tokens", event.OutputTokens).
+					WithData("total_tokens", event.TotalTokens)
+				if event.CacheCreationTokens > 0 {
+					usageEvent.WithData("cache_creation_tokens", event.CacheCreationTokens)
+				}
+				if event.CacheReadTokens > 0 {
+					usageEvent.WithData("cache_read_tokens", event.CacheReadTokens)
+				}
+				if event.ReasoningTokens > 0 {
+					usageEvent.WithData("reasoning_tokens", event.ReasoningTokens)
+				}
+				if model != nil && *model != "" {
+					usageEvent.WithData("model", *model)
+				}
+				if span := events.GetCurrentSpan(); span != nil {
+					usageEvent.WithSpan(span.ID)
+				}
+				if trace := events.GetCurrentTrace(); trace != nil {
+					usageEvent.WithTrace(trace.ID)
+				}
+				eventBus.Publish(usageEvent)
+
+				// Stream usage to client
+				usageJSON := fmt.Sprintf(`{"type":"usage","input_tokens":%d,"output_tokens":%d,"total_tokens":%d`,
+					event.InputTokens, event.OutputTokens, event.TotalTokens)
+				if event.CacheCreationTokens > 0 {
+					usageJSON += fmt.Sprintf(`,"cache_creation_tokens":%d`, event.CacheCreationTokens)
+				}
+				if event.CacheReadTokens > 0 {
+					usageJSON += fmt.Sprintf(`,"cache_read_tokens":%d`, event.CacheReadTokens)
+				}
+				if event.ReasoningTokens > 0 {
+					usageJSON += fmt.Sprintf(`,"reasoning_tokens":%d`, event.ReasoningTokens)
+				}
+				usageJSON += fmt.Sprintf(`,"timestamp":%d}`, time.Now().UnixMilli())
+				fmt.Fprintf(w, "data: %s\n\n", usageJSON)
+				flusher.Flush()
+
+				log.Printf("📊 Token usage (drain): input=%d, output=%d, total=%d, cache_create=%d, cache_read=%d, reasoning=%d",
+					event.InputTokens, event.OutputTokens, event.TotalTokens,
+					event.CacheCreationTokens, event.CacheReadTokens, event.ReasoningTokens)
+				continue
+			}
+
+			// Handle stop events (deferred from processor to allow usage capture)
+			if event.Type == "stop" {
+				log.Printf("🔧 Draining deferred stop event")
+				continue
+			}
+
 			// Handle tool_use events - execute the tool
 			if event.Type == "tool_use" {
 				log.Printf("🔧 Draining pending tool_use: %s (id=%s)", event.ToolName, event.ToolID)
