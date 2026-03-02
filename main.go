@@ -401,6 +401,7 @@ var (
 	moonshotProvider    *providers.MoonshotProvider
 	togetherProvider    *providers.TogetherProvider
 	mistralProvider     *providers.MistralProvider
+	ollamaProvider      *providers.OllamaProvider
 	db                  *sql.DB
 	messageSaver        threads.MessageSaver
 	memoryManager       *memory.MemoryManager
@@ -2403,6 +2404,18 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		provider = mistralProvider
 		processor = &stream.OpenAIProcessor{} // Mistral uses OpenAI-compatible format
 		model = &llmConfig.Model
+	case "ollama":
+		// Apply base_url from config if set (debug UI)
+		if llmConfig.BaseURL != "" {
+			ollamaProvider.SetBaseURL(llmConfig.BaseURL + "/v1")
+		}
+		if !ollamaProvider.IsConfigured() {
+			http.Error(w, "OLLAMA_BASE_URL not set", http.StatusInternalServerError)
+			return
+		}
+		provider = ollamaProvider
+		processor = &stream.OpenAIProcessor{} // Ollama uses OpenAI-compatible format
+		model = &llmConfig.Model
 	default:
 		http.Error(w, "Unsupported provider: "+llmConfig.Provider, http.StatusBadRequest)
 		return
@@ -3780,6 +3793,7 @@ func main() {
 	moonshotProvider = providers.NewMoonshotProvider()
 	togetherProvider = providers.NewTogetherProvider()
 	mistralProvider = providers.NewMistralProvider()
+	ollamaProvider = providers.NewOllamaProvider()
 	messageSaver = threads.NewDatabaseMessageSaver(db)
 
 	// Initialize request tracker for cancellation support

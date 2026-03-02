@@ -118,7 +118,14 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 					currentConfig.LLM.Provider = ""
 				}
 			}
-			if val, exists := llmConfig["model"]; exists {
+			if val, exists := llmConfig["base_url"]; exists {
+			if str, ok := val.(string); ok {
+				currentConfig.LLM.BaseURL = str
+			} else if val == nil {
+				currentConfig.LLM.BaseURL = ""
+			}
+		}
+		if val, exists := llmConfig["model"]; exists {
 				if str, ok := val.(string); ok {
 					currentConfig.LLM.Model = str
 					// Update computer tool version when model changes

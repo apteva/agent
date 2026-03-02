@@ -174,7 +174,12 @@ func NewOpenAICompatibleProvider(apiKey, baseURL, authHeader, authPrefix, keyEnv
 }
 
 func (p *OpenAICompatibleProvider) IsConfigured() bool {
-	return p.apiKey != ""
+	return p.apiKey != "" || p.baseURL != ""
+}
+
+// SetBaseURL updates the base URL for this provider
+func (p *OpenAICompatibleProvider) SetBaseURL(baseURL string) {
+	p.baseURL = baseURL
 }
 
 func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, customTools []tools.ToolDefinition, builtinTools []interface{}) (io.ReadCloser, error) {
@@ -479,7 +484,9 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(p.authHeader, p.authPrefix+p.apiKey)
+	if p.apiKey != "" {
+		req.Header.Set(p.authHeader, p.authPrefix+p.apiKey)
+	}
 
 	// Make request
 	client := &http.Client{}

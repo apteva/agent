@@ -16,9 +16,12 @@ type ProviderModel struct {
 
 // ProviderInfo represents a provider and its available models
 type ProviderInfo struct {
-	ID     string          `json:"id"`
-	Name   string          `json:"name"`
-	Models []ProviderModel `json:"models"`
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Models     []ProviderModel `json:"models"`
+	CustomURL  bool            `json:"custom_url,omitempty"`  // Provider accepts a custom base URL
+	DefaultURL string          `json:"default_url,omitempty"` // Default base URL (shown as placeholder)
+	NoAPIKey   bool            `json:"no_api_key,omitempty"`  // Provider doesn't require an API key
 }
 
 // GetProviders returns the list of supported providers and their models
@@ -163,6 +166,24 @@ func GetProviders() []ProviderInfo {
 				{Value: "ministral-3-14b-25-12", Label: "Ministral 3 14B (Open-Weight)"},
 				{Value: "ministral-3-8b-25-12", Label: "Ministral 3 8B (Open-Weight, Fast)"},
 				{Value: "ministral-3-3b-25-12", Label: "Ministral 3 3B (Open-Weight, Edge)"},
+			},
+		},
+		{
+			ID:         "ollama",
+			Name:       "Ollama (Local)",
+			CustomURL:  true,
+			DefaultURL: "http://localhost:11434",
+			NoAPIKey:   true,
+			Models: []ProviderModel{
+				{Value: "llama3.1:latest", Label: "Llama 3.1 (8B)", Recommended: true},
+				{Value: "llama3.1:70b", Label: "Llama 3.1 (70B)"},
+				{Value: "qwen3:latest", Label: "Qwen 3"},
+				{Value: "qwen3:32b", Label: "Qwen 3 (32B)"},
+				{Value: "gemma3:latest", Label: "Gemma 3"},
+				{Value: "deepseek-r1:latest", Label: "DeepSeek R1"},
+				{Value: "mistral:latest", Label: "Mistral"},
+				{Value: "phi4:latest", Label: "Phi 4"},
+				{Value: "command-r:latest", Label: "Command R"},
 			},
 		},
 		{

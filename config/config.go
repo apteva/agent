@@ -12,6 +12,7 @@ import (
 type LLMConfig struct {
 	Provider      string               `json:"provider"`
 	Model         string               `json:"model"`
+	BaseURL       string               `json:"base_url,omitempty"`     // Custom base URL (e.g. for Ollama)
 	MaxTokens     int                  `json:"max_tokens"`
 	MaxTurns      int                  `json:"max_turns,omitempty"`    // Max agentic loop iterations (default 50, was 10)
 	Temperature   *float64             `json:"temperature,omitempty"`

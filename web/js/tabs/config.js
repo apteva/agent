@@ -158,19 +158,35 @@ function populateProviderSelect() {
 function updateModelOptions() {
     const providerSelect = document.getElementById('configProvider');
     const modelSelect = document.getElementById('configModel');
+    const baseUrlContainer = document.getElementById('baseUrlContainer');
+    const baseUrlInput = document.getElementById('configBaseUrl');
     const selectedProvider = providerSelect.value;
 
     modelSelect.innerHTML = '';
 
     if (!providersData || !selectedProvider) {
         modelSelect.innerHTML = '<option value="">Select provider first</option>';
+        if (baseUrlContainer) baseUrlContainer.classList.add('hidden');
         return;
     }
 
     const provider = providersData.find(p => p.id === selectedProvider);
     if (!provider || !provider.models || provider.models.length === 0) {
         modelSelect.innerHTML = '<option value="">No models available</option>';
+        if (baseUrlContainer) baseUrlContainer.classList.add('hidden');
         return;
+    }
+
+    // Show/hide base URL field based on provider
+    if (baseUrlContainer) {
+        if (provider.custom_url) {
+            baseUrlContainer.classList.remove('hidden');
+            if (baseUrlInput) {
+                baseUrlInput.placeholder = provider.default_url || 'http://localhost:11434';
+            }
+        } else {
+            baseUrlContainer.classList.add('hidden');
+        }
     }
 
     provider.models.forEach(model => {
@@ -183,12 +199,51 @@ function updateModelOptions() {
         modelSelect.appendChild(option);
     });
 
+    // For providers with custom models (like Ollama), add a custom model option
+    if (provider.custom_url) {
+        const customOption = document.createElement('option');
+        customOption.value = '__custom__';
+        customOption.textContent = '-- Custom model name --';
+        modelSelect.appendChild(customOption);
+    }
+
     // Set current model value if it matches this provider
     if (currentConfig?.llm?.model) {
         const modelExists = provider.models.some(m => m.value === currentConfig.llm.model);
         if (modelExists) {
             modelSelect.value = currentConfig.llm.model;
+        } else if (provider.custom_url && currentConfig.llm.provider === selectedProvider) {
+            // Custom model — select the custom option and show input
+            modelSelect.value = '__custom__';
         }
+    }
+
+    // Handle custom model input toggle
+    modelSelect.onchange = function() {
+        toggleCustomModelInput(this.value === '__custom__');
+    };
+    toggleCustomModelInput(modelSelect.value === '__custom__', currentConfig?.llm?.model);
+}
+
+// Show/hide custom model name input
+function toggleCustomModelInput(show, existingValue) {
+    let customInput = document.getElementById('configCustomModel');
+    if (show) {
+        if (!customInput) {
+            const modelSelect = document.getElementById('configModel');
+            customInput = document.createElement('input');
+            customInput.type = 'text';
+            customInput.id = 'configCustomModel';
+            customInput.placeholder = 'e.g. llama3.1:latest';
+            customInput.className = 'w-full px-3 py-2 mt-2 border border-slate-200 dark:border-slate-600 rounded-lg dark:bg-slate-700 dark:text-slate-100';
+            modelSelect.parentNode.appendChild(customInput);
+        }
+        if (existingValue && existingValue !== '__custom__') {
+            customInput.value = existingValue;
+        }
+        customInput.classList.remove('hidden');
+    } else if (customInput) {
+        customInput.classList.add('hidden');
     }
 }
 
@@ -284,6 +339,9 @@ async function loadConfig() {
             document.getElementById('configProvider').value = currentConfig.llm?.provider || 'anthropic';
             updateModelOptions();
         }
+
+        // Set base URL if configured
+        document.getElementById('configBaseUrl').value = currentConfig.llm?.base_url || '';
 
         // Update feature toggles
         document.getElementById('toggleMemory').checked = currentConfig.memory?.enabled || false;
@@ -487,6 +545,13 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
+    // Resolve model: use custom input if selected, otherwise dropdown value
+    let model = document.getElementById('configModel').value;
+    const customModelInput = document.getElementById('configCustomModel');
+    if (model === '__custom__' && customModelInput) {
+        model = customModelInput.value.trim();
+    }
+
     const updates = {
         id: document.getElementById('configAgentId').value,
         name: document.getElementById('configAgentName').value,
@@ -495,7 +560,8 @@ async function saveConfig() {
         llm: {
             ...currentConfig?.llm,
             provider: document.getElementById('configProvider').value,
-            model: document.getElementById('configModel').value,
+            model: model,
+            base_url: document.getElementById('configBaseUrl').value || undefined,
             system_prompt: document.getElementById('configSystemPrompt').value
         }
     };
