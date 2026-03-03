@@ -371,7 +371,21 @@ func (e *ElevenLabsRealtimeTTS) readLoop() {
 	}()
 
 	for {
-		_, message, err := e.conn.ReadMessage()
+		// Check if closed before reading (conn may be nil after Close)
+		select {
+		case <-e.closeChan:
+			return
+		default:
+		}
+
+		e.connMu.Lock()
+		conn := e.conn
+		e.connMu.Unlock()
+		if conn == nil {
+			return
+		}
+
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			select {
 			case <-e.closeChan:
