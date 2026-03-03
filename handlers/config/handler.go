@@ -942,6 +942,83 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			if googleSearch, ok := realtimeConfig["google_search"].(bool); ok {
 				currentConfig.Realtime.GoogleSearch = googleSearch
 			}
+			// STT config
+			if sttConfig, ok := realtimeConfig["stt"].(map[string]interface{}); ok {
+				if currentConfig.Realtime.STT == nil {
+					currentConfig.Realtime.STT = &appConfig.STTConfig{}
+				}
+				if val, exists := sttConfig["provider"]; exists {
+					if str, ok := val.(string); ok {
+						currentConfig.Realtime.STT.Provider = str
+					} else if val == nil {
+						currentConfig.Realtime.STT.Provider = ""
+					}
+				}
+				if val, exists := sttConfig["model"]; exists {
+					if str, ok := val.(string); ok {
+						currentConfig.Realtime.STT.Model = str
+					} else if val == nil {
+						currentConfig.Realtime.STT.Model = ""
+					}
+				}
+				if val, exists := sttConfig["language"]; exists {
+					if str, ok := val.(string); ok {
+						currentConfig.Realtime.STT.Language = str
+					} else if val == nil {
+						currentConfig.Realtime.STT.Language = ""
+					}
+				}
+				if val, exists := sttConfig["base_url"]; exists {
+					if str, ok := val.(string); ok {
+						currentConfig.Realtime.STT.BaseURL = str
+					} else if val == nil {
+						currentConfig.Realtime.STT.BaseURL = ""
+					}
+				}
+			} else if _, exists := realtimeConfig["stt"]; exists {
+				currentConfig.Realtime.STT = nil
+			}
+			// TTS config
+			if ttsConfig, ok := realtimeConfig["tts"].(map[string]interface{}); ok {
+				if currentConfig.Realtime.TTS == nil {
+					currentConfig.Realtime.TTS = &appConfig.TTSConfig{}
+				}
+				if val, exists := ttsConfig["provider"]; exists {
+					if str, ok := val.(string); ok {
+						currentConfig.Realtime.TTS.Provider = str
+					} else if val == nil {
+						currentConfig.Realtime.TTS.Provider = ""
+					}
+				}
+				if val, exists := ttsConfig["voice"]; exists {
+					if str, ok := val.(string); ok {
+						currentConfig.Realtime.TTS.Voice = str
+					} else if val == nil {
+						currentConfig.Realtime.TTS.Voice = ""
+					}
+				}
+				if val, exists := ttsConfig["model"]; exists {
+					if str, ok := val.(string); ok {
+						currentConfig.Realtime.TTS.Model = str
+					} else if val == nil {
+						currentConfig.Realtime.TTS.Model = ""
+					}
+				}
+				if speed, ok := ttsConfig["speed"].(float64); ok {
+					currentConfig.Realtime.TTS.Speed = speed
+				}
+				if sampleRate, ok := ttsConfig["sample_rate"].(float64); ok {
+					currentConfig.Realtime.TTS.SampleRate = int(sampleRate)
+				}
+				if stability, ok := ttsConfig["stability"].(float64); ok {
+					currentConfig.Realtime.TTS.Stability = stability
+				}
+				if similarity, ok := ttsConfig["similarity"].(float64); ok {
+					currentConfig.Realtime.TTS.Similarity = similarity
+				}
+			} else if _, exists := realtimeConfig["tts"]; exists {
+				currentConfig.Realtime.TTS = nil
+			}
 		}
 
 		// Update the global config FIRST so callbacks can read the new values
