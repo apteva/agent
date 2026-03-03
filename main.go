@@ -402,6 +402,7 @@ var (
 	togetherProvider    *providers.TogetherProvider
 	mistralProvider     *providers.MistralProvider
 	ollamaProvider      *providers.OllamaProvider
+	cerebrasProvider    *providers.CerebrasProvider
 	db                  *sql.DB
 	messageSaver        threads.MessageSaver
 	memoryManager       *memory.MemoryManager
@@ -2416,6 +2417,14 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		provider = ollamaProvider
 		processor = &stream.OpenAIProcessor{} // Ollama uses OpenAI-compatible format
 		model = &llmConfig.Model
+	case "cerebras":
+		if !cerebrasProvider.IsConfigured() {
+			http.Error(w, "CEREBRAS_API_KEY not set", http.StatusInternalServerError)
+			return
+		}
+		provider = cerebrasProvider
+		processor = &stream.OpenAIProcessor{} // Cerebras uses OpenAI-compatible format
+		model = &llmConfig.Model
 	default:
 		http.Error(w, "Unsupported provider: "+llmConfig.Provider, http.StatusBadRequest)
 		return
@@ -3794,6 +3803,7 @@ func main() {
 	togetherProvider = providers.NewTogetherProvider()
 	mistralProvider = providers.NewMistralProvider()
 	ollamaProvider = providers.NewOllamaProvider()
+	cerebrasProvider = providers.NewCerebrasProvider()
 	messageSaver = threads.NewDatabaseMessageSaver(db)
 
 	// Initialize request tracker for cancellation support

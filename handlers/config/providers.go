@@ -192,6 +192,16 @@ func GetProviders() []ProviderInfo {
 			},
 		},
 		{
+			ID:   "cerebras",
+			Name: "Cerebras (Ultra-fast)",
+			Models: []ProviderModel{
+				{Value: "gpt-oss-120b", Label: "GPT-OSS 120B (OpenAI Open-Weight, 128K)", Recommended: true},
+				{Value: "llama-4-scout-17b-16e-instruct", Label: "Llama 4 Scout 17B"},
+				{Value: "llama3.3-70b", Label: "Llama 3.3 70B"},
+				{Value: "llama3.1-8b", Label: "Llama 3.1 8B (Ultra-fast)"},
+			},
+		},
+		{
 			ID:   "together",
 			Name: "Together AI",
 			Models: []ProviderModel{
