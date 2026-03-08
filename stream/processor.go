@@ -112,6 +112,17 @@ type TurnResetter interface {
 	ResetForNewTurn()
 }
 
+// ResponseIDTracker is an optional interface for providers that support response ID chaining
+// (e.g., OpenAI Responses API uses previous_response_id for efficient conversation continuation)
+type ResponseIDTracker interface {
+	SetPreviousResponseID(id string)
+}
+
+// ResponseIDProvider is an optional interface for processors that track response IDs
+type ResponseIDProvider interface {
+	GetResponseID() string
+}
+
 // FileProcessor interface for filesystem operations
 type FileProcessor interface {
 	ProcessContentBlocks(blocks []ContentBlock, threadID, messageID, source string) ([]ContentBlock, error)
@@ -305,6 +316,8 @@ func UnifiedToolConversationWithBuiltins(w http.ResponseWriter, provider Provide
 
 // UnifiedToolConversationWithContext is like UnifiedToolConversationWithBuiltins but accepts a context for cancellation
 func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWriter, provider Provider, processor StreamProcessor, messages []Message, customTools []tools.ToolDefinition, builtinTools []interface{}, messageSaver MessageSaver, threadID string, requestID string, model *string, fileProcessor FileProcessor, taskID string) error {
+	log.Printf("🔍 DEBUG UnifiedToolConversationWithContext: provider_type=%T, processor_type=%T, messages=%d, tools=%d, builtins=%d",
+		provider, processor, len(messages), len(customTools), len(builtinTools))
 	// Track this thread as active for async result reporting
 	tools.MarkThreadActive(threadID)
 	defer tools.MarkThreadIdle(threadID)
@@ -392,6 +405,15 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 		// Process the stream and collect tool uses, save messages
 		toolResults, assistantMessage, tokenUsage, err := processStreamWithToolsAndSaveContext(ctx, w, rawStream, processor, messageSaver, threadID, requestID, model, fileProcessor, taskID)
 		rawStream.Close()
+
+		// Pass response ID to provider for chaining (OpenAI Responses API)
+		if tracker, ok := provider.(ResponseIDTracker); ok {
+			if idProvider, ok := processor.(ResponseIDProvider); ok {
+				if id := idProvider.GetResponseID(); id != "" {
+					tracker.SetPreviousResponseID(id)
+				}
+			}
+		}
 
 		// Get accumulated reasoning content from processor (for thinking models like Kimi K2)
 		var accumulatedReasoning string
@@ -1183,7 +1205,40 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					log.Printf("🖥️  COMPUTER TOOL - Executing: tool=%s, input=%s", event.ToolName, string(inputJSON))
 
 					// Handle computer tool locally using operator module
-					result, err := operator.HandleComputerToolWithContext(ctx, event.ToolInput)
+					// Check for batched actions (OpenAI Responses API sends multiple actions per computer_call)
+					var result interface{}
+					var err error
+					if actionsRaw, ok := event.ToolInput["actions"].([]interface{}); ok && len(actionsRaw) > 0 {
+						log.Printf("🖥️  COMPUTER TOOL - Batched execution: %d actions", len(actionsRaw))
+						for i, actionRaw := range actionsRaw {
+							actionMap, ok := actionRaw.(map[string]interface{})
+							if !ok {
+								log.Printf("⚠️  COMPUTER TOOL - Skipping invalid action at index %d", i)
+								continue
+							}
+							actionName, _ := actionMap["action"].(string)
+							log.Printf("🖥️  COMPUTER TOOL - Executing batched action %d/%d: %s", i+1, len(actionsRaw), actionName)
+							result, err = operator.HandleComputerToolWithContext(ctx, actionMap)
+							if err != nil {
+								log.Printf("❌ COMPUTER TOOL - Batched action %d failed: %v", i+1, err)
+								break
+							}
+						}
+						// After all actions, take a final screenshot unless the last action was already one
+						if err == nil {
+							lastAction := ""
+							if lastMap, ok := actionsRaw[len(actionsRaw)-1].(map[string]interface{}); ok {
+								lastAction, _ = lastMap["action"].(string)
+							}
+							if lastAction != "screenshot" {
+								log.Printf("🖥️  COMPUTER TOOL - Taking final screenshot after batched actions")
+								result, err = operator.HandleComputerToolWithContext(ctx, map[string]interface{}{"action": "screenshot"})
+							}
+						}
+					} else {
+						// Single action execution (existing behavior for Anthropic/browser tool)
+						result, err = operator.HandleComputerToolWithContext(ctx, event.ToolInput)
+					}
 					var toolResultContent interface{} // Can be string or content blocks
 					var isError bool
 					eventBus := events.GetEventBus()
@@ -1210,11 +1265,17 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 							WithDuration(toolStartTime)
 						eventBus.Publish(errorEvent)
 					} else {
-						// Check if this is a screenshot action
+						// Check if this is a screenshot action (or batched actions which end with screenshot)
 						action, _ := event.ToolInput["action"].(string)
-						if action == "screenshot" {
+						_, hasBatchedActions := event.ToolInput["actions"]
+						if action == "screenshot" || hasBatchedActions {
 							// Extract base64 screenshot data from result
-							toolResultContent = formatScreenshotResult(result)
+							if resultMap, ok := result.(map[string]interface{}); ok {
+								toolResultContent = formatScreenshotResult(resultMap)
+							} else {
+								resultJSON, _ := json.Marshal(result)
+								toolResultContent = string(resultJSON)
+							}
 						} else {
 							// For non-screenshot actions, return as JSON string
 							resultJSON, _ := json.Marshal(result)
@@ -1290,27 +1351,35 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					// Send immediate tool result to user with simple string (like other tools)
 					action, _ := event.ToolInput["action"].(string)
 					var displayContent string
-					switch action {
-					case "screenshot":
-						displayContent = "Screenshot captured"
-					case "click":
-						displayContent = "Click performed"
-					case "type":
-						displayContent = "Text typed"
-					case "scroll":
-						displayContent = "Scrolled"
-					case "key":
-						displayContent = "Key pressed"
-					case "move":
-						displayContent = "Mouse moved"
-					case "drag":
-						displayContent = "Drag performed"
-					case "double_click":
-						displayContent = "Double-click performed"
-					case "triple_click":
-						displayContent = "Triple-click performed"
-					default:
-						displayContent = fmt.Sprintf("Action '%s' completed", action)
+					if _, hasBatched := event.ToolInput["actions"]; hasBatched {
+						if batchActions, ok := event.ToolInput["actions"].([]interface{}); ok {
+							displayContent = fmt.Sprintf("Executed %d batched actions + screenshot", len(batchActions))
+						} else {
+							displayContent = "Batched actions completed"
+						}
+					} else {
+						switch action {
+						case "screenshot":
+							displayContent = "Screenshot captured"
+						case "click":
+							displayContent = "Click performed"
+						case "type":
+							displayContent = "Text typed"
+						case "scroll":
+							displayContent = "Scrolled"
+						case "key":
+							displayContent = "Key pressed"
+						case "move":
+							displayContent = "Mouse moved"
+						case "drag":
+							displayContent = "Drag performed"
+						case "double_click":
+							displayContent = "Double-click performed"
+						case "triple_click":
+							displayContent = "Triple-click performed"
+						default:
+							displayContent = fmt.Sprintf("Action '%s' completed", action)
+						}
 					}
 					if isError {
 						displayContent = fmt.Sprintf("Error: %s", contentStr)

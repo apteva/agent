@@ -391,6 +391,7 @@ var (
 	startTime           = time.Now()
 	anthropicProvider   *providers.AnthropicProvider
 	openaiProvider      *providers.OpenAIProvider
+	openaiResponsesProvider *providers.OpenAIResponsesProvider
 	groqProvider        *providers.GroqProvider
 	geminiProvider      *providers.GeminiProvider
 	fireworksProvider   *providers.FireworksProvider
@@ -1432,6 +1433,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	// Set trace source - explicit source takes priority, then webhook detection, then default to chat
 	if chatReq.Source != nil && *chatReq.Source != "" {
 		trace.WithSource(events.TraceSource(*chatReq.Source))
+		if *chatReq.Source == "reflection" {
+			log.Printf("🪞 Chat request from reflection session (thread: %s) — config_set tool will be available", threadID)
+		}
 	} else if webhookTrigger != nil {
 		trace.WithSource(events.TraceSourceWebhook)
 	} else {
@@ -2114,7 +2118,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Store conversation for memory extraction (non-blocking)
 	// Only extract if memory is enabled AND auto_extract_memories is enabled (defaults to true)
-	if memoryManager != nil && config.IsAutoExtractMemoriesEnabled(agentConfig.Memory) {
+	// Skip memory extraction for reflection sessions — reflection prompts are not user knowledge
+	isReflectionSession := chatReq.Source != nil && *chatReq.Source == "reflection"
+	if memoryManager != nil && config.IsAutoExtractMemoriesEnabled(agentConfig.Memory) && !isReflectionSession {
 		// Save initial messages for memory extraction after response
 		initialMessages := make([]interface{}, len(messages))
 		for i, msg := range messages {
@@ -2167,11 +2173,15 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add config tools if setup mode is enabled
+	// Add config tools if setup mode is enabled or during reflection
 	if agentConfig.SetupMode {
 		configTools := tools.GetToolsForNames([]string{"config_set"})
 		customTools = append(customTools, configTools...)
 		log.Printf("🔧 Setup mode: Added config tools (config_set)")
+	} else if chatReq.Source != nil && *chatReq.Source == "reflection" {
+		configTools := tools.GetToolsForNames([]string{"config_set"})
+		customTools = append(customTools, configTools...)
+		log.Printf("🪞 Reflection mode: Added config_set tool for self-modification")
 	}
 
 	// Add operator session tools if operator mode is enabled (skip any already loaded from config)
@@ -2304,13 +2314,21 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		processor = &stream.AnthropicProcessor{}
 		model = &llmConfig.Model
 	case "openai":
-		if !openaiProvider.IsConfigured() {
+		log.Printf("🔍 DEBUG OpenAI: openaiResponsesProvider=%v, IsConfigured=%v, apiKey_len=%d",
+			openaiResponsesProvider != nil,
+			openaiResponsesProvider != nil && openaiResponsesProvider.IsConfigured(),
+			openaiResponsesProvider.APIKeyLen())
+		if !openaiResponsesProvider.IsConfigured() {
+			log.Printf("🔴 OpenAI provider NOT configured — OPENAI_API_KEY missing at init time")
 			http.Error(w, "OPENAI_API_KEY not set", http.StatusInternalServerError)
 			return
 		}
-		provider = openaiProvider
-		processor = &stream.OpenAIProcessor{}
+		// Always use the Responses API for OpenAI — it's the newer, recommended API
+		// NewSession() creates a per-request copy so previousResponseID doesn't leak between conversations
+		provider = openaiResponsesProvider.NewSession()
+		processor = stream.NewOpenAIResponsesProcessor()
 		model = &llmConfig.Model
+		log.Printf("🔍 DEBUG OpenAI: using Responses API provider, model=%s", llmConfig.Model)
 	case "groq":
 		if !groqProvider.IsConfigured() {
 			http.Error(w, "GROQ_API_KEY not set", http.StatusInternalServerError)
@@ -2497,6 +2515,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		responseStartEvent := events.NewEvent(events.CategoryChat, events.TypeChatResponseStarted, events.LevelInfo).
 			WithThread(threadID)
 		eventBus.Publish(responseStartEvent)
+
+		log.Printf("🔍 DEBUG before UnifiedToolConversation: provider_type=%T, processor_type=%T, stream=%v, messages=%d, tools=%d, builtins=%d",
+			provider, processor, streamMode, len(messages), len(customTools), len(builtinTools))
 
 		if !streamMode {
 			// Non-streaming mode: collect complete response and return JSON
@@ -3792,6 +3813,7 @@ func main() {
 	// Initialize providers and message saver
 	anthropicProvider = providers.NewAnthropicProvider()
 	openaiProvider = providers.NewOpenAIProvider()
+	openaiResponsesProvider = providers.NewOpenAIResponsesProvider()
 	groqProvider = providers.NewGroqProvider()
 	geminiProvider = providers.NewGeminiProvider()
 	fireworksProvider = providers.NewFireworksProvider()
@@ -4132,6 +4154,18 @@ func providerSupportsVideo(provider string) bool {
 
 // filterVideoForProvider strips video content blocks for providers that don't support video.
 // When filesystem is enabled, the file metadata text block (with URL) was already injected
+// hasComputerBuiltinTool checks if the builtin tools include a computer tool
+func hasComputerBuiltinTool(builtinTools []interface{}) bool {
+	for _, tool := range builtinTools {
+		if bt, ok := tool.(config.BuiltinToolConfig); ok {
+			if bt.Name == "computer" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // during expansion — we keep that and only remove the base64 video block.
 // When filesystem is disabled, we replace the video block with a text placeholder.
 func filterVideoForProvider(messages []stream.Message, provider string) {

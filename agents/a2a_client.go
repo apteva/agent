@@ -21,7 +21,7 @@ import (
 )
 
 // callAgentA2A calls another agent via the A2A protocol (message/send).
-func (c *AgentClient) callAgentA2A(ctx context.Context, agent *config.AgentInfo, message string) (*CallResult, error) {
+func (c *AgentClient) callAgentA2A(ctx context.Context, agent *config.AgentInfo, message string, threadID string) (*CallResult, error) {
 	startTime := time.Now()
 
 	// Build A2A JSON-RPC request
@@ -31,13 +31,18 @@ func (c *AgentClient) callAgentA2A(ctx context.Context, agent *config.AgentInfo,
 		Method:  "message/send",
 	}
 
+	contextID := threadID
+	if contextID == "" {
+		contextID = "ctx_" + uuid.New().String()[:8]
+	}
+
 	params := a2a.MessageSendParams{
 		Message: a2a.Message{
 			Role:      "user",
 			MessageID: "msg_" + uuid.New().String()[:8],
 			Parts:     []a2a.Part{{Kind: "text", Text: message}},
 		},
-		ContextID: "ctx_" + uuid.New().String()[:8],
+		ContextID: contextID,
 	}
 
 	paramsJSON, _ := json.Marshal(params)
@@ -233,7 +238,7 @@ func (c *AgentClient) callAgentA2A(ctx context.Context, agent *config.AgentInfo,
 }
 
 // callAgentA2AStreaming calls another agent via A2A message/stream (SSE).
-func (c *AgentClient) callAgentA2AStreaming(ctx context.Context, agent *config.AgentInfo, message string, callback tools.StreamCallback) (*CallResult, error) {
+func (c *AgentClient) callAgentA2AStreaming(ctx context.Context, agent *config.AgentInfo, message string, threadID string, callback tools.StreamCallback) (*CallResult, error) {
 	startTime := time.Now()
 
 	// Build A2A JSON-RPC request
@@ -243,13 +248,18 @@ func (c *AgentClient) callAgentA2AStreaming(ctx context.Context, agent *config.A
 		Method:  "message/stream",
 	}
 
+	streamContextID := threadID
+	if streamContextID == "" {
+		streamContextID = "ctx_" + uuid.New().String()[:8]
+	}
+
 	params := a2a.MessageSendParams{
 		Message: a2a.Message{
 			Role:      "user",
 			MessageID: "msg_" + uuid.New().String()[:8],
 			Parts:     []a2a.Part{{Kind: "text", Text: message}},
 		},
-		ContextID: "ctx_" + uuid.New().String()[:8],
+		ContextID: streamContextID,
 	}
 
 	paramsJSON, _ := json.Marshal(params)

@@ -268,20 +268,14 @@ func GetModelContextWindow(provider, model string) int {
 		switch {
 		case strings.Contains(model, "gpt-5"):
 			return 128000
-		case strings.Contains(model, "gpt-4o"):
-			return 128000
-		case strings.Contains(model, "gpt-4-turbo"):
-			return 128000
-		case strings.Contains(model, "gpt-4.1"):
-			return 1000000
-		case strings.Contains(model, "gpt-3.5"):
-			return 16000
 		default:
 			return 128000
 		}
 
 	case "gemini":
 		switch {
+		case strings.Contains(model, "gemini-3.1"):
+			return 1000000
 		case strings.Contains(model, "gemini-3"):
 			return 1000000
 		case strings.Contains(model, "gemini-2.5"):

@@ -67,9 +67,10 @@ func (h *Handler) handleMessageSend(w http.ResponseWriter, r *http.Request, req 
 
 	// Call internal /chat endpoint
 	chatReq := map[string]interface{}{
-		"message": messageText,
-		"stream":  false,
-		"source":  "a2a",
+		"message":   messageText,
+		"stream":    false,
+		"source":    "a2a",
+		"thread_id": contextID,
 	}
 
 	chatJSON, err := json.Marshal(chatReq)

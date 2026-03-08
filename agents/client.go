@@ -182,7 +182,7 @@ func (c *AgentClient) CallAgentWithContext(ctx context.Context, agentID, message
 
 	// Use A2A protocol if the target agent supports it
 	if agent.Features["a2a"] {
-		return c.callAgentA2A(ctx, agent, message)
+		return c.callAgentA2A(ctx, agent, message, threadID)
 	}
 
 	// Get agent-specific timeout if configured
@@ -496,7 +496,7 @@ func (c *AgentClient) CallAgentStreamingWithContext(ctx context.Context, agentID
 
 	// Use A2A protocol if the target agent supports it
 	if agent.Features["a2a"] {
-		return c.callAgentA2AStreaming(ctx, agent, message, callback)
+		return c.callAgentA2AStreaming(ctx, agent, message, threadID, callback)
 	}
 
 	// Send progress event

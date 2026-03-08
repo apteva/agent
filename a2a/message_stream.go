@@ -96,9 +96,10 @@ func (h *Handler) handleMessageStream(w http.ResponseWriter, r *http.Request, re
 
 	// Call internal /chat endpoint with streaming
 	chatReq := map[string]interface{}{
-		"message": messageText,
-		"stream":  true,
-		"source":  "a2a",
+		"message":   messageText,
+		"stream":    true,
+		"source":    "a2a",
+		"thread_id": contextID,
 	}
 
 	chatJSON, err := json.Marshal(chatReq)

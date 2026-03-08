@@ -121,9 +121,14 @@ func ComputerUseBetaFlag(model string) string {
 	return "computer-use-2025-01-24"
 }
 
-// IsComputerTool returns true if the tool type is any version of the computer tool.
+// IsComputerTool returns true if the tool type is any version of the computer tool (Anthropic or OpenAI).
 func IsComputerTool(toolType string) bool {
-	return toolType == "computer_20250124" || toolType == "computer_20251124"
+	return toolType == "computer_20250124" || toolType == "computer_20251124" || toolType == "computer"
+}
+
+// IsOpenAIComputerTool returns true if the tool type is OpenAI's native computer tool.
+func IsOpenAIComputerTool(toolType string) bool {
+	return toolType == "computer"
 }
 
 type CitationsConfig struct {
@@ -650,7 +655,7 @@ func (c *Config) loadDefaults() {
 			AfterTask:       false,
 			ConversationMin: 0,
 			LookbackHours:   24,
-			Prompt: `You are performing a self-reflection session. There is no user present. Review your recent activity and think deeply about what you've learned.
+			Prompt: `You are performing a self-reflection session. No human user is present. Review your recent activity and think deeply about what you've learned.
 
 Analyze:
 1. What tasks/conversations went well and why
@@ -659,8 +664,9 @@ Analyze:
 4. Knowledge gaps you noticed
 5. Strategies that worked effectively
 
-Share your insights clearly — they will be automatically saved to your memory for future use.
-If you want to change how future reflections work, use config_set to update the reflection prompt.`,
+After your analysis, take action: if you identify recurring patterns or preferences that should change your default behavior, use config_set to update your system_prompt accordingly. You can also adjust this reflection prompt itself via config_set if you want future reflections to focus differently.
+
+Don't just observe — adapt.`,
 		},
 		Version: GetVersion(),
 	}
@@ -1039,8 +1045,39 @@ func (c *Config) GetLLMConfig() LLMConfig {
 					llmConfig.BuiltinTools[toolIndex].DisplayNumber = &displayNumber
 				}
 			}
+		} else if llmConfig.Provider == "openai" {
+			// For OpenAI (GPT-5.4+), use native Responses API computer tool
+			displayWidth := c.Agent.Operator.DisplayWidth
+			displayHeight := c.Agent.Operator.DisplayHeight
+
+			if displayWidth == 0 {
+				displayWidth = 1024
+			}
+			if displayHeight == 0 {
+				displayHeight = 768
+			}
+
+			computerTool := BuiltinToolConfig{
+				Type:            "computer", // OpenAI native computer tool type
+				Name:            "computer",
+				DisplayWidthPx:  &displayWidth,
+				DisplayHeightPx: &displayHeight,
+			}
+
+			// Check if computer tool is already present
+			toolExists := false
+			for _, tool := range llmConfig.BuiltinTools {
+				if tool.Name == "computer" {
+					toolExists = true
+					break
+				}
+			}
+
+			if !toolExists {
+				llmConfig.BuiltinTools = append(llmConfig.BuiltinTools, computerTool)
+			}
 		} else {
-			// For non-Claude providers (Gemini, OpenAI, etc.), add custom browser tool
+			// For other providers (Gemini, Groq, etc.), add custom browser tool
 			// This requires the model to have vision capabilities
 			toolMap := make(map[string]bool)
 			for _, tool := range llmConfig.Tools {

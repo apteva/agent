@@ -284,12 +284,14 @@ func (r *ReflectionScheduler) performReflection(triggerType string) {
 
 	// Gather context
 	context := r.gatherContext()
+	log.Printf("🪞 Reflection: Gathered context (%d bytes)", len(context))
 
 	// Build the full prompt
 	prompt := r.config.Prompt
 	if context != "" {
 		prompt += "\n\n## Recent Activity Context\n" + context
 	}
+	log.Printf("🪞 Reflection: Full prompt (%d bytes), source=reflection (config_set tool will be injected)", len(prompt))
 
 	// Call the agent
 	chatRequest := map[string]interface{}{
@@ -332,9 +334,9 @@ func (r *ReflectionScheduler) performReflection(triggerType string) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		log.Printf("Reflection: Agent called successfully for thread %s", threadID)
+		log.Printf("🪞 Reflection: Agent responded OK for thread %s — check logs for config_set calls", threadID)
 	} else {
-		log.Printf("Reflection: Agent call failed with status %d for thread %s", resp.StatusCode, threadID)
+		log.Printf("🪞 Reflection: Agent call failed with status %d for thread %s", resp.StatusCode, threadID)
 	}
 
 	// Publish completion event

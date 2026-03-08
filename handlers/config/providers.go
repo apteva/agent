@@ -46,7 +46,8 @@ func GetProviders() []ProviderInfo {
 			ID:   "openai",
 			Name: "OpenAI (GPT)",
 			Models: []ProviderModel{
-				{Value: "gpt-5.2", Label: "GPT-5.2 (Latest)", Recommended: true},
+				{Value: "gpt-5.4", Label: "GPT-5.4 (Latest)", Recommended: true},
+				{Value: "gpt-5.2", Label: "GPT-5.2"},
 				{Value: "gpt-5", Label: "GPT-5"},
 				{Value: "gpt-5-mini", Label: "GPT-5 Mini (Fast & Cheap)"},
 				{Value: "gpt-5-nano", Label: "GPT-5 Nano (Ultra-fast)"},
@@ -71,8 +72,10 @@ func GetProviders() []ProviderInfo {
 			ID:   "gemini",
 			Name: "Google (Gemini)",
 			Models: []ProviderModel{
-				{Value: "gemini-3-pro-preview", Label: "Gemini 3 Pro Preview (Latest)", Recommended: true},
-				{Value: "gemini-3-flash-preview", Label: "Gemini 3 Flash Preview (Fast)"},
+				{Value: "gemini-3.1-pro-preview", Label: "Gemini 3.1 Pro Preview (Latest)", Recommended: true},
+				{Value: "gemini-3.1-flash-lite-preview", Label: "Gemini 3.1 Flash Lite Preview (Fast)"},
+				{Value: "gemini-3-pro-preview", Label: "Gemini 3 Pro Preview"},
+				{Value: "gemini-3-flash-preview", Label: "Gemini 3 Flash Preview"},
 				{Value: "gemini-2.5-flash", Label: "Gemini 2.5 Flash (Fast & Cheap)"},
 				{Value: "gemini-2.5-pro", Label: "Gemini 2.5 Pro (Advanced)"},
 				{Value: "gemini-1.5-flash", Label: "Gemini 1.5 Flash"},
