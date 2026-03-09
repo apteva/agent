@@ -121,10 +121,16 @@ func NewGeminiRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 		})
 	}
 
+	// Get model from config or default
+	model := "gemini-2.5-flash-native-audio-preview-12-2025"
+	if agentConfig.Realtime != nil && agentConfig.Realtime.GeminiModel != "" {
+		model = agentConfig.Realtime.GeminiModel
+	}
+
 	// Send setup message
 	setupMsg := map[string]interface{}{
 		"setup": map[string]interface{}{
-			"model": "models/gemini-2.5-flash-native-audio-preview-12-2025",
+			"model": model,
 			"generationConfig": map[string]interface{}{
 				"responseModalities": []string{"AUDIO"},
 				"speechConfig": map[string]interface{}{
@@ -156,6 +162,9 @@ func NewGeminiRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 		},
 	}
 
+	setupJSON, _ := json.MarshalIndent(setupMsg, "", "  ")
+	log.Printf("🎤 [GEMINI] Setup message: %s", string(setupJSON))
+
 	if err := conn.WriteJSON(setupMsg); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to send setup message: %w", err)
@@ -164,7 +173,7 @@ func NewGeminiRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 	// Start event listener
 	go adapter.listenForEvents()
 
-	log.Printf("✅ Gemini Live adapter created (voice: %s, tools: %d)", voice, len(functionDeclarations))
+	log.Printf("✅ Gemini Live adapter created (model: %s, voice: %s, tools: %d)", model, voice, len(functionDeclarations))
 
 	return adapter, nil
 }
@@ -643,6 +652,11 @@ func (a *GeminiRealtimeAdapter) ReceiveEvents() <-chan UnifiedEvent {
 func (a *GeminiRealtimeAdapter) Close() error {
 	close(a.closeChan)
 	return a.conn.Close()
+}
+
+// InputSampleRate returns the expected input sample rate for Gemini (16kHz)
+func (a *GeminiRealtimeAdapter) InputSampleRate() int {
+	return 16000
 }
 
 // GetResumptionToken returns the session resumption token (Gemini-specific)

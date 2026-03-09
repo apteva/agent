@@ -54,31 +54,25 @@ func NewServer(db *sql.DB, messageSaver threads.MessageSaver, eventBus *events.E
 // HandleWebSocket handles WebSocket connections for real-time communication
 // Auto-detects format: JSON (browser/app) or Binary (telephony like Vonage/Twilio)
 func (s *RealtimeServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	log.Printf("🎤 [VOICE] WebSocket connection request from %s", r.RemoteAddr)
-
 	// Check if realtime is enabled in config
 	cfg := config.GetConfig()
 	realtimeConfig := cfg.Get().Realtime
 	if realtimeConfig == nil || !realtimeConfig.Enabled {
-		log.Printf("🎤 [VOICE] Realtime not enabled in config")
 		http.Error(w, "Realtime voice is not enabled", http.StatusServiceUnavailable)
 		return
 	}
-	log.Printf("🎤 [VOICE] Realtime enabled, provider=%s", realtimeConfig.Provider)
 
 	// Upgrade HTTP connection to WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("🎤 [VOICE] Failed to upgrade connection: %v", err)
+		log.Printf("❌ WebSocket upgrade failed: %v", err)
 		return
 	}
 	defer conn.Close()
-	log.Printf("🎤 [VOICE] WebSocket upgraded successfully")
 
 	// Create new session
 	session := s.createSession(conn)
 	defer s.removeSession(session.ID)
-	log.Printf("🎤 [VOICE] Session created: %s, thread: %s", session.ID, session.ThreadID)
 
 	// Get realtime provider from config
 	provider := "openai" // default
@@ -88,23 +82,20 @@ func (s *RealtimeServer) HandleWebSocket(w http.ResponseWriter, r *http.Request)
 	session.Provider = provider + "-realtime"
 
 	// Read first message to detect format (JSON vs Binary/Telephony)
-	log.Printf("🎤 [VOICE] Waiting for first message to detect format...")
 	msgType, firstMsg, err := conn.ReadMessage()
 	if err != nil {
-		log.Printf("🎤 [VOICE] Failed to read first message: %v", err)
+		log.Printf("❌ Failed to read first message: %v", err)
 		return
 	}
-	log.Printf("🎤 [VOICE] First message received: type=%d, len=%d", msgType, len(firstMsg))
 
 	// Detect mode based on first message type
 	isTelephonyMode := msgType == websocket.BinaryMessage
 
 	if isTelephonyMode {
 		session.Provider = provider + "-realtime-telephony"
-		log.Printf("📞 New telephony session: %s (thread: %s, provider: %s)", session.ID, session.ThreadID, provider)
-	} else {
-		log.Printf("🎙️  New realtime session: %s (thread: %s, provider: %s)", session.ID, session.ThreadID, provider)
 	}
+
+	log.Printf("Voice session %s started (provider: %s, telephony: %v)", session.ID, provider, isTelephonyMode)
 
 	// Publish session created event
 	s.eventBus.Publish(events.NewEvent(events.CategorySystem, "realtime_session_created", events.LevelInfo).
@@ -114,7 +105,6 @@ func (s *RealtimeServer) HandleWebSocket(w http.ResponseWriter, r *http.Request)
 		WithData("telephony_mode", isTelephonyMode))
 
 	// Initialize adapter based on provider
-	log.Printf("🎤 [VOICE] Creating %s adapter...", provider)
 	var adapter Adapter
 	var adapterErr error
 
@@ -128,7 +118,7 @@ func (s *RealtimeServer) HandleWebSocket(w http.ResponseWriter, r *http.Request)
 	}
 
 	if adapterErr != nil {
-		log.Printf("🎤 [VOICE] ❌ Failed to create %s adapter: %v", provider, adapterErr)
+		log.Printf("❌ Failed to create %s adapter: %v", provider, adapterErr)
 		if isTelephonyMode {
 			// Can't send JSON error in telephony mode, just close
 			return
@@ -146,7 +136,6 @@ func (s *RealtimeServer) HandleWebSocket(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer adapter.Close()
-	log.Printf("🎤 [VOICE] ✅ %s adapter created successfully", provider)
 
 	if isTelephonyMode {
 		// Telephony mode: raw binary PCM at 16kHz
@@ -162,41 +151,18 @@ func (s *RealtimeServer) HandleWebSocket(w http.ResponseWriter, r *http.Request)
 		s.handleTelephonyMessages(session, conn, adapter)
 	} else {
 		// JSON mode: existing behavior
-		log.Printf("🎤 [VOICE] JSON mode - sending session_created to client")
-		// Send welcome message to client
-		welcomeMsg := Message{
-			Type:      "session_created",
-			SessionID: session.ID,
-			Timestamp: time.Now().UnixMilli(),
-			Data: map[string]interface{}{
-				"session_id": session.ID,
-				"thread_id":  session.ThreadID,
-				"provider":   provider,
-			},
-		}
-		if err := conn.WriteJSON(welcomeMsg); err != nil {
-			log.Printf("🎤 [VOICE] ❌ Failed to send welcome message: %v", err)
-			return
-		}
-		log.Printf("🎤 [VOICE] ✅ session_created sent to client")
+		// Note: session_created is sent by the adapter once the provider confirms the connection
+		// (not duplicated here to avoid double session_created on the client)
 
 		// Process the first JSON message we already read
 		var msg Message
 		if err := json.Unmarshal(firstMsg, &msg); err == nil {
-			log.Printf("🎤 [VOICE] Processing first message: type=%s", msg.Type)
 			s.processJSONMessage(session, &msg, adapter)
-		} else {
-			log.Printf("🎤 [VOICE] First message not valid JSON: %v", err)
 		}
 
-		// Start adapter event listener (sends events to client)
-		log.Printf("🎤 [VOICE] Starting adapter event listener")
+		// Start adapter event listener and client message handler
 		go s.handleAdapterEvents(session, conn, adapter)
-
-		// Handle incoming messages from client
-		log.Printf("🎤 [VOICE] Starting client message handler loop")
 		s.handleClientMessages(session, conn, adapter)
-		log.Printf("🎤 [VOICE] Client message handler loop ended")
 	}
 }
 
@@ -253,92 +219,69 @@ func (s *RealtimeServer) removeSession(sessionID string) {
 
 // handleClientMessages handles incoming messages from the client
 func (s *RealtimeServer) handleClientMessages(session *Session, conn *websocket.Conn, adapter Adapter) {
-	log.Printf("🎤 [VOICE] handleClientMessages starting for session %s", session.ID)
-	msgCount := 0
-	audioChunks := 0
 	for {
 		var msg Message
 		if err := conn.ReadJSON(&msg); err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("🎤 [VOICE] WebSocket error: %v", err)
-			} else {
-				log.Printf("🎤 [VOICE] Client disconnected: %v", err)
+				log.Printf("WebSocket error (session %s): %v", session.ID, err)
 			}
 			break
 		}
-		msgCount++
 
-		// Update last activity
 		session.UpdateLastActivity()
 
-		// Handle message based on type
 		switch msg.Type {
 		case "audio":
-			audioChunks++
-			// Only log every 50th audio chunk to avoid spam
-			if audioChunks%50 == 1 {
-				log.Printf("🎤 [VOICE] Received audio chunk #%d", audioChunks)
-			}
-			// Extract audio data
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if chunk, ok := data["chunk"].(string); ok {
-					if audioChunks%50 == 1 {
-						log.Printf("🎤 [VOICE] Sending audio chunk #%d to adapter (len=%d)", audioChunks, len(chunk))
+					clientRate := 24000
+					if sr, ok := data["sample_rate"].(float64); ok && sr > 0 {
+						clientRate = int(sr)
 					}
-					if err := adapter.SendAudio(chunk); err != nil {
-						log.Printf("🎤 [VOICE] ❌ Failed to send audio: %v", err)
+					targetRate := adapter.InputSampleRate()
+
+					audioToSend := chunk
+					if clientRate != targetRate {
+						rawBytes, err := base64.StdEncoding.DecodeString(chunk)
+						if err == nil {
+							inputSamples := bytesToSamples(rawBytes)
+							outputSamples := resampleAudioServer(inputSamples, clientRate, targetRate)
+							audioToSend = base64.StdEncoding.EncodeToString(samplesToBytes(outputSamples))
+						}
 					}
-				} else {
-					log.Printf("🎤 [VOICE] ❌ No 'chunk' in audio data")
+					if err := adapter.SendAudio(audioToSend); err != nil {
+						log.Printf("❌ Failed to send audio: %v", err)
+					}
 				}
-			} else {
-				log.Printf("🎤 [VOICE] ❌ Audio data not a map: %T", msg.Data)
 			}
 
 		case "text":
-			log.Printf("🎤 [VOICE] Received text message")
-			// Extract text data
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if content, ok := data["content"].(string); ok {
 					if err := adapter.SendText(content); err != nil {
-						log.Printf("🎤 [VOICE] ❌ Failed to send text: %v", err)
+						log.Printf("❌ Failed to send text: %v", err)
 					}
 				}
 			}
 
 		case "control":
-			log.Printf("🎤 [VOICE] Received control message")
-			// Handle control messages
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if action, ok := data["action"].(string); ok {
 					if err := adapter.HandleControl(action, data); err != nil {
-						log.Printf("🎤 [VOICE] ❌ Failed to handle control: %v", err)
+						log.Printf("❌ Failed to handle control %s: %v", action, err)
 					}
 				}
 			}
 
 		case "start":
-			// Start message - just acknowledges session start, already handled
-			log.Printf("🎤 [VOICE] Received start message (session already active)")
-
-		default:
-			log.Printf("🎤 [VOICE] Unknown message type: %s", msg.Type)
+			// Session already active
 		}
 	}
-	log.Printf("🎤 [VOICE] handleClientMessages ended - processed %d messages, %d audio chunks", msgCount, audioChunks)
 }
 
 // handleAdapterEvents listens for events from the adapter and sends to client
 func (s *RealtimeServer) handleAdapterEvents(session *Session, conn *websocket.Conn, adapter Adapter) {
-	log.Printf("🎤 [VOICE] handleAdapterEvents starting for session %s", session.ID)
-	eventChan := adapter.ReceiveEvents()
-
-	eventCount := 0
-	for event := range eventChan {
-		eventCount++
-		log.Printf("🎤 [VOICE] Event #%d from adapter: type=%s", eventCount, event.Type)
-
-		// Convert unified event to client message
+	for event := range adapter.ReceiveEvents() {
 		msg := Message{
 			Type:      string(event.Type),
 			SessionID: session.ID,
@@ -346,20 +289,10 @@ func (s *RealtimeServer) handleAdapterEvents(session *Session, conn *websocket.C
 			Data:      event.Data,
 		}
 
-		// Send to client
 		if err := conn.WriteJSON(msg); err != nil {
-			log.Printf("🎤 [VOICE] ❌ Failed to send event to client: %v", err)
 			break
 		}
-		log.Printf("🎤 [VOICE] ✅ Sent event %s to client", event.Type)
-
-		// Publish event to bus for observability
-		s.eventBus.Publish(events.NewEvent(events.CategorySystem, "realtime_event", events.LevelDebug).
-			WithData("session_id", session.ID).
-			WithData("event_type", event.Type).
-			WithData("thread_id", session.ThreadID))
 	}
-	log.Printf("🎤 [VOICE] handleAdapterEvents ended for session %s (processed %d events)", session.ID, eventCount)
 }
 
 // GetSessions returns all active sessions
@@ -480,16 +413,9 @@ func (s *RealtimeServer) handleTelephonyMessages(session *Session, conn *websock
 			var controlMsg map[string]interface{}
 			if err := json.Unmarshal(data, &controlMsg); err == nil {
 				if event, ok := controlMsg["event"].(string); ok {
-					log.Printf("📞 Telephony control event: %s", event)
-					// Handle common telephony events
 					switch event {
-					case "start":
-						log.Printf("📞 Telephony call started")
 					case "stop":
-						log.Printf("📞 Telephony call ended")
 						return
-					case "mark":
-						// Audio marker - can be used for synchronization
 					}
 				}
 			}
@@ -581,6 +507,62 @@ func samplesToBytes(samples []int16) []byte {
 		binary.LittleEndian.PutUint16(data[i*2:], uint16(sample))
 	}
 	return data
+}
+
+// resampleAudioServer resamples PCM16 audio between any two sample rates.
+// For downsampling, uses averaging (low-pass filter) to prevent aliasing.
+// For upsampling, uses linear interpolation.
+func resampleAudioServer(samples []int16, fromRate, toRate int) []int16 {
+	if len(samples) == 0 || fromRate == toRate {
+		return samples
+	}
+
+	outputLen := int(float64(len(samples)) * float64(toRate) / float64(fromRate))
+	output := make([]int16, outputLen)
+
+	if fromRate > toRate {
+		// Downsampling — average source samples to prevent aliasing.
+		// For 48k→24k this averages pairs; for 48k→16k averages triplets; etc.
+		ratio := float64(fromRate) / float64(toRate)
+		for i := 0; i < outputLen; i++ {
+			srcStart := float64(i) * ratio
+			srcEnd := float64(i+1) * ratio
+			startIdx := int(srcStart)
+			endIdx := int(srcEnd)
+			if endIdx > len(samples) {
+				endIdx = len(samples)
+			}
+			if startIdx >= len(samples) {
+				startIdx = len(samples) - 1
+			}
+			// Average all source samples that map to this output sample
+			var sum int32
+			count := 0
+			for j := startIdx; j < endIdx; j++ {
+				sum += int32(samples[j])
+				count++
+			}
+			if count > 0 {
+				output[i] = int16(sum / int32(count))
+			}
+		}
+	} else {
+		// Upsampling — linear interpolation (no aliasing concern)
+		for i := 0; i < outputLen; i++ {
+			srcPos := float64(i) * float64(fromRate) / float64(toRate)
+			srcIdx := int(srcPos)
+			frac := srcPos - float64(srcIdx)
+			if srcIdx >= len(samples)-1 {
+				output[i] = samples[len(samples)-1]
+			} else {
+				sample1 := float64(samples[srcIdx])
+				sample2 := float64(samples[srcIdx+1])
+				output[i] = int16(sample1 + frac*(sample2-sample1))
+			}
+		}
+	}
+
+	return output
 }
 
 // resample16kTo24k resamples audio from 16kHz to 24kHz using linear interpolation

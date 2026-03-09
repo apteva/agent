@@ -25,6 +25,7 @@ type Adapter interface {
 	HandleControl(action string, data map[string]interface{}) error
 	ReceiveEvents() <-chan UnifiedEvent
 	Close() error
+	InputSampleRate() int // Expected input audio sample rate (e.g., 16000 or 24000)
 }
 
 // OpenAIRealtimeAdapter implements the Adapter interface for OpenAI Realtime API
@@ -37,13 +38,15 @@ type OpenAIRealtimeAdapter struct {
 	closeChan    chan struct{}
 	mu           sync.RWMutex
 	model        string // Model name for logging/saving messages
+
+	// Track current response item for truncation on interrupt
+	currentItemID    string
+	currentContentIdx int
 }
 
 // NewOpenAIRealtimeAdapter creates a new OpenAI Realtime adapter
 func NewOpenAIRealtimeAdapter(session *Session, messageSaver threads.MessageSaver,
 	eventBus *events.EventBus) (*OpenAIRealtimeAdapter, error) {
-
-	log.Printf("🎤 [OPENAI] Creating OpenAI Realtime adapter...")
 
 	// Get configuration
 	cfg := config.GetConfig()
@@ -55,16 +58,13 @@ func NewOpenAIRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 	if agentConfig.Realtime != nil && agentConfig.Realtime.Model != "" {
 		model = agentConfig.Realtime.Model
 	}
-	log.Printf("🎤 [OPENAI] Using model: %s", model)
 
 	// Connect to OpenAI Realtime API
 	openaiURL := fmt.Sprintf("wss://api.openai.com/v1/realtime?model=%s", model)
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		log.Printf("🎤 [OPENAI] ❌ OPENAI_API_KEY not set!")
 		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
 	}
-	log.Printf("🎤 [OPENAI] Connecting to %s (key: %s...)", openaiURL, apiKey[:10])
 
 	headers := http.Header{}
 	headers.Add("Authorization", "Bearer "+apiKey)
@@ -73,13 +73,10 @@ func NewOpenAIRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 	conn, resp, err := websocket.DefaultDialer.Dial(openaiURL, headers)
 	if err != nil {
 		if resp != nil {
-			log.Printf("🎤 [OPENAI] ❌ Connection failed: %v (HTTP %d)", err, resp.StatusCode)
-		} else {
-			log.Printf("🎤 [OPENAI] ❌ Connection failed: %v", err)
+			log.Printf("❌ OpenAI Realtime connection failed: %v (HTTP %d)", err, resp.StatusCode)
 		}
 		return nil, fmt.Errorf("failed to connect to OpenAI Realtime API: %w", err)
 	}
-	log.Printf("🎤 [OPENAI] ✅ Connected to OpenAI Realtime API")
 
 	adapter := &OpenAIRealtimeAdapter{
 		session:      session,
@@ -117,8 +114,8 @@ func NewOpenAIRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 		}
 	}
 
-	// Get voice from config or default
-	voice := "alloy"
+	// Get voice from config or default (marin recommended by OpenAI for best quality)
+	voice := "marin"
 	if agentConfig.Realtime != nil && agentConfig.Realtime.Voice != "" {
 		voice = agentConfig.Realtime.Voice
 	}
@@ -129,18 +126,39 @@ func NewOpenAIRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 		vadType = agentConfig.Realtime.VADType
 	}
 
-	// Configure session (beta format - flat fields)
+	// Build turn detection config
+	turnDetection := map[string]interface{}{
+		"type": vadType,
+	}
+	if vadType == "semantic_vad" {
+		turnDetection["eagerness"] = "medium"
+		turnDetection["create_response"] = true
+		turnDetection["interrupt_response"] = true
+	} else if vadType == "server_vad" {
+		turnDetection["threshold"] = 0.5
+		turnDetection["prefix_padding_ms"] = 300
+		turnDetection["silence_duration_ms"] = 500
+		turnDetection["create_response"] = true
+		turnDetection["interrupt_response"] = true
+	}
+
+	// Configure session
 	sessionConfig := map[string]interface{}{
 		"type": "session.update",
 		"session": map[string]interface{}{
-			"modalities":          []string{"audio", "text"},
-			"voice":               voice,
-			"input_audio_format":  "pcm16",
-			"output_audio_format": "pcm16",
-			"turn_detection": map[string]interface{}{
-				"type": vadType,
+			"modalities":               []string{"audio", "text"},
+			"voice":                    voice,
+			"input_audio_format":       "pcm16",
+			"output_audio_format":      "pcm16",
+			"turn_detection":           turnDetection,
+			"max_response_output_tokens": "inf",
+			"input_audio_transcription": map[string]interface{}{
+				"model": "gpt-4o-mini-transcribe-2025-12-15",
 			},
-			"instructions": llmConfig.SystemPrompt + "\n\nIMPORTANT: Always respond in English unless the user explicitly speaks another language.",
+			"input_audio_noise_reduction": map[string]interface{}{
+				"type": "near_field",
+			},
+			"instructions": llmConfig.SystemPrompt,
 			"tools":        realtimeTools,
 			"tool_choice":  "auto",
 		},
@@ -154,7 +172,7 @@ func NewOpenAIRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 	// Start event listener
 	go adapter.listenForEvents()
 
-	log.Printf("✅ OpenAI Realtime adapter created (voice: %s, VAD: %s, tools: %d)", voice, vadType, len(realtimeTools))
+	log.Printf("OpenAI Realtime session ready (model: %s, voice: %s, tools: %d)", model, voice, len(realtimeTools))
 
 	return adapter, nil
 }
@@ -186,11 +204,8 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 		return
 	}
 
-	log.Printf("📥 OpenAI event: %s", eventType)
-
 	switch eventType {
 	case "session.created":
-		log.Printf("✅ OpenAI session created")
 		a.eventChan <- UnifiedEvent{
 			Type:      EventTypeSessionCreated,
 			SessionID: a.session.ID,
@@ -199,10 +214,29 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 		}
 
 	case "session.updated":
-		log.Printf("✅ OpenAI session updated")
+		// Session config confirmed by OpenAI
 
 	case "input_audio_buffer.speech_started":
 		a.session.SetTurnState("user_speaking")
+
+		// Always tell client to stop audio playback when user starts speaking.
+		// Audio is sent faster than realtime, so buffered audio may still be playing
+		// even after response.audio.done has cleared currentItemID.
+		a.mu.RLock()
+		itemID := a.currentItemID
+		contentIdx := a.currentContentIdx
+		a.mu.RUnlock()
+
+		a.eventChan <- UnifiedEvent{
+			Type:      EventTypeAudioInterrupt,
+			SessionID: a.session.ID,
+			Timestamp: time.Now(),
+			Data: map[string]interface{}{
+				"item_id":       itemID,
+				"content_index": contentIdx,
+			},
+		}
+
 		a.eventChan <- UnifiedEvent{
 			Type:      EventTypeTurnStart,
 			SessionID: a.session.ID,
@@ -214,6 +248,16 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 		a.session.SetTurnState("idle")
 
 	case "response.audio.delta":
+		// Track item_id and content_index for potential truncation on interrupt
+		if itemID, ok := msg["item_id"].(string); ok {
+			a.mu.Lock()
+			a.currentItemID = itemID
+			if contentIdx, ok := msg["content_index"].(float64); ok {
+				a.currentContentIdx = int(contentIdx)
+			}
+			a.mu.Unlock()
+		}
+
 		if delta, ok := msg["delta"].(string); ok {
 			a.eventChan <- UnifiedEvent{
 				Type:      EventTypeAudioDelta,
@@ -228,6 +272,12 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 		}
 
 	case "response.audio.done":
+		// Clear item tracking — response completed normally (not interrupted)
+		a.mu.Lock()
+		a.currentItemID = ""
+		a.currentContentIdx = 0
+		a.mu.Unlock()
+
 		a.eventChan <- UnifiedEvent{
 			Type:      EventTypeAudioComplete,
 			SessionID: a.session.ID,
@@ -280,16 +330,52 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 			}
 		}
 
+	case "conversation.item.input_audio_transcription.delta":
+		// Partial/interim transcription — send to client for real-time display
+		if delta, ok := msg["delta"].(string); ok && delta != "" {
+			a.eventChan <- UnifiedEvent{
+				Type:      EventTypeTranscript,
+				SessionID: a.session.ID,
+				Timestamp: time.Now(),
+				Data: TranscriptData{
+					Role:    "user",
+					Content: delta,
+					Partial: true,
+				},
+			}
+		}
+
 	case "response.function_call_arguments.done":
 		a.handleFunctionCall(msg)
 
 	case "response.done":
+		// Check if this response was cancelled (interrupted by user speech)
+		status := ""
+		if resp, ok := msg["response"].(map[string]interface{}); ok {
+			if s, ok := resp["status"].(string); ok {
+				status = s
+			}
+		}
+
+		if status == "cancelled" {
+			// Clear item tracking since the response was cut short
+			a.mu.Lock()
+			a.currentItemID = ""
+			a.currentContentIdx = 0
+			a.mu.Unlock()
+		}
+
 		a.eventChan <- UnifiedEvent{
 			Type:      EventTypeTurnEnd,
 			SessionID: a.session.ID,
 			Timestamp: time.Now(),
-			Data:      msg,
+			Data: map[string]interface{}{
+				"status": status,
+			},
 		}
+
+	case "conversation.item.truncated", "input_audio_buffer.cleared":
+		// Acknowledged silently
 
 	case "error":
 		if errorData, ok := msg["error"].(map[string]interface{}); ok {
@@ -312,8 +398,6 @@ func (a *OpenAIRealtimeAdapter) handleFunctionCall(msg map[string]interface{}) {
 	callID, _ := msg["call_id"].(string)
 	functionName, _ := msg["name"].(string)
 	argumentsJSON, _ := msg["arguments"].(string)
-
-	log.Printf("🔧 Function call: %s (call_id: %s)", functionName, callID)
 
 	// Parse arguments
 	var arguments map[string]interface{}
@@ -368,11 +452,8 @@ func (a *OpenAIRealtimeAdapter) executeToolAndRespond(callID, functionName strin
 
 	// Check if MCP tool
 	if mcp.IsMCPTool(functionName, a.mcpConfig) {
-		log.Printf("🔧 Executing MCP tool: %s", functionName)
 		result, err = mcp.ExecuteTool(functionName, arguments, a.mcpConfig, a.session.ThreadID)
 	} else {
-		// Execute custom tool
-		log.Printf("🔧 Executing custom tool: %s", functionName)
 		tool, getErr := a.toolRegistry.GetTool(functionName)
 		if getErr != nil {
 			err = getErr
@@ -455,8 +536,6 @@ func (a *OpenAIRealtimeAdapter) sendFunctionResult(callID string, result interfa
 
 	if err != nil {
 		log.Printf("Failed to send function result: %v", err)
-	} else {
-		log.Printf("✅ Sent function result for call_id: %s", callID)
 	}
 }
 
@@ -487,8 +566,6 @@ func (a *OpenAIRealtimeAdapter) continueConversation() {
 
 	if err != nil {
 		log.Printf("Failed to continue conversation: %v", err)
-	} else {
-		log.Printf("✅ Triggered response continuation")
 	}
 }
 
@@ -532,10 +609,29 @@ func (a *OpenAIRealtimeAdapter) HandleControl(action string, data map[string]int
 			"type": "input_audio_buffer.commit",
 		})
 
+	case "clear_audio":
+		return a.safeWriteJSON(map[string]interface{}{
+			"type": "input_audio_buffer.clear",
+		})
+
 	case "interrupt":
 		return a.safeWriteJSON(map[string]interface{}{
 			"type": "response.cancel",
 		})
+
+	case "truncate":
+		itemID, _ := data["item_id"].(string)
+		audioEndMs, _ := data["audio_end_ms"].(float64)
+		contentIndex, _ := data["content_index"].(float64)
+		if itemID != "" {
+			return a.safeWriteJSON(map[string]interface{}{
+				"type":          "conversation.item.truncate",
+				"item_id":       itemID,
+				"content_index": int(contentIndex),
+				"audio_end_ms":  int(audioEndMs),
+			})
+		}
+		return nil
 	}
 	return nil
 }
@@ -549,6 +645,11 @@ func (a *OpenAIRealtimeAdapter) ReceiveEvents() <-chan UnifiedEvent {
 func (a *OpenAIRealtimeAdapter) Close() error {
 	close(a.closeChan)
 	return a.conn.Close()
+}
+
+// InputSampleRate returns the expected input sample rate for OpenAI (24kHz)
+func (a *OpenAIRealtimeAdapter) InputSampleRate() int {
+	return 24000
 }
 
 // sanitizeForEvent removes or truncates large data from tool results for event storage

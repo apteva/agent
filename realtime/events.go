@@ -8,6 +8,7 @@ type EventType string
 const (
 	EventTypeAudioDelta        EventType = "audio_delta"
 	EventTypeAudioComplete     EventType = "audio_complete"
+	EventTypeAudioInterrupt    EventType = "audio_interrupt"
 	EventTypeTranscript        EventType = "transcript"
 	EventTypeToolCall          EventType = "tool_call"
 	EventTypeToolResult        EventType = "tool_result"

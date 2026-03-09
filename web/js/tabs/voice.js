@@ -13,17 +13,24 @@ let voiceAudioQueue = [];
 let voiceIsPlaying = false;
 let voiceNextPlayTime = 0; // For gapless scheduling
 let voicePlaybackContext = null; // Separate context for playback at 24kHz
+let voiceResponseStartTime = 0; // AudioContext time when first chunk of current response started
+let voiceCurrentItemID = null; // item_id from server for truncation on interrupt
+let voiceCurrentContentIndex = 0; // content_index from server for truncation
+let voiceActiveSources = []; // Track playing AudioBufferSourceNodes for stopping
+let voiceAudioDeltaCount = 0; // Count audio deltas for event log batching
+let voiceTotalAudioDurationMs = 0; // Total duration of audio received from server (for truncation calc)
+let voiceInterrupted = false; // True after interrupt — ignore audio deltas until next response
 
 
 // Voice options for each provider
 const OPENAI_VOICES = [
+    { value: 'marin', label: 'Marin (Recommended)' },
+    { value: 'cedar', label: 'Cedar (Recommended)' },
     { value: 'alloy', label: 'Alloy' },
     { value: 'ash', label: 'Ash' },
     { value: 'ballad', label: 'Ballad' },
-    { value: 'cedar', label: 'Cedar' },
     { value: 'coral', label: 'Coral' },
     { value: 'echo', label: 'Echo' },
-    { value: 'marin', label: 'Marin' },
     { value: 'sage', label: 'Sage' },
     { value: 'shimmer', label: 'Shimmer' },
     { value: 'verse', label: 'Verse' }
@@ -48,6 +55,36 @@ const ELEVENLABS_VOICES = [
     { value: 'yoZ06aMxZJJ28mfd3POQ', label: 'Sam' }
 ];
 
+// ==================== Event Log ====================
+
+function addVoiceEvent(direction, type, detail) {
+    const log = document.getElementById('voiceEventLog');
+    if (!log) return;
+
+    // Remove placeholder
+    const placeholder = log.querySelector('.text-slate-500');
+    if (placeholder) placeholder.remove();
+
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', {
+        hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+
+    const arrow = direction === 'in' ? '\u25C0' : '\u25B6';
+    const colorClass = direction === 'in' ? 'text-emerald-400' : 'text-blue-400';
+
+    const entry = document.createElement('div');
+    entry.className = colorClass;
+    entry.textContent = `${time} ${arrow} ${type}${detail ? ' \u2014 ' + detail : ''}`;
+    log.appendChild(entry);
+
+    // Keep max 200 entries
+    while (log.children.length > 200) log.removeChild(log.firstChild);
+    log.scrollTop = log.scrollHeight;
+}
+
+// ==================== Voice Options ====================
+
 function updateVoiceOptions(selectedVoice) {
     const providerSelect = document.getElementById('voiceProviderSelect');
     const voiceSelect = document.getElementById('voiceSelect');
@@ -63,7 +100,6 @@ function updateVoiceOptions(selectedVoice) {
         voices = OPENAI_VOICES;
     }
 
-    // Clear and repopulate
     voiceSelect.innerHTML = '';
     voices.forEach(v => {
         const option = document.createElement('option');
@@ -72,11 +108,9 @@ function updateVoiceOptions(selectedVoice) {
         voiceSelect.appendChild(option);
     });
 
-    // Set voice value if provided
     if (selectedVoice) {
         voiceSelect.value = selectedVoice;
     } else if (voiceConfig) {
-        // Use config values
         if (provider === 'standard' && voiceConfig.tts?.voice) {
             voiceSelect.value = voiceConfig.tts.voice;
         } else if (provider === 'gemini' && voiceConfig.gemini_voice) {
@@ -88,37 +122,26 @@ function updateVoiceOptions(selectedVoice) {
 }
 
 async function initVoiceTab() {
-    // Load config and set voice tab values from realtime config
     try {
         const response = await makeRequest('/config');
         if (response.status === 200 && response.data) {
             const rt = response.data.realtime || {};
             voiceConfig = rt;
-
             const provider = rt.provider || 'openai';
 
-            // Set provider dropdown
             const providerSelect = document.getElementById('voiceProviderSelect');
-            if (providerSelect) {
-                providerSelect.value = provider;
-            }
+            if (providerSelect) providerSelect.value = provider;
 
-            // Update status panel provider display
             const providerDisplay = document.getElementById('voiceProvider');
             if (providerDisplay) {
                 const providerLabels = { openai: 'OpenAI', gemini: 'Gemini', standard: 'Standard' };
                 providerDisplay.textContent = providerLabels[provider] || provider;
             }
 
-            // Update voice options based on provider, then set voice
             let voice;
-            if (provider === 'standard') {
-                voice = rt.tts?.voice;
-            } else if (provider === 'gemini') {
-                voice = rt.gemini_voice;
-            } else {
-                voice = rt.voice;
-            }
+            if (provider === 'standard') voice = rt.tts?.voice;
+            else if (provider === 'gemini') voice = rt.gemini_voice;
+            else voice = rt.voice;
             updateVoiceOptions(voice);
         }
     } catch (e) {
@@ -126,7 +149,8 @@ async function initVoiceTab() {
     }
 }
 
-// Audio conversion helpers
+// ==================== Audio Conversion ====================
+
 function float32ToInt16(float32Array) {
     const int16Array = new Int16Array(float32Array.length);
     for (let i = 0; i < float32Array.length; i++) {
@@ -158,14 +182,21 @@ function base64ToFloat32(base64) {
     return float32Array;
 }
 
+// ==================== Session Management ====================
+
 async function startVoiceSession() {
+    // Guard: stop any existing session first
+    if (voiceWs && voiceWs.readyState <= WebSocket.OPEN) {
+        stopVoiceSession();
+    }
+
     const provider = document.getElementById('voiceProviderSelect').value;
     const voice = document.getElementById('voiceSelect').value;
 
     document.getElementById('voiceStatus').textContent = 'Connecting...';
+    addVoiceEvent('out', 'ws.connect', `provider=${provider}, voice=${voice}`);
 
     try {
-        // Build WebSocket URL with API key if configured
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         let wsUrl = `${protocol}//${window.location.host}/voice`;
         if (getApiKey()) {
@@ -174,21 +205,25 @@ async function startVoiceSession() {
 
         voiceWs = new WebSocket(wsUrl);
 
+        // Pre-create playback AudioContext during user gesture (iOS Safari)
+        if (!voicePlaybackContext) {
+            voicePlaybackContext = new AudioContext({ sampleRate: 24000 });
+        }
+        if (voicePlaybackContext.state === 'suspended') {
+            voicePlaybackContext.resume();
+        }
+
         voiceWs.onopen = () => {
             document.getElementById('voiceStatus').textContent = 'Connected';
             const providerLabels = { openai: 'OpenAI', gemini: 'Gemini', standard: 'Standard' };
             document.getElementById('voiceProvider').textContent = providerLabels[provider] || provider;
+            addVoiceEvent('out', 'ws.open', 'connected');
 
-            // Send initial message to trigger session creation
-            // Server waits for first message to detect format (JSON vs binary)
             voiceWs.send(JSON.stringify({
                 type: 'start',
-                data: {
-                    provider: provider,
-                    voice: voice
-                }
+                data: { provider: provider, voice: voice }
             }));
-            console.log('Sent start message to voice server');
+            addVoiceEvent('out', 'start', `provider=${provider}`);
         };
 
         voiceWs.onmessage = (event) => {
@@ -203,11 +238,13 @@ async function startVoiceSession() {
         voiceWs.onerror = (error) => {
             console.error('WebSocket error:', error);
             document.getElementById('voiceStatus').textContent = 'Error';
+            addVoiceEvent('in', 'ws.error', 'connection failed');
             showToast('WebSocket connection failed', 'error');
         };
 
         voiceWs.onclose = () => {
             document.getElementById('voiceStatus').textContent = 'Disconnected';
+            addVoiceEvent('in', 'ws.close', 'disconnected');
             stopVoiceSessionInternal();
         };
 
@@ -217,44 +254,123 @@ async function startVoiceSession() {
     }
 }
 
-async function handleVoiceMessage(msg) {
-    console.log('Voice message:', msg.type);
+// ==================== Event Handling ====================
 
+async function handleVoiceMessage(msg) {
     switch (msg.type) {
         case 'session_created':
+            addVoiceEvent('in', 'session_created', `session=${msg.session_id}`);
             document.getElementById('voiceStatus').textContent = 'Active';
             voiceStartTime = Date.now();
             startDurationTimer();
             voiceIsRecording = true;
+            voiceAudioDeltaCount = 0;
             showToast('Voice session started', 'success');
-
-            // Start audio capture
             await startAudioCapture();
             break;
 
         case 'audio_delta':
+            voiceAudioDeltaCount++;
+            // After interrupt, ignore remaining audio deltas from cancelled response
+            if (voiceInterrupted) {
+                if (voiceAudioDeltaCount === 1) {
+                    addVoiceEvent('in', 'audio_delta', `DROPPED (interrupted)`);
+                }
+                break;
+            }
+            // Log every 10th audio delta to avoid spam
+            if (voiceAudioDeltaCount === 1 || voiceAudioDeltaCount % 10 === 0) {
+                addVoiceEvent('in', 'audio_delta', `#${voiceAudioDeltaCount}`);
+            }
             if (msg.data && msg.data.chunk) {
                 playAudioChunk(msg.data.chunk);
             }
             break;
 
+        case 'audio_complete':
+            addVoiceEvent('in', 'audio_complete', `total_chunks=${voiceAudioDeltaCount}${voiceInterrupted ? ' (interrupted)' : ''}`);
+            voiceAudioDeltaCount = 0;
+            voiceInterrupted = false;
+            break;
+
         case 'transcript':
             if (msg.data) {
+                const role = msg.data.role || '?';
                 if (msg.data.partial) {
-                    // Update partial transcript in-place (real-time typing indicator)
                     updatePartialTranscript(msg.data.content);
+                    // Don't log every partial — too noisy
                 } else {
-                    // Final/committed transcript — clear any partial and add log entry
+                    addVoiceEvent('in', 'transcript', `${role}: "${msg.data.content}"`);
                     clearPartialTranscript();
-                    addVoiceLogEntry(msg.data.role, msg.data.content);
+                    addVoiceLogEntry(role, msg.data.content);
                 }
             }
             break;
 
+        case 'turn_start':
+            addVoiceEvent('in', 'turn_start', `speaker=${msg.data?.speaker || '?'}`);
+            break;
+
+        case 'turn_end': {
+            const turnStatus = msg.data?.status || 'completed';
+            addVoiceEvent('in', 'turn_end', `status=${turnStatus}`);
+            // Clear interrupt flag — the response (cancelled or not) is fully done
+            voiceInterrupted = false;
+            voiceAudioDeltaCount = 0;
+            break;
+        }
+
+        case 'audio_interrupt': {
+            // Only act on interrupt if audio is actually playing
+            if (!voiceIsPlaying && voiceActiveSources.length === 0) {
+                addVoiceEvent('in', 'audio_interrupt', `ignored (no audio playing)`);
+                break;
+            }
+
+            // Calculate how much audio was actually played before the interrupt
+            // Cap at total received audio duration — can't have played more than what was sent
+            let audioEndMs = 0;
+            if (voicePlaybackContext && voiceResponseStartTime > 0) {
+                const elapsedMs = Math.max(0, Math.floor(
+                    (voicePlaybackContext.currentTime - voiceResponseStartTime) * 1000
+                ));
+                audioEndMs = Math.min(elapsedMs, voiceTotalAudioDurationMs);
+            }
+
+            const itemID = msg.data?.item_id;
+            const contentIndex = msg.data?.content_index || 0;
+
+            addVoiceEvent('in', 'audio_interrupt', `item=${itemID || 'none'}, played=${audioEndMs}ms`);
+            resetAudioPlayback();
+
+            // Only set interrupted flag if we're mid-response (item_id present).
+            // This drops late audio deltas from the cancelled response.
+            // When item_id is empty, the response already completed — we just stop
+            // buffered playback but don't block the next response's audio.
+            if (itemID) {
+                voiceInterrupted = true;
+            }
+
+            // Send truncate back to server
+            if (voiceWs && voiceWs.readyState === WebSocket.OPEN && itemID) {
+                voiceWs.send(JSON.stringify({
+                    type: 'control',
+                    data: {
+                        action: 'truncate',
+                        item_id: itemID,
+                        content_index: contentIndex,
+                        audio_end_ms: audioEndMs
+                    }
+                }));
+                addVoiceEvent('out', 'control.truncate', `item=${itemID}, audio_end_ms=${audioEndMs}`);
+            }
+            break;
+        }
+
         case 'tool_call':
             if (msg.data) {
+                addVoiceEvent('in', 'tool_call', `${msg.data.name} (${msg.data.id})`);
                 addVoiceLogEntry('system', `Calling tool: ${msg.data.name}`);
-                // Reset audio scheduling so there's a natural break during tool execution
                 resetAudioPlayback();
             }
             break;
@@ -262,88 +378,104 @@ async function handleVoiceMessage(msg) {
         case 'tool_result':
             if (msg.data) {
                 const status = msg.data.error ? 'failed' : 'completed';
-                addVoiceLogEntry('system', `Tool ${status}: ${msg.data.call_id}`);
-                // Reset again so post-tool audio starts fresh, not queued after pre-tool audio
-                resetAudioPlayback();
+                addVoiceEvent('in', 'tool_result', `${msg.data.name} ${status}`);
+                addVoiceLogEntry('system', `Tool ${status}: ${msg.data.name}`);
             }
             break;
 
         case 'error':
+            addVoiceEvent('in', 'ERROR', `${msg.data?.code}: ${msg.data?.message}`);
             console.error('Voice error:', msg.data);
             document.getElementById('voiceStatus').textContent = 'Error';
             showToast('Voice error: ' + (msg.data?.message || 'Unknown'), 'error');
             break;
+
+        default:
+            addVoiceEvent('in', msg.type, JSON.stringify(msg.data).substring(0, 80));
+            break;
     }
 }
 
-// Resample audio from source rate to target rate
-function resampleAudio(inputData, inputSampleRate, outputSampleRate) {
-    if (inputSampleRate === outputSampleRate) {
-        return inputData;
-    }
-    const ratio = inputSampleRate / outputSampleRate;
-    const outputLength = Math.floor(inputData.length / ratio);
-    const output = new Float32Array(outputLength);
-    for (let i = 0; i < outputLength; i++) {
-        const srcIndex = i * ratio;
-        const srcIndexFloor = Math.floor(srcIndex);
-        const srcIndexCeil = Math.min(srcIndexFloor + 1, inputData.length - 1);
-        const t = srcIndex - srcIndexFloor;
-        output[i] = inputData[srcIndexFloor] * (1 - t) + inputData[srcIndexCeil] * t;
-    }
-    return output;
-}
+// ==================== Audio Capture ====================
 
 async function startAudioCapture() {
-    try {
-        // Capture at native rate (browser default), we'll resample to 16kHz for Gemini
-        voiceAudioContext = new AudioContext();
-        const nativeSampleRate = voiceAudioContext.sampleRate;
-        console.log('Native sample rate:', nativeSampleRate);
+    // Guard: stop existing capture to prevent duplicate audio streams
+    if (voiceProcessor) {
+        voiceProcessor.disconnect();
+        voiceProcessor = null;
+    }
+    if (voiceMediaStream) {
+        voiceMediaStream.getTracks().forEach(track => track.stop());
+        voiceMediaStream = null;
+    }
+    if (voiceAudioContext) {
+        voiceAudioContext.close();
+        voiceAudioContext = null;
+    }
 
-        voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    try {
+        // Capture at 24kHz — matches OpenAI Realtime API input rate.
+        // Browser handles native->24k resampling internally. No server resampling needed.
+        voiceAudioContext = new AudioContext({ sampleRate: 24000 });
+        if (voiceAudioContext.state === 'suspended') {
+            await voiceAudioContext.resume();
+        }
+
+        voiceMediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+        });
 
         const source = voiceAudioContext.createMediaStreamSource(voiceMediaStream);
+        voiceProcessor = voiceAudioContext.createScriptProcessor(4096, 1, 1);
 
-        // Create processor for audio chunks (smaller buffer = lower latency)
-        voiceProcessor = voiceAudioContext.createScriptProcessor(2048, 1, 1);
+        let audioOutCount = 0;
         voiceProcessor.onaudioprocess = (e) => {
             if (!voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
 
             const inputData = e.inputBuffer.getChannelData(0);
-
-            // Resample to 16kHz
-            const resampledData = resampleAudio(inputData, nativeSampleRate, 16000);
-            const int16Data = float32ToInt16(resampledData);
+            const int16Data = float32ToInt16(inputData);
             const base64Data = int16ToBase64(int16Data);
 
-            // Send to server
             voiceWs.send(JSON.stringify({
                 type: 'audio',
                 data: {
-                    chunk: base64Data
+                    chunk: base64Data,
+                    sample_rate: 24000
                 }
             }));
 
+            audioOutCount++;
+            if (audioOutCount === 1 || audioOutCount % 50 === 0) {
+                addVoiceEvent('out', 'audio', `chunk #${audioOutCount} (${base64Data.length} b64 bytes)`);
+            }
         };
 
         source.connect(voiceProcessor);
-        voiceProcessor.connect(voiceAudioContext.destination);
+        // Route through silent gain — processor must connect to destination to fire,
+        // but we don't want capture audio reaching speakers.
+        const silentGain = voiceAudioContext.createGain();
+        silentGain.gain.value = 0;
+        voiceProcessor.connect(silentGain);
+        silentGain.connect(voiceAudioContext.destination);
 
-        console.log('Audio capture started, resampling from', nativeSampleRate, 'to 16000');
+        addVoiceEvent('out', 'capture_started', `rate=${voiceAudioContext.sampleRate}Hz`);
     } catch (e) {
         console.error('Failed to start audio capture:', e);
+        addVoiceEvent('out', 'capture_error', e.message);
         showToast('Microphone access denied', 'error');
     }
 }
 
+// ==================== Audio Playback ====================
+
 function playAudioChunk(base64Audio) {
-    // Use separate playback context at 24kHz (Gemini output rate)
     if (!voicePlaybackContext) {
         voicePlaybackContext = new AudioContext({ sampleRate: 24000 });
     }
-
-    // Resume if suspended (browser autoplay policy)
     if (voicePlaybackContext.state === 'suspended') {
         voicePlaybackContext.resume();
     }
@@ -356,6 +488,12 @@ function playAudioChunk(base64Audio) {
     source.buffer = audioBuffer;
     source.connect(voicePlaybackContext.destination);
 
+    // Track source for stopping on interrupt
+    voiceActiveSources.push(source);
+    source.onended = () => {
+        voiceActiveSources = voiceActiveSources.filter(s => s !== source);
+    };
+
     // Schedule for gapless playback
     const currentTime = voicePlaybackContext.currentTime;
     const startTime = Math.max(currentTime, voiceNextPlayTime);
@@ -363,13 +501,33 @@ function playAudioChunk(base64Audio) {
     source.start(startTime);
     voiceNextPlayTime = startTime + audioBuffer.duration;
 
+    // Track when the first chunk of this response started playing (for interrupt truncation)
+    if (voiceResponseStartTime === 0) {
+        voiceResponseStartTime = startTime;
+    }
+
+    // Track total audio duration received from server
+    voiceTotalAudioDurationMs += Math.floor(audioBuffer.duration * 1000);
+
     voiceIsPlaying = true;
 }
 
 function resetAudioPlayback() {
+    // Stop all currently playing/scheduled audio sources
+    voiceActiveSources.forEach(source => {
+        try { source.stop(); } catch (e) { /* already stopped */ }
+    });
+    voiceActiveSources = [];
+
     voiceNextPlayTime = 0;
     voiceIsPlaying = false;
+    voiceResponseStartTime = 0;
+    voiceTotalAudioDurationMs = 0;
+    voiceCurrentItemID = null;
+    voiceCurrentContentIndex = 0;
 }
+
+// ==================== Session Lifecycle ====================
 
 function stopVoiceSession() {
     if (voiceWs) {
@@ -382,7 +540,6 @@ function stopVoiceSession() {
 function stopVoiceSessionInternal() {
     voiceIsRecording = false;
     stopDurationTimer();
-
 
     if (voiceProcessor) {
         voiceProcessor.disconnect();
@@ -406,8 +563,11 @@ function stopVoiceSessionInternal() {
 
     voiceWs = null;
     voiceAudioQueue = [];
+    voiceActiveSources = [];
     resetAudioPlayback();
 }
+
+// ==================== UI Helpers ====================
 
 function startDurationTimer() {
     voiceDurationInterval = setInterval(() => {
@@ -443,24 +603,18 @@ function sendVoiceText() {
         return;
     }
 
-    // Send text message (server will echo back as transcript event)
     voiceWs.send(JSON.stringify({
         type: 'text',
-        data: {
-            content: text
-        }
+        data: { content: text }
     }));
-
-    // Clear input
+    addVoiceEvent('out', 'text', `"${text}"`);
     input.value = '';
-    console.log('Sent text message:', text);
 }
 
 function addVoiceLogEntry(role, text) {
     const log = document.getElementById('voiceLog');
     if (!log) return;
 
-    // Remove empty state message if present
     const emptyMsg = log.querySelector('.text-slate-400');
     if (emptyMsg && emptyMsg.textContent.includes('Start a voice session')) {
         emptyMsg.remove();
@@ -486,7 +640,6 @@ function updatePartialTranscript(text) {
     const log = document.getElementById('voiceLog');
     if (!log) return;
 
-    // Find or create the partial transcript element
     let partial = log.querySelector('.voice-partial-transcript');
     if (!partial) {
         partial = document.createElement('div');

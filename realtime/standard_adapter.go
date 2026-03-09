@@ -266,6 +266,11 @@ func (a *StandardVoiceAdapter) Close() error {
 	return nil
 }
 
+// InputSampleRate returns the expected input sample rate for Standard mode (16kHz for ElevenLabs STT)
+func (a *StandardVoiceAdapter) InputSampleRate() int {
+	return 16000
+}
+
 // processLLMResponse streams LLM response via SSE and pipes text to WebSocket TTS in real-time.
 // Flow: SSE tokens → accumulate sentences → send to TTS WebSocket → audio chunks → client
 //
