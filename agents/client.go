@@ -280,8 +280,10 @@ Execute now.`, message)
 			}
 		}
 
-		// Propagate test mode to target agent
+		// Propagate test mode to target agent (global or per-request)
 		if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+			req.Header.Set("X-Test-Mode", "true")
+		} else if val, ok := ctx.Value(tools.TestModeContextKey).(bool); ok && val {
 			req.Header.Set("X-Test-Mode", "true")
 		}
 
@@ -592,8 +594,10 @@ Execute now.`, message)
 		}
 	}
 
-	// Propagate test mode to target agent
+	// Propagate test mode to target agent (global or per-request)
 	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
+	} else if val, ok := ctx.Value(tools.TestModeContextKey).(bool); ok && val {
 		req.Header.Set("X-Test-Mode", "true")
 	}
 
@@ -871,7 +875,7 @@ func (c *AgentClient) SetSelfAgentURL(url string) {
 }
 
 // DelegateTask creates a task on a remote agent for async execution
-func (c *AgentClient) DelegateTask(agentID, title, description string, priority int, executeAt string) (map[string]interface{}, error) {
+func (c *AgentClient) DelegateTask(agentID, title, description string, priority int, executeAt string, testMode bool) (map[string]interface{}, error) {
 	agent := c.findAgent(agentID)
 	if agent == nil {
 		return map[string]interface{}{
@@ -930,8 +934,10 @@ func (c *AgentClient) DelegateTask(agentID, title, description string, priority 
 	}
 	req.Header.Set("X-Delegator-ID", c.selfAgentID)
 
-	// Propagate test mode to target agent
+	// Propagate test mode to target agent (global or per-request)
 	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
+	} else if testMode {
 		req.Header.Set("X-Test-Mode", "true")
 	}
 

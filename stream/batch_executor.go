@@ -409,6 +409,11 @@ func executeCustomToolSyncCtx(ctx context.Context, tc ToolCall, threadID, taskID
 		tc.Input["_thread_id"] = threadID
 	}
 
+	// Inject per-request test mode so agent call tools can propagate it
+	if tools.IsTestModeActive(ctx) {
+		tc.Input["_test_mode"] = true
+	}
+
 	// Execute tool with context for cancellation
 	result, execErr := tools.ExecuteWithContext(ctx, tool, tc.Input)
 	duration := time.Since(startTime)
@@ -505,6 +510,11 @@ func executeCustomToolWithStreamingCtx(ctx context.Context, tc ToolCall, threadI
 	// Inject thread context into tool input for tools that need parent thread awareness
 	if threadID != "" {
 		tc.Input["_thread_id"] = threadID
+	}
+
+	// Inject per-request test mode so agent call tools can propagate it
+	if tools.IsTestModeActive(ctx) {
+		tc.Input["_test_mode"] = true
 	}
 
 	// Execute with streaming and context for cancellation

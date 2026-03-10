@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"context"
+
 	"github.com/apteva/agent/tools"
 )
 
@@ -89,8 +91,14 @@ func (t *CallAgentTool) ExecuteStreaming(params map[string]interface{}, callback
 		contextType = "none"
 	}
 
-	// Call the agent with streaming
-	result, err := t.Client.CallAgentStreaming(agentID, message, contextType, threadID, callback)
+	// Build context with per-request test mode if active
+	ctx := context.Background()
+	if testMode, _ := params["_test_mode"].(bool); testMode {
+		ctx = context.WithValue(ctx, tools.TestModeContextKey, true)
+	}
+
+	// Call the agent with streaming and context
+	result, err := t.Client.CallAgentStreamingWithContext(ctx, agentID, message, contextType, threadID, callback)
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
@@ -140,8 +148,14 @@ func (t *CallAgentTool) Execute(params map[string]interface{}) (interface{}, err
 		contextType = "none"
 	}
 
+	// Build context with per-request test mode if active
+	ctx := context.Background()
+	if testMode, _ := params["_test_mode"].(bool); testMode {
+		ctx = context.WithValue(ctx, tools.TestModeContextKey, true)
+	}
+
 	// Call the agent synchronously (no streaming)
-	result, err := t.Client.CallAgent(agentID, message, contextType, threadID)
+	result, err := t.Client.CallAgentWithContext(ctx, agentID, message, contextType, threadID)
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,
@@ -291,7 +305,8 @@ func (t *DelegateTaskTool) Execute(params map[string]interface{}) (interface{}, 
 		priority = 5
 	}
 
-	result, err := t.Client.DelegateTask(agentID, title, description, int(priority), executeAt)
+	testMode, _ := params["_test_mode"].(bool)
+	result, err := t.Client.DelegateTask(agentID, title, description, int(priority), executeAt, testMode)
 	if err != nil {
 		return map[string]interface{}{
 			"success": false,

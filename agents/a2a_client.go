@@ -110,8 +110,10 @@ func (c *AgentClient) callAgentA2A(ctx context.Context, agent *config.AgentInfo,
 		}
 	}
 
-	// Propagate test mode to target agent
+	// Propagate test mode to target agent (global or per-request)
 	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
+	} else if val, ok := ctx.Value(tools.TestModeContextKey).(bool); ok && val {
 		req.Header.Set("X-Test-Mode", "true")
 	}
 
@@ -327,8 +329,10 @@ func (c *AgentClient) callAgentA2AStreaming(ctx context.Context, agent *config.A
 		}
 	}
 
-	// Propagate test mode to target agent
+	// Propagate test mode to target agent (global or per-request)
 	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
+	} else if val, ok := ctx.Value(tools.TestModeContextKey).(bool); ok && val {
 		req.Header.Set("X-Test-Mode", "true")
 	}
 
