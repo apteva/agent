@@ -150,6 +150,7 @@ func (h *Handler) handleMessageStream(w http.ResponseWriter, r *http.Request, re
 	for _, header := range []string{
 		"X-Agent-Call-Chain", "X-Agent-Call-Depth", "X-Agent-Origin",
 		"X-Agent-Call-ID", "X-Agent-TTL", "X-Agent-Start-Time",
+		"X-Test-Mode",
 	} {
 		if v := r.Header.Get(header); v != "" {
 			httpReq.Header.Set(header, v)

@@ -280,6 +280,11 @@ Execute now.`, message)
 			}
 		}
 
+		// Propagate test mode to target agent
+		if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+			req.Header.Set("X-Test-Mode", "true")
+		}
+
 		// Make request
 		resp, lastErr = client.Do(req)
 
@@ -585,6 +590,11 @@ Execute now.`, message)
 			cancelCallback := fmt.Sprintf("%s/requests/%s/cancel", c.selfAgentURL, c.currentRequestID)
 			req.Header.Set(HeaderCancelCallback, cancelCallback)
 		}
+	}
+
+	// Propagate test mode to target agent
+	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
 	}
 
 	callback(tools.NewProgressEvent("Agent responding...", 0.2))
@@ -919,6 +929,11 @@ func (c *AgentClient) DelegateTask(agentID, title, description string, priority 
 		req.Header.Set("X-Agent-Key", agent.APIKey)
 	}
 	req.Header.Set("X-Delegator-ID", c.selfAgentID)
+
+	// Propagate test mode to target agent
+	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

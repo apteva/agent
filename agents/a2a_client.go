@@ -110,6 +110,11 @@ func (c *AgentClient) callAgentA2A(ctx context.Context, agent *config.AgentInfo,
 		}
 	}
 
+	// Propagate test mode to target agent
+	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
+	}
+
 	log.Printf("📡 A2A call to %s (%s/a2a)", agent.Name, agent.URL)
 
 	// Make request with retry
@@ -320,6 +325,11 @@ func (c *AgentClient) callAgentA2AStreaming(ctx context.Context, agent *config.A
 			cancelCallback := fmt.Sprintf("%s/requests/%s/cancel", c.selfAgentURL, c.currentRequestID)
 			req.Header.Set(HeaderCancelCallback, cancelCallback)
 		}
+	}
+
+	// Propagate test mode to target agent
+	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		req.Header.Set("X-Test-Mode", "true")
 	}
 
 	log.Printf("📡 A2A stream call to %s (%s/a2a)", agent.Name, agent.URL)

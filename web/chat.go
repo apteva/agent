@@ -579,9 +579,14 @@ const EmbeddedChatHTML = `<!DOCTYPE html>
                     requestBody.message = message;
                 }
 
+                const chatHeaders = { 'Content-Type': 'application/json' };
+                const testToggle = document.getElementById('testModeToggle');
+                if (testToggle && testToggle.checked) {
+                    chatHeaders['X-Test-Mode'] = 'true';
+                }
                 const response = await fetch('/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: chatHeaders,
                     body: JSON.stringify(requestBody)
                 });
 

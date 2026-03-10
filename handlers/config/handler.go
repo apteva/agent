@@ -108,6 +108,12 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 			log.Printf("🔧 Setup mode: %v", setupMode)
 		}
 
+		// Test mode
+		if testMode, ok := updateConfig["test_mode"].(bool); ok {
+			currentConfig.TestMode = testMode
+			log.Printf("🧪 Test mode: %v", testMode)
+		}
+
 		// LLM config
 		if llmConfig, ok := updateConfig["llm"].(map[string]interface{}); ok {
 			// String fields - handle both string values and null (to clear)

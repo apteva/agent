@@ -8,6 +8,29 @@ let rawChunksCount = 0;
 let rawChunksData = []; // Store full chunk data for copy/export
 let currentChunkDetail = null; // Currently viewed chunk in modal
 
+// Test mode functions — per-request only (toggle state is local, sent via X-Test-Mode header)
+function toggleTestMode(enabled) {
+    updateTestModeBanner(enabled);
+    console.log('Test mode (per-request):', enabled ? 'enabled' : 'disabled');
+    showToast(enabled ? 'Test Mode enabled — tools will be simulated for chat requests.' : 'Test Mode disabled.', enabled ? 'info' : 'success');
+}
+
+async function loadTestModeState() {
+    // Test mode is per-request only — default to off on page load
+    const toggle = document.getElementById('testModeToggle');
+    if (toggle) {
+        toggle.checked = false;
+        updateTestModeBanner(false);
+    }
+}
+
+function updateTestModeBanner(enabled) {
+    const banner = document.getElementById('testModeBanner');
+    if (banner) {
+        banner.classList.toggle('hidden', !enabled);
+    }
+}
+
 // Setup mode functions
 async function toggleSetupMode(enabled) {
     try {
@@ -99,8 +122,11 @@ function addSystemMessage(text) {
     container.scrollTop = container.scrollHeight;
 }
 
-// Initialize setup mode state when chat tab loads
-document.addEventListener('DOMContentLoaded', loadSetupModeState);
+// Initialize toggle states when chat tab loads
+document.addEventListener('DOMContentLoaded', () => {
+    loadSetupModeState();
+    loadTestModeState();
+});
 
 // Raw chunks viewer functions
 function addRawChunk(rawLine, parsedData) {
@@ -596,20 +622,31 @@ function updateChatToolResult(toolId, result) {
     const toolDiv = document.getElementById('chat-tool-' + toolId);
     if (toolDiv) {
         let resultPreview = result;
+        let isTestMode = false;
         try {
             const parsed = JSON.parse(result);
-            if (parsed.status) resultPreview = parsed.status;
+            isTestMode = parsed.test_mode === true;
+            if (parsed.message) resultPreview = parsed.message;
+            else if (parsed.status) resultPreview = parsed.status;
             else if (parsed.success !== undefined) resultPreview = parsed.success ? 'Success' : 'Failed';
             else resultPreview = 'Completed';
         } catch (e) {
             resultPreview = result.length > 50 ? result.slice(0, 50) + '...' : result;
         }
+        const testBadge = isTestMode ? '<span class="px-1.5 py-0.5 bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-medium rounded">TEST</span>' : '';
+        const bgClass = isTestMode
+            ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800'
+            : 'bg-emerald-100 dark:bg-emerald-900/50 border-emerald-200 dark:border-emerald-800';
+        const textClass = isTestMode
+            ? 'text-amber-700 dark:text-amber-300'
+            : 'text-emerald-700 dark:text-emerald-300';
         toolDiv.innerHTML = `
-            <div class="max-w-[80%] bg-emerald-100 dark:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-2">
-                <div class="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
+            <div class="max-w-[80%] ${bgClass} border rounded-xl px-4 py-2">
+                <div class="flex items-center gap-2 text-sm ${textClass}">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                     </svg>
+                    ${testBadge}
                     <span>Tool completed: <strong>${escapeHtml(resultPreview)}</strong></span>
                 </div>
             </div>
@@ -816,6 +853,10 @@ async function sendChatMessage(e) {
     try {
         const headers = { 'Content-Type': 'application/json' };
         if (getApiKey()) headers['X-API-Key'] = getApiKey();
+        const testModeToggle = document.getElementById('testModeToggle');
+        if (testModeToggle && testModeToggle.checked) {
+            headers['X-Test-Mode'] = 'true';
+        }
         const response = await fetch('/chat', {
             method: 'POST',
             headers,

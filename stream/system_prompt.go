@@ -222,6 +222,11 @@ For real-time voice interactions, direct users to the voice WebSocket endpoint.`
 		}
 	}
 
+	// Add test mode notice
+	if cfg != nil && cfg.Get().TestMode {
+		systemPrompt += "\n\n[TEST MODE ACTIVE] You are in test mode. ALL tool calls return simulated results — no real actions are taken, no real data is returned. The only exception is agent-to-agent calls (call_agent, delegate_task) which execute for real. Do not rely on tool results reflecting real state. Focus on demonstrating your reasoning and tool usage flow."
+	}
+
 	// Add tool execution guidance for parallel vs sequential calls
 	if llmConfig.ParallelTools != nil && llmConfig.ParallelTools.Enabled {
 		systemPrompt += "\n\n6. Tool execution: You may call multiple tools simultaneously for efficiency, but ONLY when their inputs are fully independent. If one tool's input depends on another tool's output, you MUST call them sequentially — wait for the first result before making the next call."

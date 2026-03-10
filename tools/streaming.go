@@ -118,6 +118,11 @@ func ExecuteWithStreaming(tool Tool, params map[string]interface{}, callback Str
 // If the context is cancelled before execution starts, returns immediately.
 // The tool execution itself runs in a goroutine so cancellation can interrupt the wait.
 func ExecuteWithContext(ctx context.Context, tool Tool, params map[string]interface{}) (interface{}, error) {
+	// Test mode: mock all tools except agent calls
+	if IsTestModeActive(ctx) && ShouldInterceptInTestMode(tool.Name()) {
+		return SimulateToolResult(tool.Name(), params)
+	}
+
 	select {
 	case <-ctx.Done():
 		return nil, fmt.Errorf("cancelled before tool execution: %w", ctx.Err())
@@ -144,6 +149,11 @@ func ExecuteWithContext(ctx context.Context, tool Tool, params map[string]interf
 
 // ExecuteWithStreamingContext executes a streaming tool with cancellation support.
 func ExecuteWithStreamingContext(ctx context.Context, tool Tool, params map[string]interface{}, callback StreamCallback) (interface{}, error) {
+	// Test mode: mock all tools except agent calls
+	if IsTestModeActive(ctx) && ShouldInterceptInTestMode(tool.Name()) {
+		return SimulateToolResult(tool.Name(), params)
+	}
+
 	select {
 	case <-ctx.Done():
 		return nil, fmt.Errorf("cancelled before tool execution: %w", ctx.Err())

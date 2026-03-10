@@ -209,22 +209,18 @@ func (p *OpenAIResponsesProvider) GetRawStream(messages []stream.Message, custom
 				}
 
 				if hasToolUse {
-					// Build assistant message with function_call outputs
-					var contentParts []interface{}
+					// Only emit function_call / computer_call items.
+					// "output_text" is NOT a valid input item type for the Responses API,
+					// so assistant text that accompanied tool calls is skipped.
 					for _, block := range blocks {
-						if block.Type == "text" && block.Text != "" {
-							contentParts = append(contentParts, map[string]interface{}{
-								"type": "output_text",
-								"text": block.Text,
-							})
-						} else if block.Type == "tool_use" {
+						if block.Type == "tool_use" {
 							if block.Name == "computer" {
 								// Convert to computer_call format
-								contentParts = append(contentParts, p.convertToolUseToComputerCall(block))
+								input = append(input, p.convertToolUseToComputerCall(block))
 							} else {
 								// Regular function call
 								argsJSON, _ := json.Marshal(block.Input)
-								contentParts = append(contentParts, map[string]interface{}{
+								input = append(input, map[string]interface{}{
 									"type":      "function_call",
 									"id":        block.ID,
 									"call_id":   block.ID,
@@ -233,10 +229,6 @@ func (p *OpenAIResponsesProvider) GetRawStream(messages []stream.Message, custom
 								})
 							}
 						}
-					}
-					// In Responses API, assistant content goes as output items directly
-					for _, part := range contentParts {
-						input = append(input, part)
 					}
 					continue
 				}

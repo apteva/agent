@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"github.com/apteva/agent/config"
 	"github.com/apteva/agent/events"
 	"bytes"
 	"database/sql"
@@ -330,6 +331,12 @@ func (s *Scheduler) GetJobs() ([]Job, error) {
 func (s *Scheduler) callAgent() {
 	// Only call agent if scheduler is configured to do so
 	if !s.config.Enabled {
+		return
+	}
+
+	// Skip dispatch in test mode
+	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {
+		log.Printf("🧪 Scheduler: Test mode active, skipping task dispatch")
 		return
 	}
 

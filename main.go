@@ -1509,6 +1509,11 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	// Enrich request context with trace and span for context-based propagation
 	requestCtx = events.WithTraceAndSpan(requestCtx, trace, rootSpan)
 
+	// Inherit test mode from caller agent via X-Test-Mode header
+	if r.Header.Get("X-Test-Mode") == "true" {
+		requestCtx = context.WithValue(requestCtx, tools.TestModeContextKey, true)
+	}
+
 	// Parse message content - can be string or array of content blocks
 	var messageContent interface{}
 	var messageText string // For thread title extraction
@@ -2116,11 +2121,20 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	// Add system prompt with current context, MCP credentials, task management config, request system context, and available agents
 	messages = stream.PrepareMessagesWithFullConfig(messages, llmConfig, agentConfig.Name, agentConfig.Description, agentConfig.MCP, agentConfig.Tasks, agentConfig.Scheduler, systemContext, availableAgents)
 
+	// Inject per-request test mode notice into system prompt
+	if val, ok := requestCtx.Value(tools.TestModeContextKey).(bool); ok && val {
+		if len(messages) > 0 && messages[0].Role == "system" {
+			if existing, ok := messages[0].Content.(string); ok {
+				messages[0].Content = existing + "\n\n[TEST MODE ACTIVE] You are in test mode. ALL tool calls return simulated results — no real actions are taken, no real data is returned. The only exception is agent-to-agent calls (call_agent, delegate_task) which execute for real. Do not rely on tool results reflecting real state. Focus on demonstrating your reasoning and tool usage flow."
+			}
+		}
+	}
+
 	// Store conversation for memory extraction (non-blocking)
 	// Only extract if memory is enabled AND auto_extract_memories is enabled (defaults to true)
 	// Skip memory extraction for reflection sessions — reflection prompts are not user knowledge
 	isReflectionSession := chatReq.Source != nil && *chatReq.Source == "reflection"
-	if memoryManager != nil && config.IsAutoExtractMemoriesEnabled(agentConfig.Memory) && !isReflectionSession {
+	if memoryManager != nil && config.IsAutoExtractMemoriesEnabled(agentConfig.Memory) && !isReflectionSession && !agentConfig.TestMode {
 		// Save initial messages for memory extraction after response
 		initialMessages := make([]interface{}, len(messages))
 		for i, msg := range messages {
@@ -2525,7 +2539,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			responseBuffer := &ResponseCapture{ResponseWriter: w}
 
 			fileAdapter := &FileManagerAdapter{fm: fileManager}
-		if err := stream.UnifiedToolConversationWithBuiltins(responseBuffer, provider, processor, messages, customTools, builtinTools, messageSaver, threadID, model, fileAdapter, taskID); err != nil {
+		if err := stream.UnifiedToolConversationWithContext(requestCtx, responseBuffer, provider, processor, messages, customTools, builtinTools, messageSaver, threadID, requestID, model, fileAdapter, taskID); err != nil {
 				log.Printf("Error in unified tool conversation: %v", err)
 
 				// Publish LLM error event

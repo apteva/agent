@@ -1071,6 +1071,41 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					var toolResultContent string
 					var isError bool
 
+					// Test mode: mock MCP tool
+					if tools.IsTestModeActive(ctx) {
+						mockResult := tools.SimulateMCPToolResult(event.ToolName, event.ToolInput)
+						toolResultContent = mockResult
+						isError = false
+
+						toolResultBlock := map[string]interface{}{
+							"type":        "tool_result",
+							"tool_use_id": event.ToolID,
+							"content":     mockResult,
+							"is_error":    false,
+						}
+						saveOrDeferToolResult([]interface{}{toolResultBlock}, "MCP-test")
+
+						toolResults = append(toolResults, StreamEvent{
+							Type:             "tool_result",
+							ToolID:           event.ToolID,
+							ToolName:         event.ToolName,
+							ToolInput:        event.ToolInput,
+							Content:          toolResultContent,
+							ThoughtSignature: event.ThoughtSignature,
+						})
+
+						fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"is_error\":false,\"timestamp\":%d}\n\n",
+							event.ToolID, escapeJSON(toolResultContent), time.Now().UnixMilli())
+						flusher.Flush()
+
+						testEvent := events.NewEvent(events.CategoryMCP, events.TypeMCPToolExecution, events.LevelInfo).
+							WithThread(threadID).
+							WithData("tool_name", event.ToolName).
+							WithData("tool_id", event.ToolID).
+							WithData("test_mode", true)
+						eventBus.Publish(testEvent)
+					} else {
+
 					// Create flat span for tool execution
 					trace := events.GetCurrentTrace()
 					var toolSpan *events.Span
@@ -1198,6 +1233,7 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					fmt.Fprintf(w, "data: {\"type\":\"tool_result\",\"tool_id\":\"%s\",\"content\":\"%s\",\"is_error\":%t,\"timestamp\":%d}\n\n",
 						event.ToolID, escapeJSON(sseContent), isError, time.Now().UnixMilli())
 					flusher.Flush()
+					} // end test mode else (real MCP execution)
 
 				} else if event.ToolName == "computer" || event.ToolName == "browser" {
 					// DEBUG: Log computer/browser tool execution
