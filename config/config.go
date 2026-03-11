@@ -226,8 +226,9 @@ type MemoryConfig struct {
 	// Embedding provider configuration
 	// REQUIRED when memory is enabled - must be explicitly set
 	// Options: "openai", "gemini", "jina", "voyage", "cohere", "huggingface", "ollama"
-	EmbeddingProvider string `json:"embedding_provider"` // Required: "openai", "gemini", "jina", "voyage", "cohere", "huggingface", "ollama"
-	OllamaURL         string `json:"ollama_url"`         // Ollama API URL (default: http://localhost:11434)
+	EmbeddingProvider   string `json:"embedding_provider"`   // Required: "openai", "gemini", "jina", "voyage", "cohere", "huggingface", "ollama"
+	EmbeddingDimensions int    `json:"embedding_dimensions"` // Output dimensions (0 = provider default). Gemini supports 768, 1536, 3072.
+	OllamaURL           string `json:"ollama_url"`           // Ollama API URL (default: http://localhost:11434)
 
 	// Decision model provider configuration
 	// When empty or "auto", uses the same provider as main LLM with a small model

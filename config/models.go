@@ -31,7 +31,7 @@ var SmallModels = map[string]string{
 // Updated: February 2026
 var EmbeddingModels = map[string]string{
 	"openai":      "text-embedding-3-small",        // 1536 dimensions, $0.02/1M tokens
-	"gemini":      "text-embedding-004",            // 768 dimensions, free tier
+	"gemini":      "gemini-embedding-2-preview",     // 3072 dimensions (default), multimodal, free tier
 	"jina":        "jina-embeddings-v3",            // 1024 dimensions, multilingual
 	"voyage":      "voyage-3.5-lite",               // 1024 dimensions, improved over 3-lite
 	"cohere":      "embed-english-v3.0",            // 1024 dimensions
@@ -52,7 +52,7 @@ var EmbeddingEndpoints = map[string]string{
 // EmbeddingDimensions maps providers to their embedding vector dimensions
 var EmbeddingDimensions = map[string]int{
 	"openai":      1536, // text-embedding-3-small
-	"gemini":      768,  // text-embedding-004
+	"gemini":      3072, // gemini-embedding-2-preview (supports 768, 1536, 3072)
 	"jina":        1024, // jina-embeddings-v3
 	"voyage":      1024, // voyage-3-lite
 	"cohere":      1024, // embed-english-v3.0

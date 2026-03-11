@@ -160,6 +160,9 @@ type OpenAICompatibleProvider struct {
 	authHeader string // e.g., "Authorization"
 	authPrefix string // e.g., "Bearer "
 	keyEnvVar  string // For error messages
+
+	// Supplemental data from response headers (Fireworks cache tokens, etc.)
+	lastCachedTokens int // From fireworks-cached-prompt-tokens header
 }
 
 // NewOpenAICompatibleProvider creates a new OpenAI-compatible provider
@@ -503,7 +506,21 @@ func (p *OpenAICompatibleProvider) GetRawStream(messages []stream.Message, custo
 		return nil, fmt.Errorf("%s API error: %d - %s", p.keyEnvVar, resp.StatusCode, string(errorBody))
 	}
 
+	// Capture Fireworks cached prompt tokens from response headers
+	if cachedStr := resp.Header.Get("fireworks-cached-prompt-tokens"); cachedStr != "" {
+		var cached int
+		if _, err := fmt.Sscanf(cachedStr, "%d", &cached); err == nil && cached > 0 {
+			p.lastCachedTokens = cached
+			log.Printf("📊 Fireworks cache: %d prompt tokens cached", cached)
+		}
+	}
+
 	return resp.Body, nil
+}
+
+// GetLastCachedTokens returns cached prompt tokens from the last response (Fireworks header)
+func (p *OpenAICompatibleProvider) GetLastCachedTokens() int {
+	return p.lastCachedTokens
 }
 
 // StreamChat provides backward compatibility for streaming

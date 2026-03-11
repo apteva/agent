@@ -20,6 +20,9 @@ type OpenAIProcessor struct{
 	toolArguments  map[int]string
 	pendingToolUse []*StreamEvent // Queue for emitting multiple tool_use events
 
+	// Supplemental cached tokens from response headers (Fireworks)
+	headerCachedTokens int
+
 	// Accumulated reasoning content for thinking models (Kimi K2, etc.)
 	// Must be preserved in conversation history for multi-step tool calls
 	accumulatedReasoning string
@@ -152,6 +155,14 @@ func (p *OpenAIProcessor) ProcessLine(line string) (*StreamEvent, error) {
 	// Check for usage data (comes in final chunk before [DONE])
 	// OpenAI-compatible APIs send usage in a separate chunk AFTER finish_reason:"stop"
 	if openaiData.Usage != nil {
+		// Inject cached tokens from response headers (Fireworks sends these via headers, not usage JSON)
+		if p.headerCachedTokens > 0 && (openaiData.Usage.PromptTokensDetails == nil || openaiData.Usage.PromptTokensDetails.CachedTokens == 0) {
+			if openaiData.Usage.PromptTokensDetails == nil {
+				openaiData.Usage.PromptTokensDetails = &OpenAIPromptDetails{}
+			}
+			openaiData.Usage.PromptTokensDetails.CachedTokens = p.headerCachedTokens
+		}
+
 		// If we have accumulated tool data, emit tool_use events first
 		if len(p.toolIDs) > 0 {
 			log.Printf("🔧 Usage received but have %d pending tools - emitting tool_use first", len(p.toolIDs))
@@ -508,6 +519,12 @@ func (p *OpenAIProcessor) ResetForNewTurn() {
 // HasPendingEvents returns true if there are queued events waiting to be emitted
 func (p *OpenAIProcessor) HasPendingEvents() bool {
 	return len(p.pendingToolUse) > 0 || p.pendingUsage != nil || p.pendingStop != nil
+}
+
+// SetCachedTokens sets supplemental cached token count from response headers
+// (e.g., Fireworks sends fireworks-cached-prompt-tokens header instead of usage JSON)
+func (p *OpenAIProcessor) SetCachedTokens(count int) {
+	p.headerCachedTokens = count
 }
 
 // GetAccumulatedReasoning returns the accumulated reasoning content without clearing it

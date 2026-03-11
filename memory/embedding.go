@@ -56,7 +56,7 @@ func NewEmbeddingProvider(cfg *config.MemoryConfig) (EmbeddingProvider, error) {
 		ollamaURL := config.GetOllamaURL(cfg)
 		return NewOllamaEmbeddingProvider(ollamaURL, model), nil
 	case "gemini":
-		return NewGeminiEmbeddingProvider(model)
+		return NewGeminiEmbeddingProvider(model, cfg.EmbeddingDimensions)
 	case "jina":
 		return NewJinaEmbeddingProvider(model)
 	case "voyage":
@@ -304,9 +304,10 @@ func (p *OllamaEmbeddingProvider) GenerateBatchEmbeddings(ctx context.Context, t
 
 // GeminiEmbeddingProvider uses Google's Gemini embedding API
 type GeminiEmbeddingProvider struct {
-	apiKey string
-	model  string
-	client *http.Client
+	apiKey     string
+	model      string
+	dimensions int // output_dimensionality (0 = use model default)
+	client     *http.Client
 }
 
 // Gemini API request/response structures
@@ -316,6 +317,7 @@ type geminiEmbeddingRequest struct {
 			Text string `json:"text"`
 		} `json:"parts"`
 	} `json:"content"`
+	OutputDimensionality int `json:"output_dimensionality,omitempty"`
 }
 
 type geminiBatchEmbeddingRequest struct {
@@ -326,6 +328,7 @@ type geminiBatchEmbeddingRequest struct {
 				Text string `json:"text"`
 			} `json:"parts"`
 		} `json:"content"`
+		OutputDimensionality int `json:"output_dimensionality,omitempty"`
 	} `json:"requests"`
 }
 
@@ -342,7 +345,8 @@ type geminiBatchEmbeddingResponse struct {
 }
 
 // NewGeminiEmbeddingProvider creates a new Gemini embedding provider
-func NewGeminiEmbeddingProvider(model string) (*GeminiEmbeddingProvider, error) {
+// dimensions controls output_dimensionality (0 = use model default: 3072 for gemini-embedding-2)
+func NewGeminiEmbeddingProvider(model string, dimensions int) (*GeminiEmbeddingProvider, error) {
 	apiKey := config.GetAPIKey("gemini")
 	if apiKey == "" {
 		return nil, fmt.Errorf("GEMINI_API_KEY environment variable not set")
@@ -353,9 +357,10 @@ func NewGeminiEmbeddingProvider(model string) (*GeminiEmbeddingProvider, error) 
 	}
 
 	return &GeminiEmbeddingProvider{
-		apiKey: apiKey,
-		model:  model,
-		client: &http.Client{Timeout: 30 * time.Second},
+		apiKey:     apiKey,
+		model:      model,
+		dimensions: dimensions,
+		client:     &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -368,6 +373,9 @@ func (p *GeminiEmbeddingProvider) GenerateEmbedding(ctx context.Context, text st
 	req.Content.Parts = []struct {
 		Text string `json:"text"`
 	}{{Text: text}}
+	if p.dimensions > 0 {
+		req.OutputDimensionality = p.dimensions
+	}
 
 	jsonData, err := json.Marshal(req)
 	if err != nil {
@@ -450,12 +458,16 @@ func (p *GeminiEmbeddingProvider) generateBatchInternal(ctx context.Context, tex
 					Text string `json:"text"`
 				} `json:"parts"`
 			} `json:"content"`
+			OutputDimensionality int `json:"output_dimensionality,omitempty"`
 		}{
 			Model: "models/" + p.model,
 		}
 		reqItem.Content.Parts = []struct {
 			Text string `json:"text"`
 		}{{Text: text}}
+		if p.dimensions > 0 {
+			reqItem.OutputDimensionality = p.dimensions
+		}
 		req.Requests = append(req.Requests, reqItem)
 	}
 

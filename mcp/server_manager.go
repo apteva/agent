@@ -479,6 +479,35 @@ func (m *ExternalServerManager) RefreshServer(name string) error {
 func InitializeExternalServers(servers []config.ExternalMCPServer) error {
 	manager := GetExternalServerManager()
 
+	// Build set of desired server names
+	desiredNames := make(map[string]bool)
+	for _, server := range servers {
+		if server.Enabled {
+			desiredNames[server.Name] = true
+		}
+	}
+
+	// Remove servers that are no longer in the desired list
+	currentNames := manager.GetServerNames()
+	for _, name := range currentNames {
+		if !desiredNames[name] {
+			log.Printf("🔌 MCP [%s]: Removing (no longer assigned)", name)
+			manager.RemoveServer(name)
+		}
+	}
+
+	// Also clean up failed servers that are no longer desired
+	manager.mu.Lock()
+	var remainingFailed []config.ExternalMCPServer
+	for _, fs := range manager.failedServers {
+		if desiredNames[fs.Name] {
+			remainingFailed = append(remainingFailed, fs)
+		}
+	}
+	manager.failedServers = remainingFailed
+	manager.mu.Unlock()
+
+	// Connect new/remaining servers
 	for _, server := range servers {
 		if !server.Enabled {
 			continue

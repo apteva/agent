@@ -402,6 +402,18 @@ func UnifiedToolConversationWithContext(ctx context.Context, w http.ResponseWrit
 			return fmt.Errorf("error getting stream: %w", err)
 		}
 
+		// Inject supplemental cached tokens from provider response headers (Fireworks)
+		type cachedTokensProvider interface {
+			GetLastCachedTokens() int
+		}
+		if ctp, ok := provider.(cachedTokensProvider); ok {
+			if cached := ctp.GetLastCachedTokens(); cached > 0 {
+				if openaiProc, ok := processor.(*OpenAIProcessor); ok {
+					openaiProc.SetCachedTokens(cached)
+				}
+			}
+		}
+
 		// Process the stream and collect tool uses, save messages
 		toolResults, assistantMessage, tokenUsage, err := processStreamWithToolsAndSaveContext(ctx, w, rawStream, processor, messageSaver, threadID, requestID, model, fileProcessor, taskID)
 		rawStream.Close()
