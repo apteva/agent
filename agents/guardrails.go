@@ -17,6 +17,8 @@ const (
 	HeaderCallID      = "X-Agent-Call-ID"      // Unique ID for this call tree
 	HeaderTTL         = "X-Agent-TTL"          // Time-to-live in seconds
 	HeaderStartTime   = "X-Agent-Start-Time"   // Unix timestamp (nanoseconds) when call chain started
+	HeaderCallerID    = "X-Agent-Caller-ID"    // Direct caller agent ID (immediate parent)
+	HeaderCallerName  = "X-Agent-Caller-Name"  // Direct caller agent name (human-readable)
 )
 
 // CallContext holds the context of a call chain

@@ -26,6 +26,7 @@ type AgentClient struct {
 	discoveryService DiscoveryService
 	guardRails       *GuardRails
 	selfAgentID      string       // This agent's ID
+	selfAgentName    string       // This agent's name (human-readable)
 	selfAgentURL     string       // This agent's URL (for cancel callbacks)
 	currentCallCtx   *CallContext // Current incoming call context (set per-request)
 	currentRequestID string       // Current request ID (for cancellation propagation)
@@ -64,7 +65,7 @@ type CallResult struct {
 	Error      string
 }
 
-func NewAgentClient(cfg *config.AgentsConfig, eventBus *events.EventBus, db *sql.DB, selfAgentID string) *AgentClient {
+func NewAgentClient(cfg *config.AgentsConfig, eventBus *events.EventBus, db *sql.DB, selfAgentID, selfAgentName string) *AgentClient {
 	timeout, _ := time.ParseDuration(cfg.Settings.DefaultTimeout)
 	if timeout == 0 {
 		timeout = 120 * time.Second
@@ -103,12 +104,13 @@ func NewAgentClient(cfg *config.AgentsConfig, eventBus *events.EventBus, db *sql
 	}
 
 	return &AgentClient{
-		config:      cfg,
-		eventBus:    eventBus,
-		db:          db,
-		httpClient:  &http.Client{Timeout: timeout},
-		guardRails:  guardRails,
-		selfAgentID: selfAgentID,
+		config:        cfg,
+		eventBus:      eventBus,
+		db:            db,
+		httpClient:    &http.Client{Timeout: timeout},
+		guardRails:    guardRails,
+		selfAgentID:   selfAgentID,
+		selfAgentName: selfAgentName,
 	}
 }
 
@@ -203,23 +205,10 @@ func (c *AgentClient) CallAgentWithContext(ctx context.Context, agentID, message
 
 	startTime := time.Now()
 
-	// Wrap message with agent-to-agent instructions
-	wrappedMessage := fmt.Sprintf(`You are being called by another AI agent. No human user is present.
-
-REQUEST:
-%s
-
-INSTRUCTIONS:
-1. Run autonomously - DO NOT ask clarifying questions. Make your best judgment.
-2. Keep responses SHORT and direct - no verbose explanations or pleasantries.
-3. Return only the essential information or result requested.
-4. Use available tools if needed to complete the request.
-
-Execute now.`, message)
-
-	// Build chat request - ALWAYS stream: false for synchronous response
+	// Build chat request — message is sent as-is; the receiver injects
+	// agent-to-agent context into its system prompt via caller headers.
 	chatReq := ChatRequest{
-		Message:  wrappedMessage,
+		Message:  message,
 		Stream:   false, // CRITICAL: Must be false for sync response
 		ThreadID: threadID,
 	}
@@ -264,6 +253,12 @@ Execute now.`, message)
 		// Add API key if configured
 		if agent.APIKey != "" {
 			req.Header.Set("X-Agent-Key", agent.APIKey)
+		}
+
+		// Add caller identity headers so receiver knows who is calling
+		req.Header.Set(HeaderCallerID, c.selfAgentID)
+		if c.selfAgentName != "" {
+			req.Header.Set(HeaderCallerName, c.selfAgentName)
 		}
 
 		// Add call chain headers for loop detection
@@ -530,23 +525,10 @@ func (c *AgentClient) CallAgentStreamingWithContext(ctx context.Context, agentID
 
 	startTime := time.Now()
 
-	// Wrap message with agent-to-agent instructions
-	wrappedMessage := fmt.Sprintf(`You are being called by another AI agent. No human user is present.
-
-REQUEST:
-%s
-
-INSTRUCTIONS:
-1. Run autonomously - DO NOT ask clarifying questions. Make your best judgment.
-2. Keep responses SHORT and direct - no verbose explanations or pleasantries.
-3. Return only the essential information or result requested.
-4. Use available tools if needed to complete the request.
-
-Execute now.`, message)
-
-	// Build chat request - stream: true for SSE response
+	// Build chat request — message is sent as-is; the receiver injects
+	// agent-to-agent context into its system prompt via caller headers.
 	chatReq := ChatRequest{
-		Message:  wrappedMessage,
+		Message:  message,
 		Stream:   true, // STREAMING MODE
 		ThreadID: threadID,
 	}
@@ -578,6 +560,12 @@ Execute now.`, message)
 	// Add API key if configured
 	if agent.APIKey != "" {
 		req.Header.Set("X-Agent-Key", agent.APIKey)
+	}
+
+	// Add caller identity headers so receiver knows who is calling
+	req.Header.Set(HeaderCallerID, c.selfAgentID)
+	if c.selfAgentName != "" {
+		req.Header.Set(HeaderCallerName, c.selfAgentName)
 	}
 
 	// Add call chain headers
@@ -933,6 +921,12 @@ func (c *AgentClient) DelegateTask(agentID, title, description string, priority 
 		req.Header.Set("X-Agent-Key", agent.APIKey)
 	}
 	req.Header.Set("X-Delegator-ID", c.selfAgentID)
+
+	// Add caller identity headers
+	req.Header.Set(HeaderCallerID, c.selfAgentID)
+	if c.selfAgentName != "" {
+		req.Header.Set(HeaderCallerName, c.selfAgentName)
+	}
 
 	// Propagate test mode to target agent (global or per-request)
 	if cfg := config.GetConfig(); cfg != nil && cfg.Get().TestMode {

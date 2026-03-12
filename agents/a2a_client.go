@@ -92,6 +92,12 @@ func (c *AgentClient) callAgentA2A(ctx context.Context, agent *config.AgentInfo,
 		req.Header.Set("X-API-Key", apiKey)
 	}
 
+	// Add caller identity headers so receiver knows who is calling
+	req.Header.Set(HeaderCallerID, c.selfAgentID)
+	if c.selfAgentName != "" {
+		req.Header.Set(HeaderCallerName, c.selfAgentName)
+	}
+
 	// Add call chain headers for guard rails
 	callCtx := c.currentCallCtx
 	if callCtx == nil {
@@ -311,6 +317,12 @@ func (c *AgentClient) callAgentA2AStreaming(ctx context.Context, agent *config.A
 	}
 	if streamAPIKey != "" {
 		req.Header.Set("X-API-Key", streamAPIKey)
+	}
+
+	// Add caller identity headers so receiver knows who is calling
+	req.Header.Set(HeaderCallerID, c.selfAgentID)
+	if c.selfAgentName != "" {
+		req.Header.Set(HeaderCallerName, c.selfAgentName)
 	}
 
 	callCtx := c.currentCallCtx

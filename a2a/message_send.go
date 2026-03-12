@@ -98,10 +98,11 @@ func (h *Handler) handleMessageSend(w http.ResponseWriter, r *http.Request, req 
 		httpReq.Header.Set("X-Agent-Key", apiKey)
 	}
 
-	// Forward call chain guard rail headers so /chat can propagate them
+	// Forward call chain guard rail headers and caller identity so /chat can use them
 	for _, header := range []string{
 		"X-Agent-Call-Chain", "X-Agent-Call-Depth", "X-Agent-Origin",
 		"X-Agent-Call-ID", "X-Agent-TTL", "X-Agent-Start-Time",
+		"X-Agent-Caller-ID", "X-Agent-Caller-Name",
 		"X-Test-Mode",
 	} {
 		if v := r.Header.Get(header); v != "" {

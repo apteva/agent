@@ -2058,9 +2058,26 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		log.Printf("🤝 DEBUG agents config is NIL")
 	}
 
+	// Detect if this is an agent-to-agent call via caller identity headers
+	callerAgentID := r.Header.Get(agents.HeaderCallerID)
+	callerAgentName := r.Header.Get(agents.HeaderCallerName)
+
 	if injectionEnabled && discoveryRunning {
 		log.Printf("🤝 DEBUG: calling discoveryService.GetAgents()...")
 		availableAgents = discoveryService.GetAgents()
+
+		// Filter out the calling agent to prevent call-back loops
+		if callerAgentID != "" {
+			filtered := make([]config.AgentInfo, 0, len(availableAgents))
+			for _, agent := range availableAgents {
+				if agent.ID != callerAgentID {
+					filtered = append(filtered, agent)
+				}
+			}
+			log.Printf("🤝 Agent injection: filtered caller %s (%s), %d -> %d agents", callerAgentName, callerAgentID, len(availableAgents), len(filtered))
+			availableAgents = filtered
+		}
+
 		log.Printf("🤝 Agent injection: %d agents available for prompt", len(availableAgents))
 		for _, agent := range availableAgents {
 			log.Printf("🤝 DEBUG: injecting agent %s (%s) at %s", agent.Name, agent.ID, agent.URL)
@@ -2120,6 +2137,26 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Add system prompt with current context, MCP credentials, task management config, request system context, and available agents
 	messages = stream.PrepareMessagesWithFullConfig(messages, llmConfig, agentConfig.Name, agentConfig.Description, agentConfig.MCP, agentConfig.Tasks, agentConfig.Scheduler, systemContext, availableAgents)
+
+	// Inject agent-to-agent context if this request comes from another agent
+	if callerAgentID != "" {
+		if len(messages) > 0 && messages[0].Role == "system" {
+			if existing, ok := messages[0].Content.(string); ok {
+				callerLabel := callerAgentName
+				if callerLabel == "" {
+					callerLabel = callerAgentID
+				}
+				a2aContext := fmt.Sprintf("\n\n[AGENT-TO-AGENT CALL] You are being called by agent \"%s\" (ID: %s). No human user is present.\n"+
+					"- Respond directly to their request. Be concise and factual.\n"+
+					"- Do NOT call \"%s\" back — they are waiting for YOUR response.\n"+
+					"- Do NOT ask clarifying questions. Use your best judgment.\n"+
+					"- You may call OTHER agents if needed, but never the caller.",
+					callerLabel, callerAgentID, callerLabel)
+				messages[0].Content = existing + a2aContext
+				log.Printf("🤝 Injected agent-to-agent context: caller=%s (%s)", callerLabel, callerAgentID)
+			}
+		}
+	}
 
 	// Inject per-request test mode notice into system prompt
 	if val, ok := requestCtx.Value(tools.TestModeContextKey).(bool); ok && val {
@@ -3083,7 +3120,7 @@ func initAgentCommunication() {
 	}
 
 	// Create agent client (will use discovery service for agent list if available)
-	agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID)
+	agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID, agentConfig.Name)
 
 	// Inject discovery service into agent client
 	if discoveryService != nil {
@@ -3230,7 +3267,7 @@ func UpdateDiscoveryService(enabled bool, group string) error {
 				// Still register agent tools even if discovery fails (for manual agent communication)
 				log.Printf("⚠️  Registering agent tools without discovery service...")
 				if agentClient == nil {
-					agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID)
+					agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID, agentConfig.Name)
 				}
 				registerAgentTools()
 				return err
@@ -3247,7 +3284,7 @@ func UpdateDiscoveryService(enabled bool, group string) error {
 				// Still register agent tools even if discovery start fails
 				log.Printf("⚠️  Registering agent tools despite discovery start failure...")
 				if agentClient == nil {
-					agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID)
+					agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID, agentConfig.Name)
 				}
 				registerAgentTools()
 				return err
@@ -3257,7 +3294,7 @@ func UpdateDiscoveryService(enabled bool, group string) error {
 			// Create agent client if not exists and register tools
 			if agentClient == nil {
 				log.Printf("🔧 Creating agent client for dynamic agent communication...")
-				agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID)
+				agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID, agentConfig.Name)
 			}
 
 			// Inject discovery service into agent client
@@ -3268,7 +3305,7 @@ func UpdateDiscoveryService(enabled bool, group string) error {
 		} else {
 			log.Printf("⚠️  Discovery service is nil after creation, registering tools anyway...")
 			if agentClient == nil {
-				agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID)
+				agentClient = agents.NewAgentClient(agentConfig.Agents, events.GetEventBus(), db, agentConfig.ID, agentConfig.Name)
 			}
 			registerAgentTools()
 		}
