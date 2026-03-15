@@ -20,6 +20,24 @@ type BrowserProvider interface {
 	DestroySession(ctx context.Context, sessionID string) error
 }
 
+// SessionLister is an optional interface for providers that support listing and fetching sessions.
+type SessionLister interface {
+	ListSessions(ctx context.Context) ([]SessionInfo, error)
+	GetSession(ctx context.Context, sessionID string) (*SessionInfo, error)
+}
+
+// SessionInfo represents a session returned by the provider's list/get API.
+type SessionInfo struct {
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	URL        string `json:"url"`
+	ConnectURL string `json:"connect_url"`
+	StreamURL  string `json:"stream_url"`
+	DebugURL   string `json:"debug_url"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
 // SessionOptions contains parameters for session creation.
 type SessionOptions struct {
 	InitialURL     string

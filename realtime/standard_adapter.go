@@ -50,8 +50,9 @@ type StandardVoiceAdapter struct {
 	eventChan    chan UnifiedEvent
 
 	// Processing state
-	processing bool
-	procMu     sync.Mutex
+	processing   bool
+	procMu       sync.Mutex
+	prewarmedTTS StreamingTTSProvider
 
 	closeChan chan struct{}
 	closeOnce sync.Once
@@ -105,6 +106,19 @@ func NewStandardVoiceAdapter(session *Session, messageSaver threads.MessageSaver
 			"mode":       "ws_stt+sse_llm+ws_tts",
 		},
 	}
+
+	// Pre-warm first TTS session (connect WebSocket before user speaks)
+	go func() {
+		warmTTS, err := NewStreamingTTSProvider(ttsCfg)
+		if err != nil {
+			log.Printf("🎤 [STANDARD] Failed to pre-warm TTS: %v", err)
+			return
+		}
+		adapter.procMu.Lock()
+		adapter.prewarmedTTS = warmTTS
+		adapter.procMu.Unlock()
+		log.Printf("🎤 [STANDARD] TTS pre-warmed")
+	}()
 
 	log.Printf("✅ Standard Voice adapter created (session: %s, thread: %s)", session.ID, session.ThreadID)
 	return adapter, nil
@@ -262,6 +276,13 @@ func (a *StandardVoiceAdapter) Close() error {
 	a.closeOnce.Do(func() {
 		close(a.closeChan)
 		a.streamingSTT.Close()
+		// Clean up pre-warmed TTS if unused
+		a.procMu.Lock()
+		if a.prewarmedTTS != nil {
+			a.prewarmedTTS.Close()
+			a.prewarmedTTS = nil
+		}
+		a.procMu.Unlock()
 	})
 	return nil
 }
@@ -287,10 +308,19 @@ func (a *StandardVoiceAdapter) processLLMResponse(userMessage string) {
 	var audioForwardDone chan struct{}
 
 	startTTS := func() error {
-		var err error
-		tts, err = NewStreamingTTSProvider(a.ttsCfg)
-		if err != nil {
-			return fmt.Errorf("failed to create TTS session: %w", err)
+		// Use pre-warmed TTS connection if available (first turn only)
+		a.procMu.Lock()
+		if a.prewarmedTTS != nil {
+			tts = a.prewarmedTTS
+			a.prewarmedTTS = nil
+			a.procMu.Unlock()
+		} else {
+			a.procMu.Unlock()
+			var err error
+			tts, err = NewStreamingTTSProvider(a.ttsCfg)
+			if err != nil {
+				return fmt.Errorf("failed to create TTS session: %w", err)
+			}
 		}
 
 		// Start forwarding TTS audio chunks to client in background
@@ -453,9 +483,9 @@ func (a *StandardVoiceAdapter) processLLMResponse(userMessage string) {
 				continue // No TTS session (between tool call and start)
 			}
 
-			// Check if we have a complete sentence to send to TTS
+			// Check if we have a complete sentence/clause to send to TTS
 			bufText := sentenceBuffer.String()
-			lastSentenceEnd := findLastSentenceEnd(bufText)
+			lastSentenceEnd := findLastFlushPoint(bufText, 40)
 			if lastSentenceEnd >= 0 {
 				toSend := strings.TrimSpace(bufText[:lastSentenceEnd+1])
 				if toSend != "" {
@@ -581,6 +611,42 @@ func findLastSentenceEnd(text string) int {
 		return len(string(runes[:lastIdx+1])) - 1
 	}
 	return -1
+}
+
+// findLastFlushPoint returns the index of the last position where text should be
+// flushed to TTS. Prioritizes sentence boundaries (.!?\n), but also flushes at
+// clause boundaries (,;:—) when the buffer exceeds minClauseFlushLen characters
+// to reduce time-to-first-audio.
+func findLastFlushPoint(text string, minClauseFlushLen int) int {
+	lastSentenceIdx := -1
+	lastClauseIdx := -1
+	runes := []rune(text)
+	for i, r := range runes {
+		if isSentenceEnd(r) {
+			if i+1 >= len(runes) || unicode.IsSpace(runes[i+1]) || unicode.IsUpper(runes[i+1]) {
+				lastSentenceIdx = i
+			}
+		}
+		if isClauseEnd(r) {
+			if i+1 < len(runes) && unicode.IsSpace(runes[i+1]) {
+				lastClauseIdx = i
+			}
+		}
+	}
+	// Always prefer sentence boundaries
+	if lastSentenceIdx >= 0 {
+		return len(string(runes[:lastSentenceIdx+1])) - 1
+	}
+	// Fall back to clause boundaries if buffer is long enough
+	if lastClauseIdx >= 0 && len(text) >= minClauseFlushLen {
+		return len(string(runes[:lastClauseIdx+1])) - 1
+	}
+	return -1
+}
+
+// isClauseEnd checks if a rune is a clause-ending punctuation
+func isClauseEnd(r rune) bool {
+	return r == ',' || r == ';' || r == ':' || r == '\u2014' || r == '\u2013'
 }
 
 // emitError sends an error event

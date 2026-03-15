@@ -228,10 +228,9 @@ func (s *RealtimeServer) handleClientMessages(session *Session, conn *websocket.
 			break
 		}
 
-		session.UpdateLastActivity()
-
 		switch msg.Type {
 		case "audio":
+			// Hot path — skip UpdateLastActivity for high-frequency audio messages
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if chunk, ok := data["chunk"].(string); ok {
 					clientRate := 24000
@@ -256,6 +255,7 @@ func (s *RealtimeServer) handleClientMessages(session *Session, conn *websocket.
 			}
 
 		case "text":
+			session.UpdateLastActivity()
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if content, ok := data["content"].(string); ok {
 					if err := adapter.SendText(content); err != nil {
@@ -265,6 +265,7 @@ func (s *RealtimeServer) handleClientMessages(session *Session, conn *websocket.
 			}
 
 		case "control":
+			session.UpdateLastActivity()
 			if data, ok := msg.Data.(map[string]interface{}); ok {
 				if action, ok := data["action"].(string); ok {
 					if err := adapter.HandleControl(action, data); err != nil {
@@ -274,14 +275,22 @@ func (s *RealtimeServer) handleClientMessages(session *Session, conn *websocket.
 			}
 
 		case "start":
-			// Session already active
+			session.UpdateLastActivity()
 		}
 	}
 }
 
-// handleAdapterEvents listens for events from the adapter and sends to client
+// handleAdapterEvents listens for events from the adapter and sends to client.
+// Uses write deadlines for audio deltas to prevent backpressure from stalling the pipeline.
 func (s *RealtimeServer) handleAdapterEvents(session *Session, conn *websocket.Conn, adapter Adapter) {
 	for event := range adapter.ReceiveEvents() {
+		// Inject sample_rate into session_created so client can match capture rate
+		if event.Type == EventTypeSessionCreated {
+			if dataMap, ok := event.Data.(map[string]interface{}); ok {
+				dataMap["sample_rate"] = adapter.InputSampleRate()
+			}
+		}
+
 		msg := Message{
 			Type:      string(event.Type),
 			SessionID: session.ID,
@@ -289,10 +298,20 @@ func (s *RealtimeServer) handleAdapterEvents(session *Session, conn *websocket.C
 			Data:      event.Data,
 		}
 
+		// Set write deadline — if client is too slow, drop audio and move on
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err := conn.WriteJSON(msg); err != nil {
+			// For audio deltas, log and continue (expendable)
+			if event.Type == EventTypeAudioDelta {
+				log.Printf("⚠️ Dropped audio delta (slow client): %v", err)
+				continue
+			}
+			// For control events, break the loop (connection likely dead)
 			break
 		}
 	}
+	// Clear deadline
+	conn.SetWriteDeadline(time.Time{})
 }
 
 // GetSessions returns all active sessions

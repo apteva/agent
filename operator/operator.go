@@ -170,14 +170,93 @@ func GetPendingURL() string {
 	return "about:blank"
 }
 
-// SetSessionID injects an existing session ID into the cache for reuse
+// SetSessionID injects an existing session ID into the cache for reuse.
+// Deprecated: Use ConnectToSession instead, which fetches session details and establishes CDP.
 func SetSessionID(agentID, sessionID string) {
-	session := &BrowserSession{
-		ID:       sessionID,
-		Provider: "browserengine",
+	// Attempt full connection via provider; fall back to bare cache entry
+	if err := ConnectToSession(agentID, sessionID); err != nil {
+		log.Printf("⚠️  ConnectToSession failed for %s, caching bare session: %v", sessionID, err)
+		session := &BrowserSession{
+			ID:       sessionID,
+			Provider: "browserengine",
+		}
+		agentSessions.Store(agentID, session)
 	}
+}
+
+// ConnectToSession fetches session details from the provider and caches the
+// session so HandleComputerToolWithContext can use it.
+// For BrowserEngine: commands go via REST (POST /sessions/{id}/commands), no CDP.
+// For CDP-native providers (Steel, Browserbase): establishes CDP WebSocket.
+func ConnectToSession(agentID, sessionID string) error {
+	provider := getProvider()
+	if provider == nil {
+		return fmt.Errorf("no browser provider initialized")
+	}
+
+	// Check if provider supports session fetching
+	lister, ok := provider.(SessionLister)
+	if !ok {
+		return fmt.Errorf("provider %s does not support session listing/fetching", provider.Name())
+	}
+
+	// Fetch session details to verify session exists and is active
+	info, err := lister.GetSession(context.Background(), sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get session %s: %w", sessionID, err)
+	}
+
+	log.Printf("🔧 ConnectToSession: id=%s status=%s provider=%s", info.ID, info.Status, provider.Name())
+
+	// Build a proper BrowserSession
+	session := &BrowserSession{
+		ID:        info.ID,
+		StreamURL: info.StreamURL,
+		ViewURL:   info.DebugURL,
+		Provider:  provider.Name(),
+	}
+
+	// Only use CDP for providers that need it (Steel, Browserbase, CDP).
+	// BrowserEngine uses REST commands — connect_url is for display/debugging only.
+	if provider.Name() != "browserengine" && info.ConnectURL != "" {
+		session.ConnectURL = info.ConnectURL
+		if err := ConnectCDP(context.Background(), session); err != nil {
+			log.Printf("⚠️  CDP connection failed for session %s: %v", session.ID, err)
+		} else {
+			log.Printf("✅ CDP connected to existing session %s", session.ID[:8])
+		}
+	}
+
+	// Cache the session — for BrowserEngine, executeCommand will route to REST
 	agentSessions.Store(agentID, session)
-	log.Printf("Injected existing session %s for agent %s", sessionID, agentID[:8])
+	log.Printf("Connected to existing session %s for agent %s (rest=%v, cdp=%v)",
+		session.ID[:8], agentID[:8], provider.Name() == "browserengine", session.IsConnectedCDP())
+
+	eventBus := events.GetEventBus()
+	connectEvent := events.NewEvent("browser", "session_connected", events.LevelInfo).
+		WithData("agent_id", agentID).
+		WithData("session_id", session.ID).
+		WithData("provider", session.Provider).
+		WithData("cdp_connected", session.IsConnectedCDP()).
+		WithData("stream_url", session.StreamURL)
+	eventBus.Publish(connectEvent)
+
+	return nil
+}
+
+// ListProviderSessions lists sessions from the active provider (if supported).
+func ListProviderSessions() ([]SessionInfo, error) {
+	provider := getProvider()
+	if provider == nil {
+		return nil, fmt.Errorf("no browser provider initialized")
+	}
+
+	lister, ok := provider.(SessionLister)
+	if !ok {
+		return nil, fmt.Errorf("provider %s does not support session listing", provider.Name())
+	}
+
+	return lister.ListSessions(context.Background())
 }
 
 // InitBrowserSession initializes browser session if operator mode is enabled
@@ -253,11 +332,11 @@ func CreateSessionWithData(agentID string, initialURL string, proxyEnabled bool,
 		return "", nil, fmt.Errorf("failed to create session via %s: %w", provider.Name(), err)
 	}
 
-	// If session has a CDP connect URL, establish WebSocket connection
-	if session.ConnectURL != "" {
+	// For CDP-native providers (Steel, Browserbase, CDP), establish WebSocket.
+	// BrowserEngine uses REST commands — connect_url is for display only.
+	if provider.Name() != "browserengine" && session.ConnectURL != "" {
 		if err := ConnectCDP(context.Background(), session); err != nil {
 			log.Printf("⚠️  CDP connection failed for session %s: %v (falling back to REST if available)", session.ID, err)
-			// Don't fail — the session was created, REST fallback may work for self provider
 		} else if initialURL != "" && initialURL != "about:blank" {
 			// Navigate to the initial URL via CDP (providers like Steel/Browserbase open about:blank)
 			log.Printf("🔧 Navigating to initial URL via CDP: %s", initialURL)

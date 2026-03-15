@@ -363,7 +363,7 @@ func NewElevenLabsRealtimeSTT(cfg *config.STTConfig) (*ElevenLabsRealtimeSTT, er
 // connect establishes the WebSocket connection to ElevenLabs
 func (e *ElevenLabsRealtimeSTT) connect() error {
 	// Build WebSocket URL with query params
-	wsURL := fmt.Sprintf("wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=%s&commit_strategy=vad&audio_format=pcm_16000&vad_silence_threshold_secs=1.2&encoding=pcm_s16le",
+	wsURL := fmt.Sprintf("wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=%s&commit_strategy=vad&audio_format=pcm_16000&vad_silence_threshold_secs=0.6&encoding=pcm_s16le",
 		e.model)
 
 	if e.language != "" {

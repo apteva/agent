@@ -147,9 +147,9 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 	if viewURL, ok := data["debug_url"].(string); ok && viewURL != "" {
 		session.ViewURL = viewURL
 	}
-	if connectURL, ok := data["connect_url"].(string); ok && connectURL != "" {
-		session.ConnectURL = connectURL
-	}
+	// NOTE: connect_url from BrowserEngine is a raw WebSocket to the browser-service
+	// for display/debugging only. BrowserEngine commands go via REST, not CDP.
+	// We do NOT set session.ConnectURL here — that field is for CDP-native providers.
 
 	log.Printf("Created BrowserEngine session %s", sessionID)
 	return session, nil
@@ -174,6 +174,100 @@ func (p *BrowserEngineProvider) DestroySession(ctx context.Context, sessionID st
 
 	log.Printf("Destroyed BrowserEngine session %s", sessionID)
 	return nil
+}
+
+// ListSessions fetches active sessions from the BrowserEngine API.
+func (p *BrowserEngineProvider) ListSessions(ctx context.Context) ([]SessionInfo, error) {
+	url := fmt.Sprintf("%s/sessions", p.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create list request: %w", err)
+	}
+	req.Header.Set("X-API-Key", p.APIKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("BrowserEngine list sessions failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read list response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("BrowserEngine returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response — supports gateway-wrapped {"success":true,"data":[...]}
+	// and direct flat response {"sessions":[...]} or [...]
+	var sessions []SessionInfo
+
+	var gatewayResp struct {
+		Success bool `json:"success"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &gatewayResp); err == nil && gatewayResp.Data != nil {
+		if err := json.Unmarshal(gatewayResp.Data, &sessions); err != nil {
+			return nil, fmt.Errorf("failed to parse sessions data: %w", err)
+		}
+		return sessions, nil
+	}
+
+	// Try flat array
+	if err := json.Unmarshal(body, &sessions); err != nil {
+		// Try {"sessions": [...]}
+		var wrapper struct {
+			Sessions []SessionInfo `json:"sessions"`
+		}
+		if err2 := json.Unmarshal(body, &wrapper); err2 != nil {
+			return nil, fmt.Errorf("failed to parse list response: %w", err)
+		}
+		sessions = wrapper.Sessions
+	}
+
+	return sessions, nil
+}
+
+// GetSession fetches a single session's details from the BrowserEngine API.
+func (p *BrowserEngineProvider) GetSession(ctx context.Context, sessionID string) (*SessionInfo, error) {
+	url := fmt.Sprintf("%s/sessions/%s", p.BaseURL, sessionID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create get request: %w", err)
+	}
+	req.Header.Set("X-API-Key", p.APIKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("BrowserEngine get session failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read get response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("BrowserEngine returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response — supports gateway-wrapped {"success":true,"data":{...}}
+	var info SessionInfo
+	var gatewayResp struct {
+		Success bool        `json:"success"`
+		Data    SessionInfo `json:"data"`
+	}
+	if err := json.Unmarshal(body, &gatewayResp); err == nil && gatewayResp.Data.ID != "" {
+		return &gatewayResp.Data, nil
+	}
+
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("failed to parse session response: %w", err)
+	}
+	return &info, nil
 }
 
 // ExecuteCommand sends a command through the BrowserEngine API.

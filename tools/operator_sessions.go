@@ -50,15 +50,21 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 
 	// If session_id is provided, reuse existing session instead of creating new one
 	if sessionID != "" {
-		log.Printf("Reusing existing operator session: %s", sessionID)
+		log.Printf("Connecting to existing operator session: %s", sessionID)
 
 		// Store the URL for the computer tool to use (if provided)
 		if url != "" {
 			operator.SetPendingURL(url)
 		}
 
-		// Inject the session ID into the cache so HandleComputerTool can find it
-		operator.SetSessionID(agentID, sessionID)
+		// Fetch session details from provider and establish CDP connection
+		if err := operator.ConnectToSession(agentID, sessionID); err != nil {
+			log.Printf("⚠️  ConnectToSession failed: %v", err)
+			return map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("Failed to connect to session %s: %v", sessionID, err),
+			}
+		}
 
 		return map[string]interface{}{
 			"success":    true,
@@ -67,7 +73,7 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 			"name":       name,
 			"status":     "active",
 			"reused":     true,
-			"message":    fmt.Sprintf("Reusing existing session %s. Use computer tools to interact.", sessionID),
+			"message":    fmt.Sprintf("Connected to existing session %s with CDP. Use computer tools to interact.", sessionID),
 		}
 	}
 
@@ -122,8 +128,7 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 	return response
 }
 
-// ListOperatorSessions lists all active operator sessions
-// In virtual browser mode, we don't have a way to list sessions via API, so we return minimal info
+// ListOperatorSessions lists all active operator sessions from the provider
 func ListOperatorSessions(status string) map[string]interface{} {
 	cfg := config.GetConfig()
 	operatorConfig := cfg.Get().Operator
@@ -135,14 +140,44 @@ func ListOperatorSessions(status string) map[string]interface{} {
 		}
 	}
 
-	// Virtual browser mode doesn't expose a session list API
-	// We just return a message indicating operator mode is enabled
+	// Try to list from the provider
+	sessions, err := operator.ListProviderSessions()
+	if err != nil {
+		log.Printf("⚠️  ListProviderSessions failed: %v", err)
+		return map[string]interface{}{
+			"success":  true,
+			"sessions": []interface{}{},
+			"count":    0,
+			"message":  fmt.Sprintf("Could not list sessions: %v", err),
+		}
+	}
+
+	// Filter by status if specified
+	var filtered []interface{}
+	for _, s := range sessions {
+		if status != "" && status != "all" && s.Status != status {
+			continue
+		}
+		filtered = append(filtered, map[string]interface{}{
+			"id":          s.ID,
+			"status":      s.Status,
+			"url":         s.URL,
+			"connect_url": s.ConnectURL != "",
+			"stream_url":  s.StreamURL,
+			"debug_url":   s.DebugURL,
+			"created_at":  s.CreatedAt,
+		})
+	}
+
+	if filtered == nil {
+		filtered = []interface{}{}
+	}
+
 	return map[string]interface{}{
-		"success": true,
-		"sessions": []interface{}{},
-		"count":   0,
-		"message": "Virtual browser sessions are created on-demand. Use computer tools to interact with websites.",
-		"note":    "Session management is automatic in virtual browser mode. Sessions are cleaned up when agents shut down.",
+		"success":  true,
+		"sessions": filtered,
+		"count":    len(filtered),
+		"message":  fmt.Sprintf("Found %d sessions. Use create_operator_session with session_id to connect to an existing session.", len(filtered)),
 	}
 }
 

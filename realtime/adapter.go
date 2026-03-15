@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apteva/agent/config"
@@ -36,12 +37,12 @@ type OpenAIRealtimeAdapter struct {
 	toolRegistry *tools.Registry
 	mcpConfig    *config.MCPConfig
 	closeChan    chan struct{}
-	mu           sync.RWMutex
-	model        string // Model name for logging/saving messages
+	mu           sync.RWMutex // protects WebSocket writes only
+	model        string       // Model name for logging/saving messages
 
-	// Track current response item for truncation on interrupt
-	currentItemID    string
-	currentContentIdx int
+	// Track current response item for truncation on interrupt (lock-free)
+	currentItemID     atomic.Value // stores string
+	currentContentIdx atomic.Int32
 }
 
 // NewOpenAIRealtimeAdapter creates a new OpenAI Realtime adapter
@@ -81,7 +82,7 @@ func NewOpenAIRealtimeAdapter(session *Session, messageSaver threads.MessageSave
 	adapter := &OpenAIRealtimeAdapter{
 		session:      session,
 		conn:         conn,
-		eventChan:    make(chan UnifiedEvent, 100),
+		eventChan:    make(chan UnifiedEvent, 512),
 		toolRegistry: tools.GetGlobalRegistry(),
 		mcpConfig:    agentConfig.MCP,
 		closeChan:    make(chan struct{}),
@@ -222,10 +223,8 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 		// Always tell client to stop audio playback when user starts speaking.
 		// Audio is sent faster than realtime, so buffered audio may still be playing
 		// even after response.audio.done has cleared currentItemID.
-		a.mu.RLock()
-		itemID := a.currentItemID
-		contentIdx := a.currentContentIdx
-		a.mu.RUnlock()
+		itemID, _ := a.currentItemID.Load().(string)
+		contentIdx := int(a.currentContentIdx.Load())
 
 		a.eventChan <- UnifiedEvent{
 			Type:      EventTypeAudioInterrupt,
@@ -248,14 +247,12 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 		a.session.SetTurnState("idle")
 
 	case "response.audio.delta":
-		// Track item_id and content_index for potential truncation on interrupt
+		// Track item_id and content_index for potential truncation on interrupt (lock-free)
 		if itemID, ok := msg["item_id"].(string); ok {
-			a.mu.Lock()
-			a.currentItemID = itemID
+			a.currentItemID.Store(itemID)
 			if contentIdx, ok := msg["content_index"].(float64); ok {
-				a.currentContentIdx = int(contentIdx)
+				a.currentContentIdx.Store(int32(contentIdx))
 			}
-			a.mu.Unlock()
 		}
 
 		if delta, ok := msg["delta"].(string); ok {
@@ -273,10 +270,8 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 
 	case "response.audio.done":
 		// Clear item tracking — response completed normally (not interrupted)
-		a.mu.Lock()
-		a.currentItemID = ""
-		a.currentContentIdx = 0
-		a.mu.Unlock()
+		a.currentItemID.Store("")
+		a.currentContentIdx.Store(0)
 
 		a.eventChan <- UnifiedEvent{
 			Type:      EventTypeAudioComplete,
@@ -287,8 +282,8 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 
 	case "conversation.item.input_audio_transcription.completed":
 		if transcript, ok := msg["transcript"].(string); ok {
-			// Save user message to database
-			a.session.messageSaver.SaveMessage(
+			// Save user message to database (async — don't block event processing)
+			go a.session.messageSaver.SaveMessage(
 				a.session.ThreadID,
 				"user",
 				transcript,
@@ -309,9 +304,9 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 
 	case "response.audio_transcript.done":
 		if transcript, ok := msg["transcript"].(string); ok {
-			// Save assistant message to database
+			// Save assistant message to database (async — don't block event processing)
 			modelName := a.model
-			a.session.messageSaver.SaveMessage(
+			go a.session.messageSaver.SaveMessage(
 				a.session.ThreadID,
 				"assistant",
 				transcript,
@@ -359,10 +354,8 @@ func (a *OpenAIRealtimeAdapter) handleOpenAIEvent(msg map[string]interface{}) {
 
 		if status == "cancelled" {
 			// Clear item tracking since the response was cut short
-			a.mu.Lock()
-			a.currentItemID = ""
-			a.currentContentIdx = 0
-			a.mu.Unlock()
+			a.currentItemID.Store("")
+			a.currentContentIdx.Store(0)
 		}
 
 		a.eventChan <- UnifiedEvent{

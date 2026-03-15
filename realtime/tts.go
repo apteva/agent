@@ -449,7 +449,7 @@ func (e *ElevenLabsRealtimeTTS) SendText(text string) error {
 	// Text should end with a space per ElevenLabs docs
 	msg := map[string]interface{}{
 		"text":                 text + " ",
-		"try_trigger_generation": false,
+		"try_trigger_generation": true,
 	}
 
 	return e.conn.WriteJSON(msg)
