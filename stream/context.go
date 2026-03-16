@@ -344,6 +344,64 @@ func (cm *ContextManager) extractToolUseIDs(msg *Message) []string {
 	return ids
 }
 
+// StripOrphanedToolResults removes tool_result blocks from the beginning of a
+// message slice that reference tool_use IDs not present in any preceding assistant
+// message. This can happen when compaction or external truncation splits a
+// tool_use/tool_result pair.
+func StripOrphanedToolResults(messages []Message) []Message {
+	if len(messages) == 0 {
+		return messages
+	}
+
+	// Collect all tool_use IDs present in the message slice
+	allToolUseIDs := make(map[string]bool)
+	for i := range messages {
+		if messages[i].Role != "assistant" {
+			continue
+		}
+		cm := &ContextManager{}
+		for _, id := range cm.extractToolUseIDs(&messages[i]) {
+			allToolUseIDs[id] = true
+		}
+	}
+
+	// Walk from the start: if a user message has tool_results referencing missing
+	// tool_use IDs, strip those blocks (or the entire message if nothing remains).
+	stripped := 0
+	for i := 0; i < len(messages); i++ {
+		if messages[i].Role != "user" {
+			break // Only check leading user messages
+		}
+
+		cm := &ContextManager{}
+		resultIDs := cm.extractToolResultIDs(&messages[i])
+		if len(resultIDs) == 0 {
+			break // Not a tool_result message
+		}
+
+		// Check if ALL tool_result IDs in this message are orphaned
+		allOrphaned := true
+		for _, id := range resultIDs {
+			if allToolUseIDs[id] {
+				allOrphaned = false
+				break
+			}
+		}
+
+		if allOrphaned {
+			stripped++
+			log.Printf("⚠️  Stripped orphaned tool_result message (tool_use_ids: %v)", resultIDs)
+		} else {
+			break // Found a message with valid tool_results, stop
+		}
+	}
+
+	if stripped > 0 {
+		messages = messages[stripped:]
+	}
+	return messages
+}
+
 // stripOldImages removes images from messages beyond the keepImages threshold
 // Returns count of images stripped
 // stripImagesFromAllToolResults strips base64 images from tool_result content in ALL messages.

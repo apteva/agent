@@ -1781,6 +1781,12 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 			if existing.MessagesCompacted > 0 && existing.MessagesCompacted < len(messages) {
 				beforeCount := len(messages)
 				messages = messages[existing.MessagesCompacted:]
+
+				// Safety: strip orphaned tool_results at the start of remaining messages.
+				// Compaction may have split a tool_use/tool_result pair — the tool_use was
+				// compacted but its tool_result remains, causing an Anthropic API error.
+				messages = stream.StripOrphanedToolResults(messages)
+
 				log.Printf("📦 Loaded compaction summary (%d chars), skipped %d already-compacted messages (%d → %d)",
 					len(compactionSummary), existing.MessagesCompacted, beforeCount, len(messages))
 			} else {
@@ -1798,6 +1804,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		)
 		messages = contextMgr.TruncateMessages(messages)
 	}
+
+	// Final safety: strip any orphaned tool_results that slipped through truncation
+	messages = stream.StripOrphanedToolResults(messages)
 
 	// Expand file references to base64 for LLM (if filesystem enabled)
 	if fileManager != nil && fileManager.IsEnabled() {
