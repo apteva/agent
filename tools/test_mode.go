@@ -116,6 +116,11 @@ func SimulateToolResult(toolName string, input map[string]interface{}) (interfac
 		base["session_id"] = fmt.Sprintf("test_session_%d", time.Now().UnixMilli()%100000)
 		base["message"] = "[TEST] Operator session created (simulated)"
 
+	case "connect_operator_session":
+		base["session_id"] = input["session_id"]
+		base["status"] = "connected"
+		base["message"] = "[TEST] Connected to existing session (simulated)"
+
 	case "close_operator_session":
 		base["message"] = "[TEST] Operator session closed (simulated)"
 

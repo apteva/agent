@@ -2241,7 +2241,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		for _, t := range customTools {
 			existingToolNames[t.Name] = true
 		}
-		operatorToolNames := []string{"create_operator_session", "list_operator_sessions", "close_operator_session", "high_quality_screenshot"}
+		operatorToolNames := []string{"create_operator_session", "connect_operator_session", "list_operator_sessions", "close_operator_session", "high_quality_screenshot"}
 		var added int
 		for _, name := range operatorToolNames {
 			if !existingToolNames[name] {

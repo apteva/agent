@@ -753,6 +753,7 @@ func (c *Config) Get() AgentConfig {
 	if config.Operator != nil && config.Operator.Enabled {
 		operatorTools := []string{
 			"create_operator_session",
+			"connect_operator_session",
 			"list_operator_sessions",
 			"close_operator_session",
 		}
@@ -973,6 +974,7 @@ func (c *Config) GetLLMConfig() LLMConfig {
 	if c.Agent.Operator != nil && c.Agent.Operator.Enabled {
 		operatorTools := []string{
 			"create_operator_session",
+			"connect_operator_session",
 			"list_operator_sessions",
 			"close_operator_session",
 		}

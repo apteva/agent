@@ -631,10 +631,11 @@ func HandleConfig(w http.ResponseWriter, r *http.Request) {
 					currentConfig.LLM.BuiltinTools = filteredBuiltinTools
 					// Remove operator-related tools from LLM tools
 					operatorTools := map[string]bool{
-						"create_operator_session": true,
-						"list_operator_sessions":  true,
-						"close_operator_session":  true,
-						"browser":                 true,
+						"create_operator_session":  true,
+						"connect_operator_session": true,
+						"list_operator_sessions":   true,
+						"close_operator_session":   true,
+						"browser":                  true,
 					}
 					var filteredTools []string
 					for _, tool := range currentConfig.LLM.Tools {
