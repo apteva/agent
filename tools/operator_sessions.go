@@ -15,11 +15,10 @@ func SetPendingURL(url string) {
 	operator.SetPendingURL(url)
 }
 
-// CreateOperatorSession creates a new operator session for a given URL
-// If sessionID is provided, it reuses that existing session instead of creating a new one
+// CreateOperatorSession creates a new operator session for a given URL.
 // proxy: nil = use config default (true if unset), ptr to bool for explicit override
 // proxyCountry: empty = use config default, non-empty = override
-func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountry string) map[string]interface{} {
+func CreateOperatorSession(url, name string, proxy *bool, proxyCountry string) map[string]interface{} {
 	cfg := config.GetConfig()
 	operatorConfig := cfg.Get().Operator
 
@@ -27,6 +26,13 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 		return map[string]interface{}{
 			"success": false,
 			"error":   "Operator mode is not enabled",
+		}
+	}
+
+	if url == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "URL is required to create a new session",
 		}
 	}
 
@@ -49,47 +55,10 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 
 	agentID := cfg.Get().ID
 
-	// If session_id is provided, reuse existing session instead of creating new one
-	if sessionID != "" {
-		log.Printf("Connecting to existing operator session: %s", sessionID)
-
-		// Store the URL for the computer tool to use (if provided)
-		if url != "" {
-			operator.SetPendingURL(url)
-		}
-
-		// Fetch session details from provider and establish CDP connection
-		if err := operator.ConnectToSession(agentID, sessionID); err != nil {
-			log.Printf("⚠️  ConnectToSession failed: %v", err)
-			return map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("Failed to connect to session %s: %v", sessionID, err),
-			}
-		}
-
-		return map[string]interface{}{
-			"success":    true,
-			"session_id": sessionID,
-			"url":        url,
-			"name":       name,
-			"status":     "active",
-			"reused":     true,
-			"message":    fmt.Sprintf("Connected to existing session %s with CDP. Use computer tools to interact.", sessionID),
-		}
-	}
-
-	// No existing session - URL is required to create new one
-	if url == "" {
-		return map[string]interface{}{
-			"success": false,
-			"error":   "URL is required when creating a new session",
-		}
-	}
-
 	// Store the URL for the computer tool to use
 	operator.SetPendingURL(url)
 
-	// Actually create the session on the virtual browser service
+	// Create the session on the browser service
 	newSessionID, sessionData, err := operator.CreateSessionWithData(agentID, url, proxyEnabled, proxyCountry)
 	if err != nil {
 		log.Printf("Failed to create operator session: %v", err)
@@ -101,7 +70,7 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 
 	log.Printf("Operator session created: %s for URL %s", newSessionID, url)
 
-	// Build response with session data from virtual browser
+	// Build response with session data from browser service
 	response := map[string]interface{}{
 		"success":    true,
 		"session_id": newSessionID,
@@ -109,7 +78,7 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 		"name":       name,
 		"status":     "active",
 		"created_at": time.Now().Format(time.RFC3339),
-		"message":    fmt.Sprintf("Operator session created for %s. Use computer tools to interact.", url),
+		"message":    fmt.Sprintf("Browser session created for %s. Use computer tools to interact.", url),
 	}
 
 	// Add stream/view URLs if available from session data.
@@ -127,6 +96,46 @@ func CreateOperatorSession(url, name, sessionID string, proxy *bool, proxyCountr
 	}
 
 	return response
+}
+
+// ConnectOperatorSession connects to an existing browser session by ID.
+func ConnectOperatorSession(sessionID string) map[string]interface{} {
+	cfg := config.GetConfig()
+	operatorConfig := cfg.Get().Operator
+
+	if operatorConfig == nil || !operatorConfig.Enabled {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Operator mode is not enabled",
+		}
+	}
+
+	if sessionID == "" {
+		return map[string]interface{}{
+			"success": false,
+			"error":   "session_id is required",
+		}
+	}
+
+	agentID := cfg.Get().ID
+
+	log.Printf("Connecting to existing operator session: %s", sessionID)
+
+	// Fetch session details from provider and cache for command execution
+	if err := operator.ConnectToSession(agentID, sessionID); err != nil {
+		log.Printf("⚠️  ConnectToSession failed: %v", err)
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to connect to session %s: %v", sessionID, err),
+		}
+	}
+
+	return map[string]interface{}{
+		"success":    true,
+		"session_id": sessionID,
+		"status":     "connected",
+		"message":    fmt.Sprintf("Connected to existing session %s. Use computer tools to interact.", sessionID),
+	}
 }
 
 // ListOperatorSessions lists all active operator sessions from the provider
@@ -176,13 +185,12 @@ func ListOperatorSessions(status string) map[string]interface{} {
 			continue
 		}
 		filtered = append(filtered, map[string]interface{}{
-			"id":          s.ID,
-			"status":      s.Status,
-			"url":         s.URL,
-			"connect_url": s.ConnectURL != "",
-			"stream_url":  s.StreamURL,
-			"debug_url":   s.DebugURL,
-			"created_at":  s.CreatedAt,
+			"id":         s.ID,
+			"status":     s.Status,
+			"url":        s.URL,
+			"stream_url": s.StreamURL,
+			"debug_url":  s.DebugURL,
+			"created_at": s.CreatedAt,
 		})
 	}
 
@@ -194,12 +202,11 @@ func ListOperatorSessions(status string) map[string]interface{} {
 		"success":  true,
 		"sessions": filtered,
 		"count":    len(filtered),
-		"message":  fmt.Sprintf("Found %d sessions. Use create_operator_session with session_id to connect to an existing session.", len(filtered)),
+		"message":  fmt.Sprintf("Found %d sessions. Use connect_operator_session to connect to an existing session.", len(filtered)),
 	}
 }
 
 // CloseOperatorSession closes an operator session
-// In virtual browser mode, cleanup happens automatically or via agent shutdown
 func CloseOperatorSession(sessionID string) map[string]interface{} {
 	cfg := config.GetConfig()
 	operatorConfig := cfg.Get().Operator
@@ -233,8 +240,7 @@ func CloseOperatorSession(sessionID string) map[string]interface{} {
 
 	return map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Operator session %s has been closed", sessionID),
-		"note":    "Virtual browser sessions are automatically cleaned up when agents shut down.",
+		"message": fmt.Sprintf("Session %s has been closed", sessionID),
 	}
 }
 
@@ -252,7 +258,7 @@ func (t *CreateOperatorSessionToolWrapper) DisplayName() string {
 }
 
 func (t *CreateOperatorSessionToolWrapper) Description() string {
-	return "Create or reuse an operator session for browser interaction. Either provide a URL to create a new session, or provide an existing session_id to reuse one."
+	return "Create a new browser session for a given URL. Use this to open a new browser and navigate to a website."
 }
 
 func (t *CreateOperatorSessionToolWrapper) InputSchema() map[string]interface{} {
@@ -261,15 +267,11 @@ func (t *CreateOperatorSessionToolWrapper) InputSchema() map[string]interface{} 
 		"properties": map[string]interface{}{
 			"url": map[string]interface{}{
 				"type":        "string",
-				"description": "The URL to navigate to (required when creating new session, optional when reusing)",
+				"description": "The URL to navigate to",
 			},
 			"name": map[string]interface{}{
 				"type":        "string",
-				"description": "Optional name for the session (auto-generated if not provided)",
-			},
-			"session_id": map[string]interface{}{
-				"type":        "string",
-				"description": "Existing session ID to reuse instead of creating a new one. If provided, skips session creation on browser service.",
+				"description": "Optional name for the session",
 			},
 			"proxy": map[string]interface{}{
 				"type":        "boolean",
@@ -277,25 +279,57 @@ func (t *CreateOperatorSessionToolWrapper) InputSchema() map[string]interface{} 
 			},
 			"proxy_country": map[string]interface{}{
 				"type":        "string",
-				"description": "ISO 3166-1 alpha-2 country code for proxy geolocation (e.g., \"US\", \"GB\", \"DE\", \"JP\"). Routes traffic through a proxy in the specified country.",
+				"description": "ISO 3166-1 alpha-2 country code for proxy geolocation (e.g., \"US\", \"GB\", \"DE\", \"JP\").",
 			},
 		},
+		"required": []string{"url"},
 	}
 }
 
 func (t *CreateOperatorSessionToolWrapper) Execute(params map[string]interface{}) (interface{}, error) {
 	url, _ := params["url"].(string)
 	name, _ := params["name"].(string)
-	sessionID, _ := params["session_id"].(string)
 	proxyCountry, _ := params["proxy_country"].(string)
 
-	// proxy is optional — nil means "use default"
 	var proxy *bool
 	if p, ok := params["proxy"].(bool); ok {
 		proxy = &p
 	}
 
-	return CreateOperatorSession(url, name, sessionID, proxy, proxyCountry), nil
+	return CreateOperatorSession(url, name, proxy, proxyCountry), nil
+}
+
+// ConnectOperatorSessionToolWrapper wraps the connect operator session function
+type ConnectOperatorSessionToolWrapper struct{}
+
+func (t *ConnectOperatorSessionToolWrapper) Name() string {
+	return "connect_operator_session"
+}
+
+func (t *ConnectOperatorSessionToolWrapper) DisplayName() string {
+	return "Connect to Browser Session"
+}
+
+func (t *ConnectOperatorSessionToolWrapper) Description() string {
+	return "Connect to an existing browser session by ID. Use this to take over or resume a previously created session. Use list_operator_sessions first to find available sessions."
+}
+
+func (t *ConnectOperatorSessionToolWrapper) InputSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"session_id": map[string]interface{}{
+				"type":        "string",
+				"description": "The ID of the existing session to connect to",
+			},
+		},
+		"required": []string{"session_id"},
+	}
+}
+
+func (t *ConnectOperatorSessionToolWrapper) Execute(params map[string]interface{}) (interface{}, error) {
+	sessionID, _ := params["session_id"].(string)
+	return ConnectOperatorSession(sessionID), nil
 }
 
 // ListOperatorSessionsToolWrapper wraps the list operator sessions function
@@ -310,7 +344,7 @@ func (t *ListOperatorSessionsToolWrapper) DisplayName() string {
 }
 
 func (t *ListOperatorSessionsToolWrapper) Description() string {
-	return "List operator sessions filtered by status"
+	return "List browser sessions filtered by status. Returns session IDs that can be used with connect_operator_session."
 }
 
 func (t *ListOperatorSessionsToolWrapper) InputSchema() map[string]interface{} {
@@ -344,7 +378,7 @@ func (t *CloseOperatorSessionToolWrapper) DisplayName() string {
 }
 
 func (t *CloseOperatorSessionToolWrapper) Description() string {
-	return "Close an active operator session"
+	return "Close an active browser session"
 }
 
 func (t *CloseOperatorSessionToolWrapper) InputSchema() map[string]interface{} {
@@ -418,6 +452,7 @@ func (t *HighQualityScreenshotToolWrapper) Execute(params map[string]interface{}
 func RegisterOperatorSessionTools() {
 	registry := GetGlobalRegistry()
 	registry.RegisterTool(&CreateOperatorSessionToolWrapper{})
+	registry.RegisterTool(&ConnectOperatorSessionToolWrapper{})
 	registry.RegisterTool(&ListOperatorSessionsToolWrapper{})
 	registry.RegisterTool(&CloseOperatorSessionToolWrapper{})
 	registry.RegisterTool(&HighQualityScreenshotToolWrapper{})
