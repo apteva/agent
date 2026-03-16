@@ -200,13 +200,28 @@ func ConnectToSession(agentID, sessionID string) error {
 		return fmt.Errorf("provider %s does not support session listing/fetching", provider.Name())
 	}
 
-	// Fetch session details to verify session exists and is active
+	// Fetch session details to verify session exists
 	info, err := lister.GetSession(context.Background(), sessionID)
 	if err != nil {
 		return fmt.Errorf("failed to get session %s: %w", sessionID, err)
 	}
 
 	log.Printf("🔧 ConnectToSession: id=%s status=%s provider=%s", info.ID, info.Status, provider.Name())
+
+	// If session is not running, try to resume it (restores cookies, localStorage, navigates to URL)
+	if info.Status != "RUNNING" {
+		resumer, ok := provider.(SessionResumer)
+		if !ok {
+			return fmt.Errorf("session %s is %s and provider %s does not support resume", sessionID, info.Status, provider.Name())
+		}
+		log.Printf("🔄 Session %s is %s, resuming...", sessionID[:8], info.Status)
+		resumed, err := resumer.ResumeSession(context.Background(), sessionID)
+		if err != nil {
+			return fmt.Errorf("failed to resume session %s: %w", sessionID, err)
+		}
+		log.Printf("✅ Session %s resumed, new status: %s", sessionID[:8], resumed.Status)
+		info = resumed
+	}
 
 	// Build a proper BrowserSession
 	session := &BrowserSession{

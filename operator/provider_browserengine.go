@@ -270,6 +270,63 @@ func (p *BrowserEngineProvider) GetSession(ctx context.Context, sessionID string
 	return &info, nil
 }
 
+// ResumeSession resumes a closed/timed-out session via the BrowserEngine API.
+// Creates a new browser instance, restores cookies/localStorage, and navigates to the stored URL.
+// Returns the updated session info (now RUNNING with a new browser_session_id).
+func (p *BrowserEngineProvider) ResumeSession(ctx context.Context, sessionID string) (*SessionInfo, error) {
+	url := fmt.Sprintf("%s/sessions/%s/resume", p.BaseURL, sessionID)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader("{}"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resume request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", p.APIKey)
+
+	log.Printf("🔧 BrowserEngine ResumeSession: POST %s", url)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("BrowserEngine resume session failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read resume response: %w", err)
+	}
+
+	log.Printf("   Response: HTTP %d, Body: %s", resp.StatusCode, truncateLog(string(body), 500))
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("BrowserEngine resume returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse gateway-wrapped response
+	var gatewayResp struct {
+		Success bool        `json:"success"`
+		Data    SessionInfo `json:"data"`
+		Error   string      `json:"error"`
+	}
+	if err := json.Unmarshal(body, &gatewayResp); err != nil {
+		return nil, fmt.Errorf("failed to parse resume response: %w", err)
+	}
+
+	if !gatewayResp.Success {
+		return nil, fmt.Errorf("BrowserEngine resume failed: %s", gatewayResp.Error)
+	}
+
+	if gatewayResp.Data.ID != "" {
+		return &gatewayResp.Data, nil
+	}
+
+	// Try flat response
+	var info SessionInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("failed to parse resume response: %w", err)
+	}
+	return &info, nil
+}
+
 // ExecuteCommand sends a command through the BrowserEngine API.
 func (p *BrowserEngineProvider) ExecuteCommand(ctx context.Context, sessionID, cmdType string, params map[string]interface{}) (map[string]interface{}, error) {
 	commandData := map[string]interface{}{

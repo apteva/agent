@@ -26,6 +26,11 @@ type SessionLister interface {
 	GetSession(ctx context.Context, sessionID string) (*SessionInfo, error)
 }
 
+// SessionResumer is an optional interface for providers that support resuming closed sessions.
+type SessionResumer interface {
+	ResumeSession(ctx context.Context, sessionID string) (*SessionInfo, error)
+}
+
 // SessionInfo represents a session returned by the provider's list/get API.
 type SessionInfo struct {
 	ID         string `json:"id"`
