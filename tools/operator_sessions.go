@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/apteva/agent/config"
@@ -152,10 +153,26 @@ func ListOperatorSessions(status string) map[string]interface{} {
 		}
 	}
 
-	// Filter by status if specified
+	// Map tool-level status to API statuses
+	// API returns: RUNNING, COMPLETED, TIMED_OUT, ERROR
+	// Tool enum: active (→ RUNNING), closed (→ COMPLETED, TIMED_OUT), all
+	statusMatch := func(apiStatus string) bool {
+		if status == "" || status == "all" {
+			return true
+		}
+		switch status {
+		case "active":
+			return apiStatus == "RUNNING"
+		case "closed":
+			return apiStatus == "COMPLETED" || apiStatus == "TIMED_OUT" || apiStatus == "CLOSED"
+		default:
+			return strings.EqualFold(apiStatus, status)
+		}
+	}
+
 	var filtered []interface{}
 	for _, s := range sessions {
-		if status != "" && status != "all" && s.Status != status {
+		if !statusMatch(s.Status) {
 			continue
 		}
 		filtered = append(filtered, map[string]interface{}{
