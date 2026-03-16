@@ -8,7 +8,14 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// longHTTPClient has a longer timeout for session create/resume operations
+// which involve spinning up browsers, injecting cookies, and navigating.
+var longHTTPClient = &http.Client{
+	Timeout: 2 * time.Minute,
+}
 
 // BrowserEngineProvider implements BrowserProvider for the BrowserEngine cloud service.
 // Routes through the API with authentication, billing, and usage tracking.
@@ -86,7 +93,7 @@ func (p *BrowserEngineProvider) CreateSession(ctx context.Context, opts SessionO
 	log.Printf("🔧 BrowserEngine CreateSession: POST %s", url)
 	log.Printf("   Key: %s, Body: %s", maskedKey, string(jsonData))
 
-	resp, err := httpClient.Do(req)
+	resp, err := longHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("BrowserEngine request failed: %w", err)
 	}
@@ -284,7 +291,7 @@ func (p *BrowserEngineProvider) ResumeSession(ctx context.Context, sessionID str
 
 	log.Printf("🔧 BrowserEngine ResumeSession: POST %s", url)
 
-	resp, err := httpClient.Do(req)
+	resp, err := longHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("BrowserEngine resume session failed: %w", err)
 	}
