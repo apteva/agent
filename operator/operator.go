@@ -808,9 +808,38 @@ func HandleComputerToolWithContext(ctx context.Context, input map[string]interfa
 		if !ok {
 			return nil, fmt.Errorf("missing key parameter")
 		}
+
+		// Handle key combos (e.g. "ctrl+a", "super+v", "shift+Enter")
+		if strings.Contains(key, "+") {
+			parts := strings.Split(key, "+")
+			if len(parts) >= 2 {
+				// All parts except the last are modifiers
+				finalKey := translateKeyForBrowserEngine(parts[len(parts)-1])
+				for i := 0; i < len(parts)-1; i++ {
+					mod := translateKeyForBrowserEngine(parts[i])
+					// Press modifier down
+					_, err := executeCommand(ctx, session, "hold_key", map[string]interface{}{
+						"key": mod,
+					})
+					if err != nil {
+						return nil, fmt.Errorf("failed to press modifier %s: %w", mod, err)
+					}
+				}
+				// Press the final key
+				result, err := executeCommand(ctx, session, "key", map[string]interface{}{
+					"key": finalKey,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("failed to execute key combo: %w", err)
+				}
+				log.Printf("Computer tool executed: key combo %s on session %s", key, session.ID)
+				return result, nil
+			}
+		}
+
 		cmdType = "key"
 		params = map[string]interface{}{
-			"key": key,
+			"key": translateKeyForBrowserEngine(key),
 		}
 
 	case "hold_key":
@@ -819,7 +848,7 @@ func HandleComputerToolWithContext(ctx context.Context, input map[string]interfa
 			return nil, fmt.Errorf("missing key parameter for hold_key")
 		}
 		params = map[string]interface{}{
-			"key": key,
+			"key": translateKeyForBrowserEngine(key),
 		}
 		if actionType, ok := input["action"].(string); ok {
 			params["action"] = actionType
@@ -875,6 +904,76 @@ func HandleComputerToolWithContext(ctx context.Context, input map[string]interfa
 
 	log.Printf("Computer tool executed: %s on session %s", action, session.ID)
 	return result, nil
+}
+
+// translateKeyForBrowserEngine maps Claude computer-use key names to what the
+// browser-service keyMap expects (JS key names / CDP key values).
+var claudeKeyAliases = map[string]string{
+	// Arrow keys — Claude sends lowercase, browser-service expects JS names
+	"up":    "ArrowUp",
+	"down":  "ArrowDown",
+	"left":  "ArrowLeft",
+	"right": "ArrowRight",
+
+	// Return/Enter
+	"Return":      "Enter",
+	"return":      "Enter",
+	"enter":       "Enter",
+
+	// Space — CDP expects the literal space character
+	"space": " ",
+	"Space": " ",
+
+	// Backspace variants
+	"BackSpace": "Backspace",
+	"backspace": "Backspace",
+
+	// Escape
+	"escape": "Escape",
+	"Esc":    "Escape",
+	"esc":    "Escape",
+
+	// Delete
+	"delete": "Delete",
+
+	// Tab
+	"tab": "Tab",
+
+	// Page navigation
+	"page_up":    "PageUp",
+	"Page_Up":    "PageUp",
+	"pageup":     "PageUp",
+	"page_down":  "PageDown",
+	"Page_Down":  "PageDown",
+	"pagedown":   "PageDown",
+
+	// Home/End
+	"home": "Home",
+	"end":  "End",
+
+	// Insert
+	"insert": "Insert",
+
+	// Modifiers (for combo parsing)
+	"ctrl":    "Control",
+	"control": "Control",
+	"Control": "Control",
+	"alt":     "Alt",
+	"shift":   "Shift",
+	"super":   "Meta",
+	"Super":   "Meta",
+	"meta":    "Meta",
+	"cmd":     "Meta",
+	"command": "Meta",
+}
+
+func translateKeyForBrowserEngine(key string) string {
+	if mapped, ok := claudeKeyAliases[key]; ok {
+		log.Printf("⌨️  Key translate: %q → %q", key, mapped)
+		return mapped
+	}
+	log.Printf("⌨️  Key passthrough (no translation): %q", key)
+	return key
 }
 
 // HandleHighQualityScreenshot captures a high-quality screenshot with full-page support
