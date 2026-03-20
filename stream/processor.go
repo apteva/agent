@@ -1083,8 +1083,8 @@ func processStreamWithToolsAndSaveContext(ctx context.Context, w http.ResponseWr
 					var toolResultContent string
 					var isError bool
 
-					// Test mode: mock MCP tool
-					if tools.IsTestModeActive(ctx) {
+					// Test mode: mock write MCP tools, let read-only ones execute for real
+					if tools.IsTestModeActive(ctx) && !tools.IsMCPReadOnly(event.ToolName) {
 						mockResult := tools.SimulateMCPToolResult(event.ToolName, event.ToolInput)
 						toolResultContent = mockResult
 						isError = false

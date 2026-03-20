@@ -224,7 +224,7 @@ For real-time voice interactions, direct users to the voice WebSocket endpoint.`
 
 	// Add test mode notice
 	if cfg != nil && cfg.Get().TestMode {
-		systemPrompt += "\n\n[TEST MODE ACTIVE] You are in test mode. ALL tool calls return simulated results — no real actions are taken, no real data is returned. The only exception is agent-to-agent calls (call_agent, delegate_task) which execute for real. Do not rely on tool results reflecting real state. Focus on demonstrating your reasoning and tool usage flow."
+		systemPrompt += "\n\n[TEST MODE ACTIVE] You are in test mode. Read-only tools (list, get, search, query, fetch, describe, count, check, status) execute for REAL and return actual data. Write/mutating tools (create, update, delete, send, execute) return simulated results — no real changes are made. Agent-to-agent calls (call_agent, delegate_task) also execute for real. You can safely explore and query real data, but any modifications are mocked."
 	}
 
 	// Add tool execution guidance for parallel vs sequential calls

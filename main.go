@@ -2265,6 +2265,20 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Auto-add recall tool — always available for searching memories and past conversations
+	{
+		existingToolNames := make(map[string]bool)
+		for _, t := range customTools {
+			existingToolNames[t.Name] = true
+		}
+		if !existingToolNames["recall"] {
+			if resolved := tools.GetToolsForNames([]string{"recall"}); len(resolved) > 0 {
+				customTools = append(customTools, resolved[0])
+				log.Printf("🔍 Recall tool auto-added")
+			}
+		}
+	}
+
 	// Get MCP tool definitions if configured
 	mcpConfig := cfg.Get().MCP
 	if mcpConfig != nil && mcpConfig.Enabled {
@@ -3891,6 +3905,9 @@ func main() {
 	// Initialize request tracker for cancellation support
 	requestTracker = agents.NewRequestTracker()
 
+	// Warm model cache in the background (non-blocking)
+	go handlerConfig.WarmModelCache()
+
 	// Initialize task management (only if tasks are enabled)
 	tools.SetTaskDB(db)
 	if agentConfig.Tasks != nil && agentConfig.Tasks.Enabled {
@@ -3941,6 +3958,11 @@ func main() {
 			log.Printf("⏱️  Memory initialized in %v", time.Since(memoryStart))
 		}
 	}
+
+	// Register recall tool — works with memory, conversations, or both
+	tools.SetRecallDeps(db, memoryManager)
+	tools.RegisterRecallTool()
+	log.Printf("🔍 Recall tool enabled")
 
 	// Initialize file system if enabled
 	if agentConfig.FileSystem != nil {
@@ -4079,6 +4101,7 @@ func main() {
 	mux.HandleFunc("/config", handlerConfig.HandleConfig)
 	mux.HandleFunc("/providers", handlerConfig.HandleProviders)
 	mux.HandleFunc("/providers/ollama/models", handlerConfig.HandleOllamaModels)
+	mux.HandleFunc("/providers/", handlerConfig.HandleProviderModels) // /providers/{id}/models
 	mux.HandleFunc("/reset", handleReset)
 	mux.HandleFunc("/operator/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

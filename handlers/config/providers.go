@@ -14,9 +14,13 @@ import (
 
 // ProviderModel represents a model available for a provider
 type ProviderModel struct {
-	Value       string `json:"value"`
-	Label       string `json:"label"`
-	Recommended bool   `json:"recommended,omitempty"`
+	Value        string   `json:"value"`
+	Label        string   `json:"label"`
+	Recommended  bool     `json:"recommended,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	ContextSize  int      `json:"context_size,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"` // e.g. ["vision","reasoning","tools","code"]
+	Tags         []string `json:"tags,omitempty"`          // e.g. ["uncensored","fastest","default"]
 }
 
 // ProviderInfo represents a provider and its available models
@@ -302,7 +306,8 @@ type ProvidersResponse struct {
 	Embedding []EmbeddingProviderInfo `json:"embedding"`
 }
 
-// HandleProviders handles GET requests for available providers and models
+// HandleProviders handles GET requests for available providers and models.
+// Returns hardcoded models merged with live-fetched models (cached for 1h).
 func HandleProviders(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -310,7 +315,7 @@ func HandleProviders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := ProvidersResponse{
-		LLM:       GetProviders(),
+		LLM:       GetProvidersWithLiveModels(),
 		Embedding: GetEmbeddingProviders(),
 	}
 

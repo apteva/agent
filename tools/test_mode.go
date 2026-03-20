@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/apteva/agent/config"
@@ -14,18 +15,66 @@ type contextKey string
 // TestModeContextKey is used to carry per-request test mode (e.g. from A2A callers).
 const TestModeContextKey contextKey = "test_mode"
 
-// agentCallTools are the ONLY tools that execute for real in test mode.
-// These enable multi-agent orchestration testing.
-var agentCallTools = map[string]bool{
+// realExecuteTools always execute for real in test mode (no mocking).
+// Agent calls enable multi-agent orchestration testing.
+// Read-only tools are safe — they return real data without side effects.
+var realExecuteTools = map[string]bool{
+	// Agent calls
 	"call_agent":           true,
 	"delegate_task":        true,
 	"check_delegated_task": true,
+	// Read-only built-in tools
+	"list_tasks":             true,
+	"get_task":               true,
+	"list_files":             true,
+	"get_file":               true,
+	"search_files":           true,
+	"list_subscriptions":     true,
+	"list_operator_sessions": true,
+	"get_time":               true,
+	"ping":                   true,
+	"document_search":        true,
+	"high_quality_screenshot": true,
+	"recall":                 true,
 }
 
 // ShouldInterceptInTestMode returns true if this tool should be mocked in test mode.
-// Only agent call tools are exempt.
+// Read-only tools and agent calls execute for real.
 func ShouldInterceptInTestMode(toolName string) bool {
-	return !agentCallTools[toolName]
+	return !realExecuteTools[toolName]
+}
+
+// readOnlyMCPPrefixes are prefixes that indicate a read-only MCP tool.
+// Tools matching these prefixes execute for real in test mode.
+var readOnlyMCPPrefixes = []string{
+	"get_", "list_", "search_", "find_", "query_", "fetch_",
+	"read_", "describe_", "count_", "check_", "show_", "lookup_",
+	"view_", "inspect_", "status_", "info_",
+}
+
+// readOnlyMCPContains are substrings that indicate a read-only MCP tool.
+var readOnlyMCPContains = []string{
+	"_list", "_get", "_search", "_find", "_query", "_fetch",
+	"_read", "_describe", "_count", "_check", "_status", "_info",
+}
+
+// IsMCPReadOnly determines if an MCP tool name looks like a read-only operation.
+// Read-only MCP tools execute for real in test mode, returning actual data.
+// Write operations (create, update, delete, send, etc.) are mocked.
+func IsMCPReadOnly(toolName string) bool {
+	lower := strings.ToLower(toolName)
+
+	for _, prefix := range readOnlyMCPPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	for _, sub := range readOnlyMCPContains {
+		if strings.Contains(lower, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsTestModeActive checks whether test mode is active, either via per-request
@@ -41,6 +90,7 @@ func IsTestModeActive(ctx context.Context) bool {
 }
 
 // SimulateToolResult returns a plausible mock result for a tool call in test mode.
+// Only called for write/mutating tools — read-only tools execute for real.
 func SimulateToolResult(toolName string, input map[string]interface{}) (interface{}, error) {
 	base := map[string]interface{}{
 		"test_mode": true,
@@ -52,19 +102,6 @@ func SimulateToolResult(toolName string, input map[string]interface{}) (interfac
 		title, _ := input["title"].(string)
 		base["task_id"] = fmt.Sprintf("test_task_%d", time.Now().UnixMilli()%100000)
 		base["message"] = fmt.Sprintf("[TEST] Task '%s' created (simulated)", title)
-
-	case "list_tasks":
-		base["tasks"] = []interface{}{}
-		base["message"] = "[TEST] No tasks (simulated)"
-
-	case "get_task":
-		taskID, _ := input["task_id"].(string)
-		base["task"] = map[string]interface{}{
-			"id":     taskID,
-			"title":  "Simulated task",
-			"status": "pending",
-		}
-		base["message"] = "[TEST] Task retrieved (simulated)"
 
 	case "execute_task":
 		base["status"] = "completed"
@@ -90,22 +127,6 @@ func SimulateToolResult(toolName string, input map[string]interface{}) (interfac
 	case "update_subscription":
 		base["message"] = "[TEST] Subscription updated (simulated)"
 
-	case "list_subscriptions":
-		base["subscriptions"] = []interface{}{}
-		base["message"] = "[TEST] No subscriptions (simulated)"
-
-	case "list_files":
-		base["files"] = []interface{}{}
-		base["message"] = "[TEST] No files (simulated)"
-
-	case "get_file":
-		base["content"] = "[TEST] Simulated file content"
-		base["message"] = "[TEST] File retrieved (simulated)"
-
-	case "search_files":
-		base["results"] = []interface{}{}
-		base["message"] = "[TEST] No results (simulated)"
-
 	case "delete_file":
 		base["message"] = "[TEST] File deleted (simulated)"
 
@@ -124,26 +145,8 @@ func SimulateToolResult(toolName string, input map[string]interface{}) (interfac
 	case "close_operator_session":
 		base["message"] = "[TEST] Operator session closed (simulated)"
 
-	case "list_operator_sessions":
-		base["sessions"] = []interface{}{}
-		base["message"] = "[TEST] No sessions (simulated)"
-
-	case "get_time":
-		base["time"] = time.Now().Format(time.RFC3339)
-		base["message"] = "[TEST] Current time (simulated)"
-
-	case "ping":
-		base["message"] = "[TEST] Pong (simulated)"
-
 	case "wait":
 		base["message"] = "[TEST] Wait completed (simulated)"
-
-	case "high_quality_screenshot":
-		base["message"] = "[TEST] Screenshot captured (simulated)"
-
-	case "document_search":
-		base["results"] = []interface{}{}
-		base["message"] = "[TEST] No documents found (simulated)"
 
 	default:
 		base["tool"] = toolName
@@ -153,7 +156,8 @@ func SimulateToolResult(toolName string, input map[string]interface{}) (interfac
 	return base, nil
 }
 
-// SimulateMCPToolResult returns a mock result for an MCP tool call in test mode.
+// SimulateMCPToolResult returns a mock result for a write/mutating MCP tool in test mode.
+// Read-only MCP tools should not reach here — they execute for real.
 func SimulateMCPToolResult(toolName string, input map[string]interface{}) string {
-	return fmt.Sprintf(`{"test_mode":true,"success":true,"tool":"%s","message":"[TEST] MCP tool '%s' executed (simulated)"}`, toolName, toolName)
+	return fmt.Sprintf(`{"test_mode":true,"success":true,"tool":"%s","message":"[TEST] MCP tool '%s' write blocked in test mode (simulated)"}`, toolName, toolName)
 }

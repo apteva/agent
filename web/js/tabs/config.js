@@ -201,18 +201,32 @@ function updateModelOptions() {
     populateModelDropdown(provider.models, provider.custom_url);
 }
 
+// Store current models list for info panel lookups
+let currentModelsList = [];
+
 // Populate model dropdown with given models
 function populateModelDropdown(models, allowCustom) {
     const modelSelect = document.getElementById('configModel');
     modelSelect.innerHTML = '';
+    currentModelsList = models || [];
 
     models.forEach(model => {
         const option = document.createElement('option');
         option.value = model.value;
-        option.textContent = model.label;
-        if (model.recommended) {
-            option.textContent += ' ⭐';
+        // Build display text: label + caps/tags/context inline
+        let text = model.label;
+        if (model.recommended) text += ' ⭐';
+        const capIcons = { vision: '👁', reasoning: '🧠', tools: '🔧', code: '💻', web: '🌐' };
+        const caps = (model.capabilities || []).map(c => capIcons[c] || c).join('');
+        if (caps) text += '  ' + caps;
+        const tags = (model.tags || []).filter(t => t.includes('uncensored')).map(() => '🔓');
+        if (tags.length) text += ' ' + tags.join('');
+        if (model.context_size) {
+            const ctx = model.context_size;
+            if (ctx >= 1000000) text += ` [${Math.round(ctx/1000000)}M]`;
+            else if (ctx >= 1000) text += ` [${Math.round(ctx/1000)}K]`;
         }
+        option.textContent = text;
         modelSelect.appendChild(option);
     });
 
@@ -222,6 +236,79 @@ function populateModelDropdown(models, allowCustom) {
         if (modelExists) {
             modelSelect.value = currentConfig.llm.model;
         }
+    }
+
+    showModelInfo();
+}
+
+// Show model info panel with capabilities, tags, description
+function showModelInfo() {
+    const panel = document.getElementById('modelInfoPanel');
+    const badges = document.getElementById('modelInfoBadges');
+    const desc = document.getElementById('modelInfoDesc');
+    if (!panel || !badges || !desc) return;
+
+    const selectedValue = document.getElementById('configModel')?.value;
+    const model = currentModelsList.find(m => m.value === selectedValue);
+
+    if (!model || (!model.capabilities?.length && !model.tags?.length && !model.description && !model.context_size)) {
+        panel.classList.add('hidden');
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    badges.innerHTML = '';
+
+    // Capability badges
+    const capColors = {
+        vision: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        reasoning: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+        tools: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        code: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
+        web: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
+    };
+    const capIcons = { vision: '👁', reasoning: '🧠', tools: '🔧', code: '💻', web: '🌐' };
+
+    (model.capabilities || []).forEach(cap => {
+        const span = document.createElement('span');
+        span.className = `inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${capColors[cap] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`;
+        span.textContent = `${capIcons[cap] || '•'} ${cap}`;
+        badges.appendChild(span);
+    });
+
+    // Tag badges
+    (model.tags || []).forEach(tag => {
+        const span = document.createElement('span');
+        const isUncensored = tag.includes('uncensored');
+        const isDefault = tag.includes('default');
+        const isFastest = tag.includes('fastest');
+        let color = 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
+        if (isUncensored) color = 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300';
+        if (isDefault) color = 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300';
+        if (isFastest) color = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300';
+        span.className = `inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${color}`;
+        span.textContent = tag;
+        badges.appendChild(span);
+    });
+
+    // Context size badge
+    if (model.context_size) {
+        const span = document.createElement('span');
+        span.className = 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
+        const ctx = model.context_size;
+        if (ctx >= 1000000) span.textContent = `📏 ${Math.round(ctx/1000000)}M ctx`;
+        else if (ctx >= 1000) span.textContent = `📏 ${Math.round(ctx/1000)}K ctx`;
+        else span.textContent = `📏 ${ctx} ctx`;
+        badges.appendChild(span);
+    }
+
+    // Description
+    if (model.description) {
+        desc.textContent = model.description;
+        desc.classList.remove('hidden');
+    } else {
+        desc.textContent = '';
+        desc.classList.add('hidden');
     }
 }
 
